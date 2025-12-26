@@ -5,6 +5,7 @@
 Rozszerzyć tryb nauki EN↔PL o **alternatywny tryb odpowiedzi** typu „Duolingo”: użytkownik nie wpisuje tekstu, tylko **układa odpowiedź klikając kafelki (tokeny)** z puli.
 
 Zakładamy:
+
 - Działa dla **EN→PL i PL→EN** identycznie (zmienia się tylko język odpowiedzi docelowej).
 - W MVP logika pozostaje **lokalna (frontend)** jak w `learn-mode.md` (bez zapisu w DB).
 - Po poprawnym ułożeniu odpowiedzi przepływ jest **taki sam jak po wpisaniu i ENTER** (Correct/Not correct → Next / Finish round).
@@ -20,6 +21,7 @@ Na ekranie `/notebooks/[id]/learn` (start sesji) w sekcji ustawień dodaj:
   - **Word bank (kafelki)** (nowy)
 
 Zasady kompatybilności:
+
 - Tryby „Exact match / Contains mode” z `learn-mode.md` dotyczą **Text input**.
 - Dla **Word bank**:
   - Ocena odpowiedzi jest zawsze „**exact**” po złożeniu pełnej frazy (po normalizacji).
@@ -30,6 +32,7 @@ Zasady kompatybilności:
 ## 3. UI karty w trybie Word bank
 
 Stan karty pozostaje dwuetapowy jak w `learn-mode.md`:
+
 - STAN A: _Before check_ (układanie)
 - STAN B: _After check_ (feedback + next)
 
@@ -57,6 +60,7 @@ Stan karty pozostaje dwuetapowy jak w `learn-mode.md`:
 ### 3.3. Elementy w stanie _After check_ (feedback)
 
 Po auto-check:
+
 - Zablokuj edycję:
   - Word pool i Results stają się nieklikalne (albo cały stan przechodzi do feedbacku).
 - Pokaż wynik:
@@ -93,6 +97,7 @@ Jeśli token w poprawnej odpowiedzi występuje N razy, w Word pool powinien wyst
 ## 5. Generowanie Word pool (poprawne tokeny + distractory)
 
 Word pool zawiera:
+
 - wszystkie poprawne tokeny (z duplikatami),
 - dodatkowe tokeny (distractors) dobrane heurystycznie i z innych fraz.
 
@@ -104,6 +109,7 @@ Word pool zawiera:
   - dodaj **2–3 distractory**.
 
 Uwaga: Jeśli notatnik jest bardzo mały i brakuje materiału na distractory, dozwolone jest:
+
 - wziąć tokeny z globalnej, małej listy (predefiniowanej) dla danej klasy (patrz heurystyki),
 - albo zmniejszyć liczbę distractorów.
 
@@ -121,11 +127,13 @@ Jeśli w poprawnej odpowiedzi występuje token z kategorii, dodaj „bliskie” 
   - `on` → dodaj `in`, `at`
 
 Można rozszerzać później o:
+
 - `is/are/was/were`, `do/does/did`, `some/any`, itd.
 
 ### 5.3. Distractory z innych fraz w notatniku
 
 Gdy potrzeba więcej distractorów:
+
 - wybierz tokeny z innych fraz w tym samym notatniku,
 - preferuj:
   - tokeny o podobnej długości,
@@ -133,26 +141,31 @@ Gdy potrzeba więcej distractorów:
   - tokeny z tej samej kategorii (jeśli da się wykryć).
 
 Filtry:
+
 - nie dodawaj tokenów już obecnych w puli (chyba że celowo jako distractor-duplikat),
 - nie dodawaj pustych tokenów.
 
 ### 5.4. Mieszanie puli
 
 Po zbudowaniu puli:
+
 - przetasuj kolejność kafelków, aby nie grupować poprawnych słów.
 
 ---
 
 ## 6. Logika poprawności (jak oceniamy ułożoną odpowiedź)
 
-1) Z Results bierzemy wybraną sekwencję tokenów i składamy w string:
+1. Z Results bierzemy wybraną sekwencję tokenów i składamy w string:
+
 - join tokenów pojedynczą spacją.
 
-2) Poprawną odpowiedź składamy analogicznie:
+2. Poprawną odpowiedź składamy analogicznie:
+
 - join tokenów poprawnych pojedynczą spacją,
 - (jeśli ignorujemy końcową interpunkcję, usuń ją tu konsekwentnie).
 
-3) Porównanie:
+3. Porównanie:
+
 - zastosuj tę samą normalizację co w `learn-mode.md` (case, spacje, końcowa interpunkcja),
 - warunek: `normalizedUser === normalizedCorrect`.
 
@@ -167,6 +180,7 @@ Po zbudowaniu puli:
   - jeśli jest wynik (After check): Next / Finish round (jak w `learn-mode.md`).
 
 Opcjonalnie (nice-to-have):
+
 - **Backspace**: usuń ostatni wybrany token z Results i zwróć do puli.
 
 ---
@@ -189,7 +203,6 @@ Opcjonalnie (nice-to-have):
 ## 9. Co to zmienia w istniejącej specyfikacji (`learn-mode.md`)
 
 Do `learn-mode.md` nie trzeba mieszać dużych sekcji. Wystarczy:
+
 - w sekcji „Ekran startowy sesji nauki” dopisać nową opcję „Tryb odpowiedzi: Text input / Word bank”
 - oraz dopisać referencję: „Szczegóły Word bank: `docs/implementation/learn-mode-word-bank.md`”.
-
-

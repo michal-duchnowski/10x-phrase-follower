@@ -12,8 +12,10 @@ import type {
 } from "../types";
 import { parseMarkdownToHtml } from "../lib/utils";
 import { compareAnswers } from "../lib/learn.service";
+import { compareWordBankAnswer, tokenizePhrase } from "../lib/word-bank.service";
 import AnswerDiffView from "./learn/AnswerDiffView";
 import PhraseTokenPills from "./learn/PhraseTokenPills";
+import WordBank from "./learn/WordBank";
 
 interface LearnViewProps {
   notebookId: string;
@@ -27,13 +29,17 @@ interface CardResultState {
   backendResult: CheckAnswerResultDTO | null;
   userAnswer: string;
   correctAnswer: string; // Store original correct answer for diff display
+  selectedTokens?: string[]; // For word bank mode
 }
+
+type AnswerInputMode = "text" | "word_bank";
 
 interface LearnSessionState {
   phase: SessionPhase;
   direction: LearnDirection;
   shuffle: boolean;
   useContainsMode: boolean; // If true, accept answer if it matches any word in correct answer
+  answerInputMode: AnswerInputMode; // "text" or "word_bank"
   currentRound: LearnPhraseDTO[];
   currentIndex: number;
   roundNumber: number;
@@ -51,6 +57,7 @@ function createInitialSessionState(): LearnSessionState {
     direction: "en_to_pl",
     shuffle: true,
     useContainsMode: false,
+    answerInputMode: "text",
     currentRound: [],
     currentIndex: 0,
     roundNumber: 1,
@@ -282,6 +289,13 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
     }));
   };
 
+  const handleChangeAnswerInputMode = (mode: AnswerInputMode) => {
+    setSession((prev) => ({
+      ...prev,
+      answerInputMode: mode,
+    }));
+  };
+
   const startRound = (phrases: LearnPhraseDTO[]) => {
     if (!phrases.length) {
       addToast({
@@ -343,20 +357,100 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
             backendResult: prevState ? prevState.backendResult : null,
             correctAnswer: prevState ? prevState.correctAnswer : getCorrectAnswer(currentPhrase, prev.direction),
             userAnswer: value,
+            selectedTokens: prevState?.selectedTokens,
           },
         },
       };
     });
   };
 
+  const handleWordBankTokenSelect = useCallback(
+    (token: string) => {
+      if (!currentPhrase) return;
+
+      setSession((prev) => {
+        const isChecked = prev.answers[currentPhrase.id]?.isChecked ?? false;
+        if (isChecked) {
+          return prev;
+        }
+
+        const prevState = prev.answers[currentPhrase.id];
+        const currentTokens = prevState?.selectedTokens || [];
+        const newTokens = [...currentTokens, token];
+        const userAnswer = newTokens.join(" ");
+
+        return {
+          ...prev,
+          answers: {
+            ...prev.answers,
+            [currentPhrase.id]: {
+              isChecked: prevState ? prevState.isChecked : false,
+              isCorrect: prevState ? prevState.isCorrect : null,
+              backendResult: prevState ? prevState.backendResult : null,
+              correctAnswer: prevState ? prevState.correctAnswer : getCorrectAnswer(currentPhrase, prev.direction),
+              userAnswer,
+              selectedTokens: newTokens,
+            },
+          },
+        };
+      });
+    },
+    [currentPhrase]
+  );
+
+  const handleWordBankTokenRemove = useCallback(
+    (index: number) => {
+      if (!currentPhrase) return;
+
+      setSession((prev) => {
+        const isChecked = prev.answers[currentPhrase.id]?.isChecked ?? false;
+        if (isChecked) {
+          return prev;
+        }
+
+        const prevState = prev.answers[currentPhrase.id];
+        const currentTokens = prevState?.selectedTokens || [];
+        const newTokens = currentTokens.filter((_, i) => i !== index);
+        const userAnswer = newTokens.join(" ");
+
+        return {
+          ...prev,
+          answers: {
+            ...prev.answers,
+            [currentPhrase.id]: {
+              isChecked: prevState ? prevState.isChecked : false,
+              isCorrect: prevState ? prevState.isCorrect : null,
+              backendResult: prevState ? prevState.backendResult : null,
+              correctAnswer: prevState ? prevState.correctAnswer : getCorrectAnswer(currentPhrase, prev.direction),
+              userAnswer,
+              selectedTokens: newTokens,
+            },
+          },
+        };
+      });
+    },
+    [currentPhrase]
+  );
+
   const handleCheckAnswer = useCallback(async () => {
     if (!currentPhrase) return;
 
-    const userAnswer = currentCardResult?.userAnswer ?? "";
     const correctAnswer = getCorrectAnswer(currentPhrase, session.direction);
+    let localComparison: {
+      isCorrect: boolean;
+      normalizedUser: string;
+      normalizedCorrect: string;
+    };
 
-    // Optimistic update: compare locally for instant feedback (no network delay)
-    const localComparison = compareAnswers(userAnswer, correctAnswer, session.useContainsMode);
+    // Use word bank comparison if in word bank mode
+    if (session.answerInputMode === "word_bank") {
+      const selectedTokens = currentCardResult?.selectedTokens || [];
+      localComparison = compareWordBankAnswer(selectedTokens, correctAnswer);
+    } else {
+      const userAnswer = currentCardResult?.userAnswer ?? "";
+      localComparison = compareAnswers(userAnswer, correctAnswer, session.useContainsMode);
+    }
+
     const result: CheckAnswerResultDTO = {
       is_correct: localComparison.isCorrect,
       normalized_user: localComparison.normalizedUser,
@@ -389,6 +483,11 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
         }
       }
 
+      const userAnswer =
+        session.answerInputMode === "word_bank"
+          ? (currentCardResult?.selectedTokens || []).join(" ")
+          : (currentCardResult?.userAnswer ?? "");
+
       const newAnswers: Record<string, CardResultState> = {
         ...prev.answers,
         [currentPhrase.id]: {
@@ -397,6 +496,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
           backendResult: result,
           userAnswer,
           correctAnswer,
+          selectedTokens: currentCardResult?.selectedTokens,
         },
       };
 
@@ -420,7 +520,14 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
         incorrectPhrases,
       };
     });
-  }, [currentCardResult?.userAnswer, currentPhrase, session.direction, session.useContainsMode]);
+  }, [
+    currentCardResult?.userAnswer,
+    currentCardResult?.selectedTokens,
+    currentPhrase,
+    session.direction,
+    session.useContainsMode,
+    session.answerInputMode,
+  ]);
 
   const goToNextCard = useCallback(() => {
     setSession((prev) => {
@@ -454,6 +561,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
         direction: prev.direction,
         shuffle: prev.shuffle,
         useContainsMode: prev.useContainsMode,
+        answerInputMode: prev.answerInputMode,
       }));
       return;
     }
@@ -478,6 +586,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
         direction: prev.direction,
         shuffle: prev.shuffle,
         useContainsMode: prev.useContainsMode,
+        answerInputMode: prev.answerInputMode,
       }));
       return;
     }
@@ -511,7 +620,17 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
     const isChecked = currentCardResult?.isChecked ?? false;
 
     if (!isChecked) {
-      void handleCheckAnswer();
+      // For word bank, only check if answer is complete (auto-check handles this, but allow manual check)
+      if (session.answerInputMode === "word_bank") {
+        const selectedTokens = currentCardResult?.selectedTokens || [];
+        const correctTokenCount = tokenizePhrase(getCorrectAnswer(currentPhrase, session.direction)).length;
+        if (selectedTokens.length === correctTokenCount) {
+          void handleCheckAnswer();
+        }
+        // If incomplete, do nothing (or could show hint)
+      } else {
+        void handleCheckAnswer();
+      }
       return;
     }
 
@@ -521,15 +640,22 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
     currentPhrase,
     handleCheckAnswer,
     session.phase,
+    session.answerInputMode,
+    session.direction,
     session.incorrectPhrases.length,
     goToNextCard,
     handleStartNextRoundWithIncorrect,
     handleRestartFromBeginning,
   ]);
 
-  // Auto-focus textarea when new phrase appears (not checked yet)
+  // Auto-focus textarea when new phrase appears (not checked yet, text mode only)
   useEffect(() => {
-    if (session.phase === "in_progress" && currentPhrase && !currentCardResult?.isChecked) {
+    if (
+      session.phase === "in_progress" &&
+      currentPhrase &&
+      !currentCardResult?.isChecked &&
+      session.answerInputMode === "text"
+    ) {
       // Small delay to ensure DOM is ready
       const timer = setTimeout(() => {
         if (textareaRef.current) {
@@ -538,7 +664,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [currentPhrase, session.phase, currentCardResult?.isChecked]);
+  }, [currentPhrase, session.phase, currentCardResult?.isChecked, session.answerInputMode]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -554,18 +680,43 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
         return;
       }
 
-      // Handle Enter for in_progress and round_summary phases
+      // Handle Enter and Backspace for in_progress and round_summary phases
       if (session.phase === "in_progress" || session.phase === "round_summary") {
         if (event.key === "Enter") {
           event.preventDefault();
           handleEnterKey();
+        }
+        // Backspace: remove last token in word bank mode
+        if (
+          event.key === "Backspace" &&
+          session.phase === "in_progress" &&
+          session.answerInputMode === "word_bank" &&
+          currentPhrase &&
+          !currentCardResult?.isChecked
+        ) {
+          const target = event.target as HTMLElement;
+          // Only if not in an input/textarea
+          if (target.tagName !== "TEXTAREA" && target.tagName !== "INPUT") {
+            const selectedTokens = currentCardResult?.selectedTokens || [];
+            if (selectedTokens.length > 0) {
+              event.preventDefault();
+              handleWordBankTokenRemove(selectedTokens.length - 1);
+            }
+          }
         }
       }
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [handleEnterKey, session.phase]);
+  }, [
+    handleEnterKey,
+    session.phase,
+    session.answerInputMode,
+    currentPhrase,
+    currentCardResult,
+    handleWordBankTokenRemove,
+  ]);
 
   if (!isAuthenticated) {
     return (
@@ -693,25 +844,51 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
               </div>
 
               <div>
-                <div className="text-xs font-medium text-muted-foreground mb-1.5">Answer mode</div>
-                <button
-                  type="button"
-                  onClick={handleToggleContainsMode}
-                  className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground hover:bg-muted/60 transition-colors"
-                >
-                  <div
-                    className={`size-4 rounded border ${
-                      session.useContainsMode ? "bg-primary border-primary" : "border-muted-foreground/40"
-                    }`}
-                    aria-hidden="true"
-                  />
-                  <span>
-                    {session.useContainsMode
-                      ? "Contains mode (any word matches)"
-                      : "Exact match (full answer required)"}
-                  </span>
-                </button>
+                <div className="text-xs font-medium text-muted-foreground mb-1.5">Answer input mode</div>
+                <div className="inline-flex items-center gap-2 rounded-md border border-border bg-muted/40 p-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={session.answerInputMode === "text" ? "default" : "ghost"}
+                    className="px-3"
+                    onClick={() => handleChangeAnswerInputMode("text")}
+                  >
+                    Text input
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={session.answerInputMode === "word_bank" ? "default" : "ghost"}
+                    className="px-3"
+                    onClick={() => handleChangeAnswerInputMode("word_bank")}
+                  >
+                    Word bank
+                  </Button>
+                </div>
               </div>
+
+              {session.answerInputMode === "text" && (
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground mb-1.5">Answer mode</div>
+                  <button
+                    type="button"
+                    onClick={handleToggleContainsMode}
+                    className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground hover:bg-muted/60 transition-colors"
+                  >
+                    <div
+                      className={`size-4 rounded border ${
+                        session.useContainsMode ? "bg-primary border-primary" : "border-muted-foreground/40"
+                      }`}
+                      aria-hidden="true"
+                    />
+                    <span>
+                      {session.useContainsMode
+                        ? "Contains mode (any word matches)"
+                        : "Exact match (full answer required)"}
+                    </span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -908,29 +1085,57 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
           {/* STAN A: Before check - Answering */}
           {!isChecked && (
             <div className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                  Your answer ({getAnswerLanguageLabel(session.direction)})
-                </label>
-                <textarea
-                  ref={textareaRef}
-                  className="w-full min-h-[72px] rounded-md border border-border bg-card px-3 py-2 text-base md:text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  placeholder={
-                    session.direction === "en_to_pl" ? "Type the Polish translation…" : "Type the English translation…"
-                  }
-                  value={userAnswer}
-                  onChange={(e) => handleUserAnswerChange(e.target.value)}
+              {session.answerInputMode === "word_bank" ? (
+                <WordBank
+                  correctAnswer={correctAnswer}
+                  selectedTokens={currentCardResult?.selectedTokens || []}
+                  onTokenSelect={handleWordBankTokenSelect}
+                  onTokenRemove={handleWordBankTokenRemove}
+                  allPhrases={manifest?.phrases || []}
+                  currentPhraseId={currentPhrase.id}
+                  direction={session.direction}
+                  isChecked={false}
+                  onAutoCheck={handleCheckAnswer}
                 />
-              </div>
+              ) : (
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                    Your answer ({getAnswerLanguageLabel(session.direction)})
+                  </label>
+                  <textarea
+                    ref={textareaRef}
+                    className="w-full min-h-[72px] rounded-md border border-border bg-card px-3 py-2 text-base md:text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    placeholder={
+                      session.direction === "en_to_pl"
+                        ? "Type the Polish translation…"
+                        : "Type the English translation…"
+                    }
+                    value={userAnswer}
+                    onChange={(e) => handleUserAnswerChange(e.target.value)}
+                  />
+                </div>
+              )}
 
               {/* Controls - Before check */}
               <div className="hidden sm:flex items-center justify-end gap-3 pt-2">
                 <Button type="button" size="sm" onClick={handleSkip}>
                   Skip
                 </Button>
-                <Button type="button" size="sm" onClick={handleCheckAnswer}>
-                  Check answer
-                </Button>
+                {session.answerInputMode === "text" && (
+                  <Button type="button" size="sm" onClick={handleCheckAnswer}>
+                    Check answer
+                  </Button>
+                )}
+                {session.answerInputMode === "word_bank" && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleCheckAnswer}
+                    disabled={(currentCardResult?.selectedTokens || []).length === 0}
+                  >
+                    Check answer
+                  </Button>
+                )}
               </div>
             </div>
           )}
@@ -949,6 +1154,20 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
                 <span className="text-lg">{isCorrect ? "✅" : "❌"}</span>
                 <span>{isCorrect ? "Correct" : "Not correct"}</span>
               </div>
+
+              {/* Show word bank in read-only mode if word bank was used */}
+              {session.answerInputMode === "word_bank" && (
+                <WordBank
+                  correctAnswer={correctAnswer}
+                  selectedTokens={currentCardResult?.selectedTokens || []}
+                  onTokenSelect={() => undefined} // Disabled
+                  onTokenRemove={() => undefined} // Disabled
+                  allPhrases={manifest?.phrases || []}
+                  currentPhraseId={currentPhrase.id}
+                  direction={session.direction}
+                  isChecked={true}
+                />
+              )}
 
               {/* Answer diff */}
               <AnswerDiffView
@@ -992,9 +1211,20 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
                 <Button type="button" onClick={handleSkip}>
                   Skip
                 </Button>
-                <Button type="button" className="flex-1" onClick={handleCheckAnswer}>
-                  Check answer
-                </Button>
+                {session.answerInputMode === "text" ? (
+                  <Button type="button" className="flex-1" onClick={handleCheckAnswer}>
+                    Check answer
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    className="flex-1"
+                    onClick={handleCheckAnswer}
+                    disabled={(currentCardResult?.selectedTokens || []).length === 0}
+                  >
+                    Check answer
+                  </Button>
+                )}
               </>
             ) : (
               <Button type="button" className="flex-1" onClick={goToNextCard}>

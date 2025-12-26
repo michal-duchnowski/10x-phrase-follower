@@ -256,7 +256,15 @@ export function parseMarkdownToHtml(text: string): string {
   // Process italic (__text__) - render as <em> tag, only at word boundaries
   html = html.replace(/(?:^|[^\w_])__([^_]+?)__(?=[^\w_]|$)/g, (match, content, offset, string) => {
     // Get the prefix (non-word char before __)
-    const prefix = offset > 0 && /[\w]/.test(string[offset - 1]) ? "" : match[0] === "_" ? "" : match[0];
+    // If match starts with _, check if there's a space before the match in original string
+    let prefix = "";
+    if (offset > 0 && !/[\w]/.test(string[offset - 1])) {
+      // There's a non-word char before, preserve it (could be space)
+      prefix = string[offset - 1];
+    } else if (match[0] !== "_") {
+      // Match doesn't start with _, so first char is the prefix (e.g., space)
+      prefix = match[0];
+    }
     // Get the suffix (non-word char after __)
     const suffix =
       offset + match.length < string.length && /[\w]/.test(string[offset + match.length])
