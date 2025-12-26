@@ -56,6 +56,7 @@ Na `/notebooks/[id]/learn`:
   - Tryb odpowiedzi:
     - **Exact match** (domyślnie): wymaga pełnej, dokładnej odpowiedzi.
     - **Contains mode**: akceptuje odpowiedź, jeśli pasuje do dowolnego słowa w poprawnej odpowiedzi (np. dla "siniak stłuczenie sińce" akceptuje "siniak" lub "sińce").
+    - (Opcjonalnie) **Word bank (kafelki)**: układanie odpowiedzi z puli tokenów (Duolingo-style). Szczegóły: `docs/implementation/learn-mode-word-bank.md`.
 - Informacja o liczbie fraz w notatniku (np. `30 fraz w tym notatniku`).
 - Przycisk: **“Start”**:
   - Tworzy listę fraz do rundy 1:
