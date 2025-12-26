@@ -914,7 +914,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
                 </label>
                 <textarea
                   ref={textareaRef}
-                  className="w-full min-h-[72px] rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  className="w-full min-h-[72px] rounded-md border border-border bg-card px-3 py-2 text-base md:text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   placeholder={
                     session.direction === "en_to_pl" ? "Type the Polish translation…" : "Type the English translation…"
                   }
