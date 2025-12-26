@@ -32,7 +32,7 @@ interface CardResultState {
   selectedTokens?: string[]; // For word bank mode
 }
 
-type AnswerInputMode = "text" | "word_bank";
+type AnswerInputMode = "text" | "word_bank" | "hybrid";
 
 interface LearnSessionState {
   phase: SessionPhase;
@@ -89,6 +89,23 @@ function getAnswerLanguageLabel(direction: LearnDirection): string {
   return direction === "en_to_pl" ? "Polish" : "English";
 }
 
+/**
+ * Determines the effective input mode for a phrase.
+ * For hybrid mode: uses text input for 1-2 tokens, word bank for 3+ tokens.
+ */
+function getEffectiveInputMode(
+  answerInputMode: AnswerInputMode,
+  phrase: LearnPhraseDTO | null,
+  direction: LearnDirection
+): "text" | "word_bank" {
+  if (answerInputMode === "hybrid" && phrase) {
+    const correctAnswer = getCorrectAnswer(phrase, direction);
+    const tokenCount = tokenizePhrase(correctAnswer).length;
+    return tokenCount <= 2 ? "text" : "word_bank";
+  }
+  return answerInputMode === "hybrid" ? "text" : answerInputMode;
+}
+
 function getHasAudio(phrase: LearnPhraseDTO, direction: LearnDirection): boolean {
   return direction === "en_to_pl" ? phrase.audio.has_en_audio : phrase.audio.has_pl_audio;
 }
@@ -117,6 +134,9 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
     currentPhrase && session.answers[currentPhrase.id] ? session.answers[currentPhrase.id] : null;
 
   const remainingInRound = session.phase === "in_progress" ? session.currentRound.length - session.currentIndex - 1 : 0;
+
+  // Get effective input mode for current phrase (handles hybrid mode)
+  const effectiveInputMode = getEffectiveInputMode(session.answerInputMode, currentPhrase, session.direction);
 
   // Load notebook name and learn manifest when authenticated
   useEffect(() => {
@@ -442,8 +462,9 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
       normalizedCorrect: string;
     };
 
-    // Use word bank comparison if in word bank mode
-    if (session.answerInputMode === "word_bank") {
+    // Use word bank comparison if in word bank mode (or hybrid with 3+ tokens)
+    const effectiveMode = getEffectiveInputMode(session.answerInputMode, currentPhrase, session.direction);
+    if (effectiveMode === "word_bank") {
       const selectedTokens = currentCardResult?.selectedTokens || [];
       localComparison = compareWordBankAnswer(selectedTokens, correctAnswer);
     } else {
@@ -483,8 +504,9 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
         }
       }
 
+      const effectiveMode = getEffectiveInputMode(session.answerInputMode, currentPhrase, session.direction);
       const userAnswer =
-        session.answerInputMode === "word_bank"
+        effectiveMode === "word_bank"
           ? (currentCardResult?.selectedTokens || []).join(" ")
           : (currentCardResult?.userAnswer ?? "");
 
@@ -621,7 +643,8 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
 
     if (!isChecked) {
       // For word bank, only check if answer is complete (auto-check handles this, but allow manual check)
-      if (session.answerInputMode === "word_bank") {
+      const effectiveMode = getEffectiveInputMode(session.answerInputMode, currentPhrase, session.direction);
+      if (effectiveMode === "word_bank") {
         const selectedTokens = currentCardResult?.selectedTokens || [];
         const correctTokenCount = tokenizePhrase(getCorrectAnswer(currentPhrase, session.direction)).length;
         if (selectedTokens.length === correctTokenCount) {
@@ -654,7 +677,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
       session.phase === "in_progress" &&
       currentPhrase &&
       !currentCardResult?.isChecked &&
-      session.answerInputMode === "text"
+      effectiveInputMode === "text"
     ) {
       // Small delay to ensure DOM is ready
       const timer = setTimeout(() => {
@@ -664,7 +687,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [currentPhrase, session.phase, currentCardResult?.isChecked, session.answerInputMode]);
+  }, [currentPhrase, session.phase, currentCardResult?.isChecked, effectiveInputMode]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -690,7 +713,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
         if (
           event.key === "Backspace" &&
           session.phase === "in_progress" &&
-          session.answerInputMode === "word_bank" &&
+          effectiveInputMode === "word_bank" &&
           currentPhrase &&
           !currentCardResult?.isChecked
         ) {
@@ -709,14 +732,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [
-    handleEnterKey,
-    session.phase,
-    session.answerInputMode,
-    currentPhrase,
-    currentCardResult,
-    handleWordBankTokenRemove,
-  ]);
+  }, [handleEnterKey, session.phase, effectiveInputMode, currentPhrase, currentCardResult, handleWordBankTokenRemove]);
 
   if (!isAuthenticated) {
     return (
@@ -864,6 +880,15 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
                   >
                     Word bank
                   </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={session.answerInputMode === "hybrid" ? "default" : "ghost"}
+                    className="px-3"
+                    onClick={() => handleChangeAnswerInputMode("hybrid")}
+                  >
+                    Hybrid
+                  </Button>
                 </div>
               </div>
 
@@ -887,6 +912,11 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
                         : "Exact match (full answer required)"}
                     </span>
                   </button>
+                </div>
+              )}
+              {session.answerInputMode === "hybrid" && (
+                <div className="text-xs text-muted-foreground">
+                  Automatically uses text input for 1-2 words, word bank for 3+ words.
                 </div>
               )}
             </div>
@@ -1085,7 +1115,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
           {/* STAN A: Before check - Answering */}
           {!isChecked && (
             <div className="space-y-3">
-              {session.answerInputMode === "word_bank" ? (
+              {effectiveInputMode === "word_bank" ? (
                 <WordBank
                   correctAnswer={correctAnswer}
                   selectedTokens={currentCardResult?.selectedTokens || []}
@@ -1121,12 +1151,12 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
                 <Button type="button" size="sm" onClick={handleSkip}>
                   Skip
                 </Button>
-                {session.answerInputMode === "text" && (
+                {effectiveInputMode === "text" && (
                   <Button type="button" size="sm" onClick={handleCheckAnswer}>
                     Check answer
                   </Button>
                 )}
-                {session.answerInputMode === "word_bank" && (
+                {effectiveInputMode === "word_bank" && (
                   <Button
                     type="button"
                     size="sm"
@@ -1156,7 +1186,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
               </div>
 
               {/* Show word bank in read-only mode if word bank was used */}
-              {session.answerInputMode === "word_bank" && (
+              {effectiveInputMode === "word_bank" && (
                 <WordBank
                   correctAnswer={correctAnswer}
                   selectedTokens={currentCardResult?.selectedTokens || []}
@@ -1211,7 +1241,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
                 <Button type="button" onClick={handleSkip}>
                   Skip
                 </Button>
-                {session.answerInputMode === "text" ? (
+                {effectiveInputMode === "text" ? (
                   <Button type="button" className="flex-1" onClick={handleCheckAnswer}>
                     Check answer
                   </Button>
