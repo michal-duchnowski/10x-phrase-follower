@@ -7,8 +7,8 @@ import type {
   LearnDirection,
   LearnManifestDTO,
   LearnPhraseDTO,
+  NotebookDTO,
   PlaybackManifestDTO,
-  PlaybackManifestItem,
 } from "../types";
 import { parseMarkdownToHtml } from "../lib/utils";
 
@@ -30,6 +30,7 @@ interface LearnSessionState {
   phase: SessionPhase;
   direction: LearnDirection;
   shuffle: boolean;
+  useContainsMode: boolean; // If true, accept answer if it matches any word in correct answer
   currentRound: LearnPhraseDTO[];
   currentIndex: number;
   roundNumber: number;
@@ -46,6 +47,7 @@ function createInitialSessionState(): LearnSessionState {
     phase: "idle",
     direction: "en_to_pl",
     shuffle: true,
+    useContainsMode: false,
     currentRound: [],
     currentIndex: 0,
     roundNumber: 1,
@@ -75,10 +77,6 @@ function getCorrectAnswer(phrase: LearnPhraseDTO, direction: LearnDirection): st
 
 function getAnswerLanguageLabel(direction: LearnDirection): string {
   return direction === "en_to_pl" ? "Polish" : "English";
-}
-
-function getPromptLanguageLabel(direction: LearnDirection): string {
-  return direction === "en_to_pl" ? "English" : "Polish";
 }
 
 function getHasAudio(phrase: LearnPhraseDTO, direction: LearnDirection): boolean {
@@ -183,12 +181,7 @@ function AnswerDiffView({
     if (!result) {
       return { userSegments: [] as DiffSegment[], correctSegments: [] as DiffSegment[] };
     }
-    return diffOriginalStrings(
-      userAnswer,
-      correctAnswer,
-      result.normalized_user,
-      result.normalized_correct
-    );
+    return diffOriginalStrings(userAnswer, correctAnswer, result.normalized_user, result.normalized_correct);
   }, [userAnswer, correctAnswer, result]);
 
   if (!result) {
@@ -255,6 +248,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
   const [manifest, setManifest] = useState<LearnManifestDTO | null>(null);
   const [manifestLoading, setManifestLoading] = useState<boolean>(true);
   const [manifestError, setManifestError] = useState<string | null>(null);
+  const [notebookName, setNotebookName] = useState<string | null>(null);
 
   const [session, setSession] = useState<LearnSessionState>(() => createInitialSessionState());
 
@@ -268,23 +262,31 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
 
   const remainingInRound = session.phase === "in_progress" ? session.currentRound.length - session.currentIndex - 1 : 0;
 
-  // Load learn manifest when authenticated
+  // Load notebook name and learn manifest when authenticated
   useEffect(() => {
     if (!isAuthenticated) {
       return;
     }
 
-    const loadManifest = async () => {
+    const loadData = async () => {
       setManifestLoading(true);
       setManifestError(null);
 
       try {
-        const data = await apiCall<LearnManifestDTO>(`/api/notebooks/${notebookId}/learn-manifest`, {
-          method: "GET",
-        });
-        setManifest(data);
+        // Load notebook name and manifest in parallel
+        const [notebookData, manifestData] = await Promise.all([
+          apiCall<NotebookDTO>(`/api/notebooks/${notebookId}`, {
+            method: "GET",
+          }),
+          apiCall<LearnManifestDTO>(`/api/notebooks/${notebookId}/learn-manifest`, {
+            method: "GET",
+          }),
+        ]);
+
+        setNotebookName(notebookData.name);
+        setManifest(manifestData);
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to load learn manifest.";
+        const message = err instanceof Error ? err.message : "Failed to load learn mode data.";
         setManifestError(message);
         addToast({
           type: "error",
@@ -296,7 +298,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
       }
     };
 
-    loadManifest();
+    loadData();
   }, [apiCall, notebookId, isAuthenticated, addToast]);
 
   // Fetch playback manifest for audio
@@ -330,7 +332,9 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
     }
   }, [session.phase, session.currentRound, fetchPlaybackManifest]);
 
-  // Auto-play audio when entering a card (Before check state)
+  // Auto-play audio when entering a card (Before check state) - only once per card
+  const lastAutoPlayedPhraseIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!currentPhrase || session.phase !== "in_progress") {
       return;
@@ -341,15 +345,18 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
       return; // Don't auto-play in After check state
     }
 
+    // Only auto-play once per phrase
+    if (lastAutoPlayedPhraseIdRef.current === currentPhrase.id) {
+      return;
+    }
+
     const hasAudio = getHasAudio(currentPhrase, session.direction);
     if (!hasAudio || !playbackManifestRef.current) {
       return;
     }
 
     // Find the phrase in playback manifest
-    const manifestItem = playbackManifestRef.current.sequence.find(
-      (item) => item.phrase.id === currentPhrase.id
-    );
+    const manifestItem = playbackManifestRef.current.sequence.find((item) => item.phrase.id === currentPhrase.id);
 
     if (!manifestItem) {
       return;
@@ -369,7 +376,8 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
     }
 
     if (targetSegment && targetSegment.url) {
-      // Auto-play audio
+      // Auto-play audio only once
+      lastAutoPlayedPhraseIdRef.current = currentPhrase.id;
       const audio = new Audio(targetSegment.url);
       audio.playbackRate = 1.0;
       audio.play().catch((err) => {
@@ -378,6 +386,11 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
         console.error("[LearnView] Failed to auto-play audio:", err);
       });
       audioRef.current = audio;
+
+      // Clean up when audio ends
+      audio.addEventListener("ended", () => {
+        audioRef.current = null;
+      });
     }
   }, [currentPhrase, session.direction, session.phase, currentCardResult]);
 
@@ -395,6 +408,13 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
     }));
   };
 
+  const handleToggleContainsMode = () => {
+    setSession((prev) => ({
+      ...prev,
+      useContainsMode: !prev.useContainsMode,
+    }));
+  };
+
   const startRound = (phrases: LearnPhraseDTO[]) => {
     if (!phrases.length) {
       addToast({
@@ -406,6 +426,9 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
     }
 
     const ordered = session.shuffle ? shuffleArray(phrases) : [...phrases];
+
+    // Reset auto-play tracking when starting new round
+    lastAutoPlayedPhraseIdRef.current = null;
 
     setSession((prev) => ({
       ...prev,
@@ -475,6 +498,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
           phrase_id: currentPhrase.id,
           user_answer: userAnswer,
           direction: session.direction,
+          use_contains_mode: session.useContainsMode,
         }),
       });
 
@@ -580,73 +604,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
     }
 
     goToNextCard();
-  }, [currentCardResult, currentPhrase, handleCheckAnswer, session.phase]);
-
-  const handlePlayAudio = useCallback(() => {
-    if (!currentPhrase || !playbackManifestRef.current) return;
-
-    const hasAudio = getHasAudio(currentPhrase, session.direction);
-    if (!hasAudio) return;
-
-    // Find the phrase in playback manifest
-    const manifestItem = playbackManifestRef.current.sequence.find(
-      (item) => item.phrase.id === currentPhrase.id
-    );
-
-    if (!manifestItem) {
-      addToast({
-        type: "error",
-        title: "Audio not available",
-        description: "Audio segment not found for this phrase.",
-      });
-      return;
-    }
-
-    // Find appropriate segment based on direction
-    let targetSegment = null;
-    if (session.direction === "en_to_pl") {
-      // Prefer EN1, fallback to EN2 or EN3
-      targetSegment =
-        manifestItem.segments.find((s) => s.slot === "EN1") ||
-        manifestItem.segments.find((s) => s.slot === "EN2") ||
-        manifestItem.segments.find((s) => s.slot === "EN3");
-    } else {
-      // PL → EN: use PL segment
-      targetSegment = manifestItem.segments.find((s) => s.slot === "PL");
-    }
-
-    if (!targetSegment || !targetSegment.url) {
-      addToast({
-        type: "error",
-        title: "Audio not available",
-        description: "No audio segment found for this phrase.",
-      });
-      return;
-    }
-
-    // Stop any currently playing audio
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
-
-    // Play audio
-    const audio = new Audio(targetSegment.url);
-    audio.playbackRate = 1.0;
-    audio.play().catch((err) => {
-      addToast({
-        type: "error",
-        title: "Playback failed",
-        description: err instanceof Error ? err.message : "Failed to play audio.",
-      });
-    });
-    audioRef.current = audio;
-
-    // Clean up when audio ends
-    audio.addEventListener("ended", () => {
-      audioRef.current = null;
-    });
-  }, [currentPhrase, session.direction, addToast]);
+  }, [currentCardResult, currentPhrase, handleCheckAnswer, session.phase, goToNextCard]);
 
   const handleStartNextRoundWithIncorrect = () => {
     if (!session.incorrectPhrases.length) {
@@ -655,6 +613,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
         ...createInitialSessionState(),
         direction: prev.direction,
         shuffle: prev.shuffle,
+        useContainsMode: prev.useContainsMode,
       }));
       return;
     }
@@ -678,6 +637,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
         ...createInitialSessionState(),
         direction: prev.direction,
         shuffle: prev.shuffle,
+        useContainsMode: prev.useContainsMode,
       }));
       return;
     }
@@ -714,15 +674,12 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
       if (event.key === "Enter") {
         event.preventDefault();
         handleEnterKey();
-      } else if (event.key === " ") {
-        event.preventDefault();
-        handlePlayAudio();
       }
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [handleEnterKey, handlePlayAudio, session.phase]);
+  }, [handleEnterKey, session.phase]);
 
   if (!isAuthenticated) {
     return (
@@ -780,7 +737,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Learn mode</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Notebook: <span className="font-mono text-foreground">{notebookId}</span>
+            Notebook: <span className="text-foreground">{notebookName || notebookId}</span>
           </p>
         </div>
         <a
@@ -823,13 +780,13 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="space-y-3">
               <div>
                 <div className="text-xs font-medium text-muted-foreground mb-1.5">Order</div>
                 <button
                   type="button"
                   onClick={handleToggleShuffle}
-                  className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted/60 transition-colors"
+                  className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground hover:bg-muted/60 transition-colors"
                 >
                   <div
                     className={`size-4 rounded border ${
@@ -838,6 +795,27 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
                     aria-hidden="true"
                   />
                   <span>{session.shuffle ? "Shuffle (recommended)" : "In order"}</span>
+                </button>
+              </div>
+
+              <div>
+                <div className="text-xs font-medium text-muted-foreground mb-1.5">Answer mode</div>
+                <button
+                  type="button"
+                  onClick={handleToggleContainsMode}
+                  className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground hover:bg-muted/60 transition-colors"
+                >
+                  <div
+                    className={`size-4 rounded border ${
+                      session.useContainsMode ? "bg-primary border-primary" : "border-muted-foreground/40"
+                    }`}
+                    aria-hidden="true"
+                  />
+                  <span>
+                    {session.useContainsMode
+                      ? "Contains mode (any word matches)"
+                      : "Exact match (full answer required)"}
+                  </span>
                 </button>
               </div>
             </div>
@@ -857,7 +835,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
         </div>
 
         <div className="flex items-center justify-between pt-2">
-          <p className="text-xs text-muted-foreground">ENTER: check / next card · Space: audio (when available)</p>
+          <p className="text-xs text-muted-foreground">ENTER: check / next card</p>
           <Button type="button" onClick={handleStart} disabled={phraseCount === 0}>
             Start session
           </Button>
@@ -872,7 +850,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Round {session.roundNumber} summary</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Notebook: <span className="font-mono text-foreground">{notebookId}</span>
+            Notebook: <span className="text-foreground">{notebookName || notebookId}</span>
           </p>
         </div>
         <a
@@ -946,7 +924,6 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
       return null;
     }
 
-    const hasAudio = getHasAudio(currentPhrase, session.direction);
     const promptHtml = parseMarkdownToHtml(getPromptText(currentPhrase, session.direction));
     const progressLabel = `Card ${session.currentIndex + 1} / ${session.currentRound.length}`;
 
@@ -987,7 +964,8 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
               </span>
               <span className="text-border">•</span>
               <span>
-                Left: <span className="font-semibold text-foreground">{remainingInRound < 0 ? 0 : remainingInRound}</span>
+                Left:{" "}
+                <span className="font-semibold text-foreground">{remainingInRound < 0 ? 0 : remainingInRound}</span>
               </span>
             </div>
           </div>
@@ -996,21 +974,6 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
           <div className="rounded-md bg-muted/40 border border-border/80 p-4">
             <div className="text-sm text-foreground" dangerouslySetInnerHTML={{ __html: promptHtml }} />
           </div>
-
-          {/* Audio button - only in Before check state */}
-          {!isChecked && (
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={handlePlayAudio}
-                disabled={!hasAudio}
-              >
-                {hasAudio ? "Play audio (Space)" : "No audio"}
-              </Button>
-            </div>
-          )}
 
           {/* STAN A: Before check - Answering */}
           {!isChecked && (
@@ -1032,17 +995,16 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
                       handleEnterKey();
                     }
                   }}
-                  autoFocus
                 />
               </div>
 
               {/* Controls - Before check */}
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+              <div className="flex items-center justify-end gap-3 pt-2">
                 <Button type="button" size="sm" variant="outline" onClick={handleSkip}>
                   Skip
                 </Button>
                 <Button type="button" size="sm" onClick={handleCheckAnswer}>
-                  Check answer (Enter)
+                  Check answer
                 </Button>
               </div>
             </div>
@@ -1073,9 +1035,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
               {/* Controls - After check */}
               <div className="flex justify-end pt-2">
                 <Button type="button" size="sm" onClick={goToNextCard}>
-                  {session.currentIndex >= session.currentRound.length - 1
-                    ? "Finish round (Enter)"
-                    : "Next card (Enter)"}
+                  {session.currentIndex >= session.currentRound.length - 1 ? "Finish round" : "Next card"}
                 </Button>
               </div>
             </div>
@@ -1083,7 +1043,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
         </div>
 
         <p className="text-xs text-muted-foreground">
-          ENTER: {isChecked ? "next card / finish round" : "check answer"} · Space: audio (when available)
+          ENTER: {isChecked ? "next card / finish round" : "check answer"}
         </p>
       </div>
     );

@@ -37,11 +37,13 @@ export function normalizeAnswerText(text: string): string {
  *
  * @param userAnswer - User's input answer
  * @param correctAnswer - Expected correct answer
+ * @param useContainsMode - If true, user answer is correct if it matches any word in correct answer
  * @returns Object with comparison result and normalized texts
  */
 export function compareAnswers(
   userAnswer: string,
-  correctAnswer: string
+  correctAnswer: string,
+  useContainsMode = false
 ): {
   isCorrect: boolean;
   normalizedUser: string;
@@ -50,8 +52,20 @@ export function compareAnswers(
   const normalizedUser = normalizeAnswerText(userAnswer);
   const normalizedCorrect = normalizeAnswerText(correctAnswer);
 
+  let isCorrect: boolean;
+
+  if (useContainsMode) {
+    // In contains mode: check if normalized user answer matches any word in normalized correct answer
+    // Split correct answer by spaces and check if user answer matches any word exactly
+    const correctWords = normalizedCorrect.split(/\s+/).filter((w) => w.length > 0);
+    isCorrect = correctWords.some((word) => word === normalizedUser);
+  } else {
+    // Exact match mode: full string comparison
+    isCorrect = normalizedUser === normalizedCorrect;
+  }
+
   return {
-    isCorrect: normalizedUser === normalizedCorrect,
+    isCorrect,
     normalizedUser,
     normalizedCorrect,
   };

@@ -417,6 +417,7 @@ export interface CheckAnswerCommand {
   phrase_id: UUID;
   user_answer: string;
   direction: LearnDirection;
+  use_contains_mode?: boolean; // If true, user answer is correct if it matches any word in correct answer
 }
 
 export interface CheckAnswerResultDTO {

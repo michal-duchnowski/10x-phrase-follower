@@ -82,7 +82,7 @@ Po naciśnięciu **Start** użytkownik widzi **widok karty w jednym z dwóch sta
   - Małe, pasywne liczniki `Correct / Incorrect / Left`.
   - Umieszczone **z dala od inputu i głównego promptu** (np. w górnym pasku lub bocznym pasku), tak aby **nie konkurowały z zadaniem**.
 
-#### 3.3.2. STAN A — *Before check* (odpowiadanie)
+#### 3.3.2. STAN A — _Before check_ (odpowiadanie)
 
 Widoczne:
 
@@ -106,7 +106,7 @@ Ukryte w tym stanie:
 - Normalizowane odpowiedzi (`normalizedUser`, `normalizedCorrect`).
 - Przyciski "Next" / "Previous".
 
-#### 3.3.3. STAN B — *After check* (feedback)
+#### 3.3.3. STAN B — _After check_ (feedback)
 
 Widoczne:
 
@@ -133,10 +133,10 @@ Ukryte w tym stanie:
 Po naciśnięciu **ENTER** lub przycisku "Sprawdź odpowiedź":
 
 - Odpowiedź użytkownika jest **przetwarzana i porównywana** z właściwym tekstem.
-- Po poprawnym wysłaniu odpowiedzi następuje **twarde przejście** ze stanu *Before check* do stanu *After check*:
+- Po poprawnym wysłaniu odpowiedzi następuje **twarde przejście** ze stanu _Before check_ do stanu _After check_:
   - Pole odpowiedzi jest blokowane (`readonly`) albo całkowicie ukrywane.
   - Użytkownik **nie może poprawić odpowiedzi po fakcie** – próba jest jednoznacznie zamknięta.
-- Feedback wizualny (w stanie *After check*):
+- Feedback wizualny (w stanie _After check_):
   - **Wynik globalny**:
     - `Correct ✅` lub `Not correct ❌`.
   - **Porównanie tekstowe (diff)**:

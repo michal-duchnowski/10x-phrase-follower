@@ -24,7 +24,7 @@ const checkAnswer = async (context: APIContext): Promise<Response> => {
   const body = await context.request.json();
   validateJsonBody(body, ["phrase_id", "user_answer", "direction"]);
 
-  const { phrase_id, user_answer, direction }: CheckAnswerCommand = body;
+  const { phrase_id, user_answer, direction, use_contains_mode = false }: CheckAnswerCommand = body;
 
   // Validate phrase_id
   validateUUID(phrase_id, "Phrase ID");
@@ -70,7 +70,7 @@ const checkAnswer = async (context: APIContext): Promise<Response> => {
   const correctAnswer = direction === "en_to_pl" ? phrase.pl_text : phrase.en_text;
 
   // Compare answers using normalization
-  const comparison = compareAnswers(user_answer, correctAnswer);
+  const comparison = compareAnswers(user_answer, correctAnswer, use_contains_mode);
 
   const response: CheckAnswerResultDTO = {
     is_correct: comparison.isCorrect,
