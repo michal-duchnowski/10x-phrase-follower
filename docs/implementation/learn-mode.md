@@ -132,7 +132,7 @@ Po przejściu wszystkich kart w rundzie:
 
 ---
 
-## 4. Logika porównywania odpowiedzi
+## 4. Logika porównywania odpowiedzi (backend)
 
 ### 4.1. Ogólne założenia
 
@@ -142,8 +142,10 @@ Po przejściu wszystkich kart w rundzie:
   - Ignorujemy nadmiarowe spacje.
 - Ten sam algorytm dopasowania dla:
   - EN→PL i PL→EN (z możliwością późniejszego zaostrzenia PL→EN).
+- Algorytm porównywania działa **po stronie backendu** (endpoint `POST /api/notebooks/:id/learn/check-answer`),
+  a frontend korzysta z niego, przesyłając `phrase_id`, `userAnswer` (tekst wpisany przez użytkownika) i `direction`.
 
-### 4.2. Normalizacja przed porównaniem
+### 4.2. Normalizacja przed porównaniem (backend)
 
 Dla obu tekstów (`userAnswer`, `correctAnswer`):
 
@@ -159,7 +161,8 @@ Dla obu tekstów (`userAnswer`, `correctAnswer`):
 - Odpowiedź uznajemy za poprawną, jeśli:
   - `normalizedUser === normalizedCorrect`.
 - Literówki / lekko inne słowa → na MVP traktowane jako błędne, ale:
-  - Różnice są **wizualnie podkreślone**, aby użytkownik widział, że “prawie trafił”.
+  - Różnice są **wizualnie podkreślone** po stronie frontendu (na podstawie zwróconych `normalizedUser` i `normalizedCorrect`),
+    aby użytkownik widział, że “prawie trafił”.
 
 ### 4.3. Wizualny diff
 

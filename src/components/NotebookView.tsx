@@ -239,9 +239,11 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
           <h1 className="text-3xl font-bold text-foreground">{state.notebook?.name || "Notebook"}</h1>
           <p className="text-sm text-muted-foreground mt-1">{state.phrases.length} phrases</p>
         </div>
-        <a href="/notebooks" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-          ← Back to Notebooks
-        </a>
+        <div className="flex items-center gap-3">
+          <a href="/notebooks" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+            ← Back to Notebooks
+          </a>
+        </div>
       </div>
 
       {/* Error display */}
@@ -279,6 +281,11 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
               <Button asChild size="sm" variant="default" className="shrink-0">
                 <a href={`/player/${notebookId}`} title="Open Player">
                   Open Player
+                </a>
+              </Button>
+              <Button asChild size="sm" variant="default" className="shrink-0">
+                <a href={`/notebooks/${notebookId}/learn`} title="Open Learn Mode">
+                  Learn mode
                 </a>
               </Button>
               <GenerateAudioButton
