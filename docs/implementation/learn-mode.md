@@ -29,7 +29,8 @@ Grupa docelowa na start: **właściciel aplikacji (B2/C1)** – zaawansowany uż
   - Jeśli dla danego języka nie ma audio (missing/failed), karta nadal jest używana tekstowo, a audio jest oznaczone jako niedostępne.
 - **Statystyki sesji**:
   - Liczenie poprawnych/niepoprawnych odpowiedzi **w obrębie bieżącej sesji**.
-  - Pasek postępu: `aktualny indeks / liczba kart w bieżącej rundzie`.
+  - Pasek postępu: `aktualny indeks / liczba kart w bieżącej rundzie` (jedyna obowiązkowa statystyka widoczna zawsze).
+  - Dodatkowe statystyki (Correct / Incorrect / Left) są opcjonalne, pasywne, umieszczone z dala od głównego zadania.
   - Po zakończeniu rundy: mini podsumowanie (np. `20/30 poprawnych, 10 do powtórki`).
   - Dane sesji **nie są zapisywane w DB** (na start – tylko w pamięci).
 
@@ -60,12 +61,14 @@ Na `/notebooks/[id]/learn`:
 
 ### 3.3. Widok karty (pojedyncza fraza)
 
-Po naciśnięciu **Start** użytkownik widzi:
+Po naciśnięciu **Start** użytkownik widzi **widok karty w jednym z dwóch stanów UI**.
+
+#### 3.3.1. Elementy wspólne (obie stany)
 
 - **Górny pasek**:
   - Nazwa notatnika.
-  - Pasek postępu: `Karta X / Y w tej rundzie`.
-  - Link “Powrót do notatnika”.
+  - Pasek postępu: `Karta X / Y w tej rundzie` (jedyna obowiązkowa statystyka widoczna zawsze).
+  - Link "Powrót do notatnika".
 - **Sekcja bodźca (prompt)**:
   - Jeśli EN→PL: wyświetlane jest `en_text` (z markdown, np. `__pogrubienia__`).
   - Jeśli PL→EN: wyświetlane jest `pl_text`.
@@ -74,46 +77,83 @@ Po naciśnięciu **Start** użytkownik widzi:
   - Próba automatycznego odtworzenia:
     - EN→PL: EN (angielski slot).
     - PL→EN: PL (polski slot).
-  - Widoczny przycisk np. “Odtwórz ponownie” (skrót klawiaturowy, np. spacja).
-- **Pole odpowiedzi**:
-  - Input/textarea dla użytkownika:
-    - EN→PL: wpisuje polskie tłumaczenie.
-    - PL→EN: wpisuje angielskie tłumaczenie.
-  - Wsparcie klawiatury:
-    - **ENTER**:
-      - Jeśli odpowiedź jeszcze nie jest sprawdzona → **sprawdź odpowiedź**.
-      - Jeśli odpowiedź już jest sprawdzona → **przejdź do następnej karty** (jeśli istnieje).
-- **Przyciski kontroli**:
-  - **Sprawdź odpowiedź** (odpowiednik ENTER przed sprawdzeniem).
-  - **Następna karta** (aktywny dopiero po sprawdzeniu).
-  - **Poprzednia karta** (opcjonalnie – przegląd wstecz w obrębie rundy).
-  - **Skip**:
-    - Pomija kartę bez zaliczenia na poprawną / błędną.
-    - Karta skipnięta **nie jest traktowana jako błędna** (nie musi trafić do kolejnej rundy, decyzja: MVP – traktować jak neutralną, nie dodawać do listy “błędnych”).
+  - Widoczny przycisk np. "Odtwórz ponownie" (skrót klawiaturowy, np. spacja).
+- **Dodatkowe statystyki sesji (opcjonalne)**:
+  - Małe, pasywne liczniki `Correct / Incorrect / Left`.
+  - Umieszczone **z dala od inputu i głównego promptu** (np. w górnym pasku lub bocznym pasku), tak aby **nie konkurowały z zadaniem**.
+
+#### 3.3.2. STAN A — *Before check* (odpowiadanie)
+
+Widoczne:
+
+- **Prompt** (jak wyżej).
+- **Pole odpowiedzi (input/textarea)**:
+  - EN→PL: użytkownik wpisuje polskie tłumaczenie.
+  - PL→EN: użytkownik wpisuje angielskie tłumaczenie.
+  - Pole jest **edytowalne**.
+- **Przycisk "Sprawdź odpowiedź"**:
+  - Funkcjonalny odpowiednik ENTER **przed** sprawdzeniem.
+- **Przycisk "Skip"** (opcjonalny, tylko w tym stanie):
+  - Pomija kartę bez zaliczenia na poprawną / błędną.
+  - Karta skipnięta **nie jest traktowana jako błędna** (nie dodajemy do listy "błędnych").
+
+Ukryte w tym stanie:
+
+- Wynik (`Correct` / `Not correct`).
+- Poprawna odpowiedź.
+- Diff tekstowy.
+- Statystyki correct / incorrect w centralnej części widoku.
+- Normalizowane odpowiedzi (`normalizedUser`, `normalizedCorrect`).
+- Przyciski "Next" / "Previous".
+
+#### 3.3.3. STAN B — *After check* (feedback)
+
+Widoczne:
+
+- **Wynik globalny**:
+  - `Correct ✅` lub `Not correct ❌` (krótki, jednoznaczny komunikat).
+- **Twoja odpowiedź**:
+  - Prezentowana jako **readonly** (bez możliwości edycji).
+  - Z diffem pokazującym różnice względem poprawnej odpowiedzi.
+- **Poprawna odpowiedź**:
+  - Z diffem pokazującym różnice względem odpowiedzi użytkownika.
+- **Przycisk "Następna karta"**:
+  - Funkcjonalny odpowiednik ENTER **po** sprawdzeniu.
+
+Ukryte w tym stanie:
+
+- Edytowalne pole odpowiedzi (input/textarea).
+- Przycisk „Sprawdź odpowiedź".
+- Przycisk „Previous" (na MVP).
+- Normalizowane odpowiedzi (`Your (normalized) answer`, `Correct (normalized) answer`).
+- Dodatkowe elementy techniczne niepotrzebne użytkownikowi.
 
 ### 3.4. Sprawdzanie odpowiedzi i feedback
 
-Po naciśnięciu **ENTER** lub przycisku “Sprawdź odpowiedź”:
+Po naciśnięciu **ENTER** lub przycisku "Sprawdź odpowiedź":
 
 - Odpowiedź użytkownika jest **przetwarzana i porównywana** z właściwym tekstem.
-- Feedback wizualny:
+- Po poprawnym wysłaniu odpowiedzi następuje **twarde przejście** ze stanu *Before check* do stanu *After check*:
+  - Pole odpowiedzi jest blokowane (`readonly`) albo całkowicie ukrywane.
+  - Użytkownik **nie może poprawić odpowiedzi po fakcie** – próba jest jednoznacznie zamknięta.
+- Feedback wizualny (w stanie *After check*):
   - **Wynik globalny**:
-    - “Poprawnie ✅” lub “Niepoprawnie ❌”.
-  - **Porównanie tekstowe**:
+    - `Correct ✅` lub `Not correct ❌`.
+  - **Porównanie tekstowe (diff)**:
     - Pokazanie:
-      - **Twoja odpowiedź** (z zaznaczonymi różnicami na czerwono).
-      - **Poprawna odpowiedź** (na zielono).
+      - **Twoja odpowiedź** (readonly, z zaznaczonymi różnicami na czerwono).
+      - **Poprawna odpowiedź** (zaznaczone brakujące / inne fragmenty na zielono).
     - Automatyczny diff znakowy / słowny:
       - Podświetlenie fragmentów, które się różnią.
       - Bez wymogu ręcznego wskazywania przez użytkownika.
 - Po feedbacku:
-  - ENTER (lub “Następna karta”) przechodzi do kolejnej karty.
+  - ENTER (lub przycisk "Następna karta") przechodzi do kolejnej karty lub kończy rundę (jeśli to ostatnia karta).
   - Fraza jest oznaczona jako:
     - **Correct** – jeśli spełnia kryteria dopasowania.
-    - **Incorrect** – jeśli nie spełnia (trafiają do listy “błędnych” na koniec rundy).
+    - **Incorrect** – jeśli nie spełnia (trafia do listy "błędnych" na koniec rundy).
 - **Statystyki sesji**:
-  - Liczniki aktualizowane na bieżąco:
-    - `poprawne`, `niepoprawne`, `pozostałe w rundzie`.
+  - Liczniki (poprawne / niepoprawne / pozostałe w rundzie) mogą być aktualizowane na bieżąco, ale:
+    - Są prezentowane w formie **pasywnej**, niekonkurującej z zadaniem (nie w centralnej części widoku, nie obok inputu).
 
 ### 3.5. Zakończenie rundy i kolejne rundy
 
@@ -161,17 +201,18 @@ Dla obu tekstów (`userAnswer`, `correctAnswer`):
 - Odpowiedź uznajemy za poprawną, jeśli:
   - `normalizedUser === normalizedCorrect`.
 - Literówki / lekko inne słowa → na MVP traktowane jako błędne, ale:
-  - Różnice są **wizualnie podkreślone** po stronie frontendu (na podstawie zwróconych `normalizedUser` i `normalizedCorrect`),
-    aby użytkownik widział, że “prawie trafił”.
+  - Różnice są **wizualnie podkreślane** po stronie frontendu na podstawie wyniku porównania / struktury diffu,
+    aby użytkownik widział, że "prawie trafił".
 
 ### 4.3. Wizualny diff
 
 - Na potrzeby UI:
-  - Generujemy strukturę różnic (np. na poziomie słów lub znaków).
+  - Generujemy strukturę różnic (np. na poziomie słów lub znaków), wykorzystując dane po normalizacji **wyłącznie po stronie backendu**.
   - Wyświetlanie:
-    - W “Twojej odpowiedzi”: różne fragmenty oznaczone kolorem (np. czerwone tło/podkreślenie).
-    - W “Poprawnej odpowiedzi”: brakujące / inne fragmenty oznaczone na zielono.
+    - W "Twojej odpowiedzi": różne fragmenty oznaczone kolorem (np. czerwone tło/podkreślenie).
+    - W "Poprawnej odpowiedzi": brakujące / inne fragmenty oznaczone na zielono.
 - Użytkownik nie musi sam wskazywać błędnych fragmentów – zaznaczenie jest automatyczne.
+- **Informacje techniczne o normalizacji** (np. `Your (normalized) answer`, `Correct (normalized) answer`) **nie są nigdy prezentowane w UI** – służą wyłącznie logice porównywania i diffu.
 
 ---
 
@@ -232,11 +273,11 @@ Dla obu tekstów (`userAnswer`, `correctAnswer`):
 ## 7. Interakcje klawiaturowe (skróty)
 
 - **ENTER**:
-  - Jeśli odpowiedź nie jest jeszcze sprawdzona → **Sprawdź odpowiedź**.
-  - Jeśli odpowiedź jest już sprawdzona → **Następna karta** (lub zakończenie rundy, jeśli to ostatnia).
+  - Jeśli odpowiedź nie jest jeszcze sprawdzona (`!isChecked`) → **Sprawdź odpowiedź** (`checkAnswer`).
+  - Jeśli odpowiedź jest już sprawdzona (`isChecked`) → **Następna karta** (`nextCard`) lub zakończenie rundy, jeśli to ostatnia karta.
 - **Spacja**:
   - Odtwórz/pauzuj audio dla bieżącej karty (o ile dostępne).
-- Dodatkowe skróty mogą być zdefiniowane później (np. `S` dla Skip).
+- Brak innych wyjątków / warunków dla ENTER – zachowanie jest **jednoznaczne** w obu stanach.
 
 ---
 

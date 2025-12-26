@@ -1,8 +1,15 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Button } from "./ui/button";
 import { ToastProvider, useToast } from "./ui/toast";
 import { useApi } from "../lib/hooks/useApi";
-import type { CheckAnswerResultDTO, LearnDirection, LearnManifestDTO, LearnPhraseDTO } from "../types";
+import type {
+  CheckAnswerResultDTO,
+  LearnDirection,
+  LearnManifestDTO,
+  LearnPhraseDTO,
+  PlaybackManifestDTO,
+  PlaybackManifestItem,
+} from "../types";
 import { parseMarkdownToHtml } from "../lib/utils";
 
 interface LearnViewProps {
@@ -16,6 +23,7 @@ interface CardResultState {
   isCorrect: boolean | null;
   backendResult: CheckAnswerResultDTO | null;
   userAnswer: string;
+  correctAnswer: string; // Store original correct answer for diff display
 }
 
 interface LearnSessionState {
@@ -61,6 +69,10 @@ function getPromptText(phrase: LearnPhraseDTO, direction: LearnDirection): strin
   return direction === "en_to_pl" ? phrase.en_text : phrase.pl_text;
 }
 
+function getCorrectAnswer(phrase: LearnPhraseDTO, direction: LearnDirection): string {
+  return direction === "en_to_pl" ? phrase.pl_text : phrase.en_text;
+}
+
 function getAnswerLanguageLabel(direction: LearnDirection): string {
   return direction === "en_to_pl" ? "Polish" : "English";
 }
@@ -73,61 +85,111 @@ function getHasAudio(phrase: LearnPhraseDTO, direction: LearnDirection): boolean
   return direction === "en_to_pl" ? phrase.audio.has_en_audio : phrase.audio.has_pl_audio;
 }
 
-// Very simple character-level diff for normalized strings.
-// Returns array of segments with type for styling.
-type DiffSegmentType = "equal" | "insert" | "delete";
+// Character-level diff for original strings (not normalized).
+// Uses normalized comparison result to highlight differences in original text.
+type DiffSegmentType = "equal" | "different";
 
 interface DiffSegment {
   type: DiffSegmentType;
   text: string;
 }
 
-function diffStrings(a: string, b: string): { aSegments: DiffSegment[]; bSegments: DiffSegment[] } {
-  if (!a && !b) {
-    return { aSegments: [], bSegments: [] };
+// Simple word-level diff for better readability
+function diffOriginalStrings(
+  userAnswer: string,
+  correctAnswer: string,
+  normalizedUser: string,
+  normalizedCorrect: string
+): { userSegments: DiffSegment[]; correctSegments: DiffSegment[] } {
+  // If normalized strings match, show both as equal
+  if (normalizedUser === normalizedCorrect) {
+    return {
+      userSegments: [{ type: "equal", text: userAnswer || "" }],
+      correctSegments: [{ type: "equal", text: correctAnswer || "" }],
+    };
   }
 
-  // Simple algorithm: walk through both strings; mark mismatches
-  const aSegments: DiffSegment[] = [];
-  const bSegments: DiffSegment[] = [];
+  // Simple word-level comparison
+  const userWords = (userAnswer || "").split(/(\s+)/);
+  const correctWords = (correctAnswer || "").split(/(\s+)/);
+  const normalizedUserWords = normalizedUser.split(/\s+/).filter((w) => w.length > 0);
+  const normalizedCorrectWords = normalizedCorrect.split(/\s+/).filter((w) => w.length > 0);
 
-  let i = 0;
-  let j = 0;
+  const userSegments: DiffSegment[] = [];
+  const correctSegments: DiffSegment[] = [];
 
-  while (i < a.length || j < b.length) {
-    if (i < a.length && j < b.length && a[i] === b[j]) {
-      const startI = i;
-      const startJ = j;
-      while (i < a.length && j < b.length && a[i] === b[j]) {
-        i += 1;
-        j += 1;
-      }
-      aSegments.push({ type: "equal", text: a.slice(startI, i) });
-      bSegments.push({ type: "equal", text: b.slice(startJ, j) });
+  let userIdx = 0;
+  let correctIdx = 0;
+  let normalizedUserIdx = 0;
+  let normalizedCorrectIdx = 0;
+
+  while (userIdx < userWords.length || correctIdx < correctWords.length) {
+    // Handle whitespace
+    if (userIdx < userWords.length && /^\s+$/.test(userWords[userIdx])) {
+      userSegments.push({ type: "equal", text: userWords[userIdx] });
+      userIdx += 1;
+      continue;
+    }
+    if (correctIdx < correctWords.length && /^\s+$/.test(correctWords[correctIdx])) {
+      correctSegments.push({ type: "equal", text: correctWords[correctIdx] });
+      correctIdx += 1;
       continue;
     }
 
-    if (i < a.length) {
-      aSegments.push({ type: "delete", text: a[i] });
-      i += 1;
-    }
+    const userWord = normalizedUserIdx < normalizedUserWords.length ? normalizedUserWords[normalizedUserIdx] : null;
+    const correctWord =
+      normalizedCorrectIdx < normalizedCorrectWords.length ? normalizedCorrectWords[normalizedCorrectIdx] : null;
 
-    if (j < b.length) {
-      bSegments.push({ type: "insert", text: b[j] });
-      j += 1;
+    if (userWord === correctWord && userWord !== null) {
+      // Words match
+      if (userIdx < userWords.length) {
+        userSegments.push({ type: "equal", text: userWords[userIdx] });
+        userIdx += 1;
+      }
+      if (correctIdx < correctWords.length) {
+        correctSegments.push({ type: "equal", text: correctWords[correctIdx] });
+        correctIdx += 1;
+      }
+      normalizedUserIdx += 1;
+      normalizedCorrectIdx += 1;
+    } else {
+      // Words differ
+      if (userIdx < userWords.length && !/^\s+$/.test(userWords[userIdx])) {
+        userSegments.push({ type: "different", text: userWords[userIdx] });
+        userIdx += 1;
+        if (userWord !== null) normalizedUserIdx += 1;
+      }
+      if (correctIdx < correctWords.length && !/^\s+$/.test(correctWords[correctIdx])) {
+        correctSegments.push({ type: "different", text: correctWords[correctIdx] });
+        correctIdx += 1;
+        if (correctWord !== null) normalizedCorrectIdx += 1;
+      }
     }
   }
 
-  return { aSegments, bSegments };
+  return { userSegments, correctSegments };
 }
 
-function AnswerDiffView({ result }: { result: CheckAnswerResultDTO | null }) {
-  const { aSegments, bSegments } = useMemo(() => {
+function AnswerDiffView({
+  userAnswer,
+  correctAnswer,
+  result,
+}: {
+  userAnswer: string;
+  correctAnswer: string;
+  result: CheckAnswerResultDTO | null;
+}) {
+  const { userSegments, correctSegments } = useMemo(() => {
     if (!result) {
-      return { aSegments: [] as DiffSegment[], bSegments: [] as DiffSegment[] };
+      return { userSegments: [] as DiffSegment[], correctSegments: [] as DiffSegment[] };
     }
-    return diffStrings(result.normalized_user, result.normalized_correct);
-  }, [result]);
+    return diffOriginalStrings(
+      userAnswer,
+      correctAnswer,
+      result.normalized_user,
+      result.normalized_correct
+    );
+  }, [userAnswer, correctAnswer, result]);
 
   if (!result) {
     return null;
@@ -161,22 +223,22 @@ function AnswerDiffView({ result }: { result: CheckAnswerResultDTO | null }) {
   return (
     <div className="mt-4 space-y-3 text-sm">
       <div>
-        <div className="text-xs font-medium text-muted-foreground mb-1">Your (normalized) answer</div>
-        <div className="px-3 py-2 rounded-md bg-muted/60 border border-border/60 font-mono text-[13px] break-words">
-          {aSegments.length === 0 ? (
-            <span className="text-muted-foreground italic">empty</span>
+        <div className="text-xs font-medium text-muted-foreground mb-1">Your answer</div>
+        <div className="px-3 py-2 rounded-md bg-muted/60 border border-border/60 break-words">
+          {userAnswer ? (
+            renderSegments(userSegments, true)
           ) : (
-            renderSegments(aSegments, true)
+            <span className="text-muted-foreground italic">empty</span>
           )}
         </div>
       </div>
       <div>
-        <div className="text-xs font-medium text-muted-foreground mb-1">Correct (normalized) answer</div>
-        <div className="px-3 py-2 rounded-md bg-muted/60 border border-border/60 font-mono text-[13px] break-words">
-          {bSegments.length === 0 ? (
-            <span className="text-muted-foreground italic">empty</span>
+        <div className="text-xs font-medium text-muted-foreground mb-1">Correct answer</div>
+        <div className="px-3 py-2 rounded-md bg-muted/60 border border-border/60 break-words">
+          {correctAnswer ? (
+            renderSegments(correctSegments, false)
           ) : (
-            renderSegments(bSegments, false)
+            <span className="text-muted-foreground italic">empty</span>
           )}
         </div>
       </div>
@@ -187,6 +249,8 @@ function AnswerDiffView({ result }: { result: CheckAnswerResultDTO | null }) {
 function LearnViewContent({ notebookId }: LearnViewProps) {
   const { apiCall, isAuthenticated } = useApi();
   const { addToast } = useToast();
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playbackManifestRef = useRef<PlaybackManifestDTO | null>(null);
 
   const [manifest, setManifest] = useState<LearnManifestDTO | null>(null);
   const [manifestLoading, setManifestLoading] = useState<boolean>(true);
@@ -234,6 +298,88 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
 
     loadManifest();
   }, [apiCall, notebookId, isAuthenticated, addToast]);
+
+  // Fetch playback manifest for audio
+  const fetchPlaybackManifest = useCallback(
+    async (phraseIds: string[]) => {
+      if (phraseIds.length === 0) return;
+
+      try {
+        const phraseIdsParam = phraseIds.join(",");
+        const data = await apiCall<PlaybackManifestDTO>(
+          `/api/notebooks/${notebookId}/playback-manifest?phrase_ids=${phraseIdsParam}`,
+          {
+            method: "GET",
+          }
+        );
+        playbackManifestRef.current = data;
+      } catch (err) {
+        // Silently fail - audio is optional
+        // eslint-disable-next-line no-console
+        console.error("[LearnView] Failed to fetch playback manifest:", err);
+      }
+    },
+    [apiCall, notebookId]
+  );
+
+  // Fetch playback manifest when starting a round
+  useEffect(() => {
+    if (session.phase === "in_progress" && session.currentRound.length > 0) {
+      const phraseIds = session.currentRound.map((p) => p.id);
+      void fetchPlaybackManifest(phraseIds);
+    }
+  }, [session.phase, session.currentRound, fetchPlaybackManifest]);
+
+  // Auto-play audio when entering a card (Before check state)
+  useEffect(() => {
+    if (!currentPhrase || session.phase !== "in_progress") {
+      return;
+    }
+
+    const isChecked = currentCardResult?.isChecked ?? false;
+    if (isChecked) {
+      return; // Don't auto-play in After check state
+    }
+
+    const hasAudio = getHasAudio(currentPhrase, session.direction);
+    if (!hasAudio || !playbackManifestRef.current) {
+      return;
+    }
+
+    // Find the phrase in playback manifest
+    const manifestItem = playbackManifestRef.current.sequence.find(
+      (item) => item.phrase.id === currentPhrase.id
+    );
+
+    if (!manifestItem) {
+      return;
+    }
+
+    // Find appropriate segment based on direction
+    let targetSegment = null;
+    if (session.direction === "en_to_pl") {
+      // Prefer EN1, fallback to EN2 or EN3
+      targetSegment =
+        manifestItem.segments.find((s) => s.slot === "EN1") ||
+        manifestItem.segments.find((s) => s.slot === "EN2") ||
+        manifestItem.segments.find((s) => s.slot === "EN3");
+    } else {
+      // PL → EN: use PL segment
+      targetSegment = manifestItem.segments.find((s) => s.slot === "PL");
+    }
+
+    if (targetSegment && targetSegment.url) {
+      // Auto-play audio
+      const audio = new Audio(targetSegment.url);
+      audio.playbackRate = 1.0;
+      audio.play().catch((err) => {
+        // Silently fail - audio auto-play may be blocked by browser
+        // eslint-disable-next-line no-console
+        console.error("[LearnView] Failed to auto-play audio:", err);
+      });
+      audioRef.current = audio;
+    }
+  }, [currentPhrase, session.direction, session.phase, currentCardResult]);
 
   const handleChangeDirection = (direction: LearnDirection) => {
     setSession((prev) => ({
@@ -289,6 +435,12 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
   const handleUserAnswerChange = (value: string) => {
     if (!currentPhrase) return;
 
+    // Don't allow changes after check
+    const isChecked = session.answers[currentPhrase.id]?.isChecked ?? false;
+    if (isChecked) {
+      return;
+    }
+
     setSession((prev) => {
       const prevState = prev.answers[currentPhrase.id];
       return {
@@ -299,6 +451,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
             isChecked: prevState ? prevState.isChecked : false,
             isCorrect: prevState ? prevState.isCorrect : null,
             backendResult: prevState ? prevState.backendResult : null,
+            correctAnswer: prevState ? prevState.correctAnswer : getCorrectAnswer(currentPhrase, prev.direction),
             userAnswer: value,
           },
         },
@@ -313,6 +466,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
 
     const draft = session.answers[currentPhrase.id];
     const userAnswer = draft?.userAnswer ?? "";
+    const correctAnswer = getCorrectAnswer(currentPhrase, session.direction);
 
     try {
       const result = await apiCall<CheckAnswerResultDTO>(`/api/notebooks/${notebookId}/learn/check-answer`, {
@@ -356,6 +510,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
             isCorrect: result.is_correct,
             backendResult: result,
             userAnswer,
+            correctAnswer,
           },
         };
 
@@ -407,16 +562,6 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
     }));
   };
 
-  const goToPreviousCard = () => {
-    if (session.phase !== "in_progress") return;
-    if (session.currentIndex === 0) return;
-
-    setSession((prev) => ({
-      ...prev,
-      currentIndex: prev.currentIndex - 1,
-    }));
-  };
-
   const handleSkip = () => {
     if (!currentPhrase || session.phase !== "in_progress") return;
 
@@ -427,13 +572,81 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
   const handleEnterKey = useCallback(() => {
     if (!currentPhrase || session.phase !== "in_progress") return;
 
-    if (!currentCardResult || !currentCardResult.isChecked) {
+    const isChecked = currentCardResult?.isChecked ?? false;
+
+    if (!isChecked) {
       void handleCheckAnswer();
       return;
     }
 
     goToNextCard();
-  }, [currentCardResult, currentPhrase, goToNextCard, handleCheckAnswer, session.phase]);
+  }, [currentCardResult, currentPhrase, handleCheckAnswer, session.phase]);
+
+  const handlePlayAudio = useCallback(() => {
+    if (!currentPhrase || !playbackManifestRef.current) return;
+
+    const hasAudio = getHasAudio(currentPhrase, session.direction);
+    if (!hasAudio) return;
+
+    // Find the phrase in playback manifest
+    const manifestItem = playbackManifestRef.current.sequence.find(
+      (item) => item.phrase.id === currentPhrase.id
+    );
+
+    if (!manifestItem) {
+      addToast({
+        type: "error",
+        title: "Audio not available",
+        description: "Audio segment not found for this phrase.",
+      });
+      return;
+    }
+
+    // Find appropriate segment based on direction
+    let targetSegment = null;
+    if (session.direction === "en_to_pl") {
+      // Prefer EN1, fallback to EN2 or EN3
+      targetSegment =
+        manifestItem.segments.find((s) => s.slot === "EN1") ||
+        manifestItem.segments.find((s) => s.slot === "EN2") ||
+        manifestItem.segments.find((s) => s.slot === "EN3");
+    } else {
+      // PL → EN: use PL segment
+      targetSegment = manifestItem.segments.find((s) => s.slot === "PL");
+    }
+
+    if (!targetSegment || !targetSegment.url) {
+      addToast({
+        type: "error",
+        title: "Audio not available",
+        description: "No audio segment found for this phrase.",
+      });
+      return;
+    }
+
+    // Stop any currently playing audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
+    // Play audio
+    const audio = new Audio(targetSegment.url);
+    audio.playbackRate = 1.0;
+    audio.play().catch((err) => {
+      addToast({
+        type: "error",
+        title: "Playback failed",
+        description: err instanceof Error ? err.message : "Failed to play audio.",
+      });
+    });
+    audioRef.current = audio;
+
+    // Clean up when audio ends
+    audio.addEventListener("ended", () => {
+      audioRef.current = null;
+    });
+  }, [currentPhrase, session.direction, addToast]);
 
   const handleStartNextRoundWithIncorrect = () => {
     if (!session.incorrectPhrases.length) {
@@ -486,9 +699,16 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (!target) return;
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.contentEditable === "true") {
+
+      // Allow typing in textarea
+      if (target.tagName === "TEXTAREA" || target.tagName === "INPUT") {
+        if (event.key === "Enter" && !event.shiftKey && session.phase === "in_progress") {
+          event.preventDefault();
+          handleEnterKey();
+        }
         return;
       }
+
       if (session.phase !== "in_progress") return;
 
       if (event.key === "Enter") {
@@ -496,13 +716,13 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
         handleEnterKey();
       } else if (event.key === " ") {
         event.preventDefault();
-        // TODO: integrate audio playback (space toggles play/pause)
+        handlePlayAudio();
       }
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [handleEnterKey, session.phase]);
+  }, [handleEnterKey, handlePlayAudio, session.phase]);
 
   if (!isAuthenticated) {
     return (
@@ -728,14 +948,16 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
 
     const hasAudio = getHasAudio(currentPhrase, session.direction);
     const promptHtml = parseMarkdownToHtml(getPromptText(currentPhrase, session.direction));
-
     const progressLabel = `Card ${session.currentIndex + 1} / ${session.currentRound.length}`;
 
     const isChecked = currentCardResult?.isChecked ?? false;
     const isCorrect = currentCardResult?.isCorrect ?? null;
+    const userAnswer = currentCardResult?.userAnswer ?? "";
+    const correctAnswer = currentCardResult?.correctAnswer ?? getCorrectAnswer(currentPhrase, session.direction);
 
     return (
       <div className="space-y-6" role="region" aria-label="Learn mode session">
+        {/* Header with notebook name and progress */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Learn mode</h1>
@@ -752,77 +974,84 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
         </div>
 
         <div className="bg-card border border-border rounded-lg p-5 md:p-6 space-y-5">
-          {/* Top bar with stats + audio */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3 text-sm">
-              <div className="px-2.5 py-1 rounded-full bg-muted/60 text-xs font-medium text-muted-foreground">
-                {progressLabel}
-              </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span>
-                  Correct: <span className="font-semibold text-foreground">{session.correctCount}</span>
-                </span>
-                <span className="text-border">•</span>
-                <span>
-                  Incorrect: <span className="font-semibold text-foreground">{session.incorrectCount}</span>
-                </span>
-                <span className="text-border">•</span>
-                <span>
-                  Left in round:{" "}
-                  <span className="font-semibold text-foreground">{remainingInRound < 0 ? 0 : remainingInRound}</span>
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {/* Passive stats bar - moved to top, small and non-intrusive */}
+          <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+            <div className="px-2.5 py-1 rounded-full bg-muted/60 font-medium">{progressLabel}</div>
+            <div className="flex items-center gap-2">
               <span>
-                Prompt: {getPromptLanguageLabel(session.direction)} · Answer: {getAnswerLanguageLabel(session.direction)}
+                Correct: <span className="font-semibold text-foreground">{session.correctCount}</span>
               </span>
-              <Button
-                type="button"
-                size="sm"
-                disabled={!hasAudio}
-                onClick={() => {
-                  // TODO: integrate with audio playback (EN or PL slot based on direction)
-                }}
-              >
-                {hasAudio ? "Play audio" : "No audio"}
-              </Button>
+              <span className="text-border">•</span>
+              <span>
+                Incorrect: <span className="font-semibold text-foreground">{session.incorrectCount}</span>
+              </span>
+              <span className="text-border">•</span>
+              <span>
+                Left: <span className="font-semibold text-foreground">{remainingInRound < 0 ? 0 : remainingInRound}</span>
+              </span>
             </div>
           </div>
 
           {/* Prompt section */}
           <div className="rounded-md bg-muted/40 border border-border/80 p-4">
-            <div
-              className="text-sm text-foreground"
-              dangerouslySetInnerHTML={{ __html: promptHtml }}
-            />
+            <div className="text-sm text-foreground" dangerouslySetInnerHTML={{ __html: promptHtml }} />
           </div>
 
-          {/* Answer input and feedback */}
-          <div className="space-y-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                Your answer ({getAnswerLanguageLabel(session.direction)})
-              </label>
-              <textarea
-                className="w-full min-h-[72px] rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                placeholder={
-                  session.direction === "en_to_pl" ? "Type the Polish translation…" : "Type the English translation…"
-                }
-                value={currentCardResult?.userAnswer ?? ""}
-                onChange={(e) => handleUserAnswerChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleEnterKey();
-                  }
-                }}
-              />
+          {/* Audio button - only in Before check state */}
+          {!isChecked && (
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={handlePlayAudio}
+                disabled={!hasAudio}
+              >
+                {hasAudio ? "Play audio (Space)" : "No audio"}
+              </Button>
             </div>
+          )}
 
-            {/* Global feedback */}
-            {isChecked && (
+          {/* STAN A: Before check - Answering */}
+          {!isChecked && (
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                  Your answer ({getAnswerLanguageLabel(session.direction)})
+                </label>
+                <textarea
+                  className="w-full min-h-[72px] rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  placeholder={
+                    session.direction === "en_to_pl" ? "Type the Polish translation…" : "Type the English translation…"
+                  }
+                  value={userAnswer}
+                  onChange={(e) => handleUserAnswerChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleEnterKey();
+                    }
+                  }}
+                  autoFocus
+                />
+              </div>
+
+              {/* Controls - Before check */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                <Button type="button" size="sm" variant="outline" onClick={handleSkip}>
+                  Skip
+                </Button>
+                <Button type="button" size="sm" onClick={handleCheckAnswer}>
+                  Check answer (Enter)
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* STAN B: After check - Feedback */}
+          {isChecked && (
+            <div className="space-y-3">
+              {/* Result feedback */}
               <div
                 className={`px-3 py-2 rounded-md text-sm flex items-center gap-2 ${
                   isCorrect
@@ -831,44 +1060,26 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
                 }`}
               >
                 <span className="text-lg">{isCorrect ? "✅" : "❌"}</span>
-                <span>{isCorrect ? "Correct!" : "Not correct."}</span>
+                <span>{isCorrect ? "Correct" : "Not correct"}</span>
               </div>
-            )}
 
-            {/* Textual diff */}
-            <AnswerDiffView result={currentCardResult?.backendResult ?? null} />
-          </div>
+              {/* Answer diff */}
+              <AnswerDiffView
+                userAnswer={userAnswer}
+                correctAnswer={correctAnswer}
+                result={currentCardResult?.backendResult ?? null}
+              />
 
-          {/* Navigation controls */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                size="sm"
-                disabled={session.currentIndex === 0}
-                onClick={goToPreviousCard}
-              >
-                Previous
-              </Button>
-              <Button type="button" size="sm" onClick={handleSkip}>
-                Skip
-              </Button>
-            </div>
-            <div className="flex items-center gap-2">
-              {!isChecked && (
-                <Button type="button" size="sm" onClick={handleCheckAnswer}>
-                  Check answer (Enter)
-                </Button>
-              )}
-              {isChecked && (
+              {/* Controls - After check */}
+              <div className="flex justify-end pt-2">
                 <Button type="button" size="sm" onClick={goToNextCard}>
                   {session.currentIndex >= session.currentRound.length - 1
                     ? "Finish round (Enter)"
                     : "Next card (Enter)"}
                 </Button>
-              )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <p className="text-xs text-muted-foreground">
