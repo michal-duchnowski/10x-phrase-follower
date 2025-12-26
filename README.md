@@ -188,6 +188,12 @@ For production-like testing, it's recommended to run the application in Docker. 
 - **Audio Generation:** Generate MP3 audio for phrases using Google TTS (requires API key configuration)
 - **Voice Configuration:** Configure 3 English voices and 1 Polish voice per user
 - **Playback:** Sequential EN1 → EN2 → EN3 → PL playback with adjustable speeds (0.75x - 1.25x)
+- **Learn Mode:** Interactive learning mode for memorization and recall practice
+  - Practice phrases in both directions: EN→PL (translate English to Polish) or PL→EN (translate Polish to English)
+  - Card-by-card learning with instant feedback (correct/incorrect)
+  - Round-based learning: incorrect phrases are repeated in subsequent rounds
+  - Two answer modes: exact match (default) or contains mode (accepts partial matches)
+  - Session statistics and progress tracking
 - **Export ZIP:** Export notebook audio as ZIP file with combined MP3 files (EN1 + 800ms silence + EN2 + 800ms silence + EN3 + 800ms silence + PL per phrase).
 - **Keyboard Shortcuts:** Space/K (play/pause), S (stop), R (restart), ←/→ (seek), Shift+←/→ (seek large), P/N (prev/next phrase)
 - **Touch Gestures:** Swipe navigation, double-tap play/pause, double-tap left/right for seeking

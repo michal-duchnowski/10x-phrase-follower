@@ -18,6 +18,8 @@ export function normalizeAnswerText(text: string): string {
   const normalized = text
     // Remove zero-width and control characters (similar to import normalization)
     .replace(/[\u200B-\u200D\uFEFF\u00AD]/g, " ")
+    // Remove markdown-like emphasis markers so "**Affair**" matches "affair"
+    .replace(/[*_]+/g, " ")
     // Trim beginning and end
     .trim()
     // Reduce multiple spaces to single space

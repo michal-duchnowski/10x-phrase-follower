@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import { Button } from "./ui/button";
 import { ToastProvider, useToast } from "./ui/toast";
 import { useApi } from "../lib/hooks/useApi";
@@ -11,6 +11,9 @@ import type {
   PlaybackManifestDTO,
 } from "../types";
 import { parseMarkdownToHtml } from "../lib/utils";
+import { compareAnswers } from "../lib/learn.service";
+import AnswerDiffView from "./learn/AnswerDiffView";
+import PhraseTokenPills from "./learn/PhraseTokenPills";
 
 interface LearnViewProps {
   notebookId: string;
@@ -83,167 +86,13 @@ function getHasAudio(phrase: LearnPhraseDTO, direction: LearnDirection): boolean
   return direction === "en_to_pl" ? phrase.audio.has_en_audio : phrase.audio.has_pl_audio;
 }
 
-// Character-level diff for original strings (not normalized).
-// Uses normalized comparison result to highlight differences in original text.
-type DiffSegmentType = "equal" | "different";
-
-interface DiffSegment {
-  type: DiffSegmentType;
-  text: string;
-}
-
-// Simple word-level diff for better readability
-function diffOriginalStrings(
-  userAnswer: string,
-  correctAnswer: string,
-  normalizedUser: string,
-  normalizedCorrect: string
-): { userSegments: DiffSegment[]; correctSegments: DiffSegment[] } {
-  // If normalized strings match, show both as equal
-  if (normalizedUser === normalizedCorrect) {
-    return {
-      userSegments: [{ type: "equal", text: userAnswer || "" }],
-      correctSegments: [{ type: "equal", text: correctAnswer || "" }],
-    };
-  }
-
-  // Simple word-level comparison
-  const userWords = (userAnswer || "").split(/(\s+)/);
-  const correctWords = (correctAnswer || "").split(/(\s+)/);
-  const normalizedUserWords = normalizedUser.split(/\s+/).filter((w) => w.length > 0);
-  const normalizedCorrectWords = normalizedCorrect.split(/\s+/).filter((w) => w.length > 0);
-
-  const userSegments: DiffSegment[] = [];
-  const correctSegments: DiffSegment[] = [];
-
-  let userIdx = 0;
-  let correctIdx = 0;
-  let normalizedUserIdx = 0;
-  let normalizedCorrectIdx = 0;
-
-  while (userIdx < userWords.length || correctIdx < correctWords.length) {
-    // Handle whitespace
-    if (userIdx < userWords.length && /^\s+$/.test(userWords[userIdx])) {
-      userSegments.push({ type: "equal", text: userWords[userIdx] });
-      userIdx += 1;
-      continue;
-    }
-    if (correctIdx < correctWords.length && /^\s+$/.test(correctWords[correctIdx])) {
-      correctSegments.push({ type: "equal", text: correctWords[correctIdx] });
-      correctIdx += 1;
-      continue;
-    }
-
-    const userWord = normalizedUserIdx < normalizedUserWords.length ? normalizedUserWords[normalizedUserIdx] : null;
-    const correctWord =
-      normalizedCorrectIdx < normalizedCorrectWords.length ? normalizedCorrectWords[normalizedCorrectIdx] : null;
-
-    if (userWord === correctWord && userWord !== null) {
-      // Words match
-      if (userIdx < userWords.length) {
-        userSegments.push({ type: "equal", text: userWords[userIdx] });
-        userIdx += 1;
-      }
-      if (correctIdx < correctWords.length) {
-        correctSegments.push({ type: "equal", text: correctWords[correctIdx] });
-        correctIdx += 1;
-      }
-      normalizedUserIdx += 1;
-      normalizedCorrectIdx += 1;
-    } else {
-      // Words differ
-      if (userIdx < userWords.length && !/^\s+$/.test(userWords[userIdx])) {
-        userSegments.push({ type: "different", text: userWords[userIdx] });
-        userIdx += 1;
-        if (userWord !== null) normalizedUserIdx += 1;
-      }
-      if (correctIdx < correctWords.length && !/^\s+$/.test(correctWords[correctIdx])) {
-        correctSegments.push({ type: "different", text: correctWords[correctIdx] });
-        correctIdx += 1;
-        if (correctWord !== null) normalizedCorrectIdx += 1;
-      }
-    }
-  }
-
-  return { userSegments, correctSegments };
-}
-
-function AnswerDiffView({
-  userAnswer,
-  correctAnswer,
-  result,
-}: {
-  userAnswer: string;
-  correctAnswer: string;
-  result: CheckAnswerResultDTO | null;
-}) {
-  const { userSegments, correctSegments } = useMemo(() => {
-    if (!result) {
-      return { userSegments: [] as DiffSegment[], correctSegments: [] as DiffSegment[] };
-    }
-    return diffOriginalStrings(userAnswer, correctAnswer, result.normalized_user, result.normalized_correct);
-  }, [userAnswer, correctAnswer, result]);
-
-  if (!result) {
-    return null;
-  }
-
-  const renderSegments = (segments: DiffSegment[], isUser: boolean) =>
-    segments.map((seg, index) => {
-      if (seg.type === "equal") {
-        return (
-          <span key={index} className="text-foreground">
-            {seg.text}
-          </span>
-        );
-      }
-      if (isUser) {
-        // User answer: highlight differences in red
-        return (
-          <span key={index} className="bg-destructive/20 text-destructive px-0.5 rounded">
-            {seg.text}
-          </span>
-        );
-      }
-      // Correct answer: highlight differences in green
-      return (
-        <span key={index} className="bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 px-0.5 rounded">
-          {seg.text}
-        </span>
-      );
-    });
-
-  return (
-    <div className="mt-4 space-y-3 text-sm">
-      <div>
-        <div className="text-xs font-medium text-muted-foreground mb-1">Your answer</div>
-        <div className="px-3 py-2 rounded-md bg-muted/60 border border-border/60 break-words">
-          {userAnswer ? (
-            renderSegments(userSegments, true)
-          ) : (
-            <span className="text-muted-foreground italic">empty</span>
-          )}
-        </div>
-      </div>
-      <div>
-        <div className="text-xs font-medium text-muted-foreground mb-1">Correct answer</div>
-        <div className="px-3 py-2 rounded-md bg-muted/60 border border-border/60 break-words">
-          {correctAnswer ? (
-            renderSegments(correctSegments, false)
-          ) : (
-            <span className="text-muted-foreground italic">empty</span>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function LearnViewContent({ notebookId }: LearnViewProps) {
   const { apiCall, isAuthenticated } = useApi();
   const { addToast } = useToast();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playbackManifestRef = useRef<PlaybackManifestDTO | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [isPromptAudioPlaying, setIsPromptAudioPlaying] = useState(false);
 
   const [manifest, setManifest] = useState<LearnManifestDTO | null>(null);
   const [manifestLoading, setManifestLoading] = useState<boolean>(true);
@@ -380,19 +229,37 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
       lastAutoPlayedPhraseIdRef.current = currentPhrase.id;
       const audio = new Audio(targetSegment.url);
       audio.playbackRate = 1.0;
+      setIsPromptAudioPlaying(true);
       audio.play().catch((err) => {
         // Silently fail - audio auto-play may be blocked by browser
         // eslint-disable-next-line no-console
         console.error("[LearnView] Failed to auto-play audio:", err);
+        setIsPromptAudioPlaying(false);
       });
       audioRef.current = audio;
 
       // Clean up when audio ends
       audio.addEventListener("ended", () => {
         audioRef.current = null;
+        setIsPromptAudioPlaying(false);
+      });
+
+      audio.addEventListener("pause", () => {
+        setIsPromptAudioPlaying(false);
       });
     }
   }, [currentPhrase, session.direction, session.phase, currentCardResult]);
+
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      setIsPromptAudioPlaying(false);
+    };
+  }, []);
 
   const handleChangeDirection = (direction: LearnDirection) => {
     setSession((prev) => ({
@@ -482,131 +349,104 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
     });
   };
 
-  const handleCheckAnswer = async () => {
-    if (!currentPhrase) {
-      return;
-    }
+  const handleCheckAnswer = useCallback(async () => {
+    if (!currentPhrase) return;
 
-    const draft = session.answers[currentPhrase.id];
-    const userAnswer = draft?.userAnswer ?? "";
+    const userAnswer = currentCardResult?.userAnswer ?? "";
     const correctAnswer = getCorrectAnswer(currentPhrase, session.direction);
 
-    try {
-      const result = await apiCall<CheckAnswerResultDTO>(`/api/notebooks/${notebookId}/learn/check-answer`, {
-        method: "POST",
-        body: JSON.stringify({
-          phrase_id: currentPhrase.id,
-          user_answer: userAnswer,
-          direction: session.direction,
-          use_contains_mode: session.useContainsMode,
-        }),
+    // Optimistic update: compare locally for instant feedback (no network delay)
+    const localComparison = compareAnswers(userAnswer, correctAnswer, session.useContainsMode);
+    const result: CheckAnswerResultDTO = {
+      is_correct: localComparison.isCorrect,
+      normalized_user: localComparison.normalizedUser,
+      normalized_correct: localComparison.normalizedCorrect,
+    };
+
+    // Update UI immediately with local comparison
+    setSession((prev) => {
+      const wasAnsweredBefore = prev.answers[currentPhrase.id]?.isChecked ?? false;
+      const previousCorrect = prev.answers[currentPhrase.id]?.isCorrect;
+
+      let correctCount = prev.correctCount;
+      let incorrectCount = prev.incorrectCount;
+
+      // Adjust stats only if this is the first check for this card in this round
+      if (!wasAnsweredBefore) {
+        if (result.is_correct) {
+          correctCount += 1;
+        } else {
+          incorrectCount += 1;
+        }
+      } else if (previousCorrect !== null && previousCorrect !== result.is_correct) {
+        // Rare case: user changed answer and rechecked before moving on
+        if (previousCorrect) {
+          correctCount -= 1;
+          incorrectCount += 1;
+        } else {
+          incorrectCount -= 1;
+          correctCount += 1;
+        }
+      }
+
+      const newAnswers: Record<string, CardResultState> = {
+        ...prev.answers,
+        [currentPhrase.id]: {
+          isChecked: true,
+          isCorrect: result.is_correct,
+          backendResult: result,
+          userAnswer,
+          correctAnswer,
+        },
+      };
+
+      const incorrectPhrasesMap: Record<string, LearnPhraseDTO> = {};
+      const incorrectPhrases: LearnPhraseDTO[] = [];
+
+      prev.currentRound.forEach((p) => {
+        const answer = newAnswers[p.id];
+        if (answer && answer.isChecked && answer.isCorrect === false) {
+          incorrectPhrasesMap[p.id] = p;
+        }
       });
 
-      setSession((prev) => {
-        const wasAnsweredBefore = prev.answers[currentPhrase.id]?.isChecked ?? false;
-        const previousCorrect = prev.answers[currentPhrase.id]?.isCorrect;
+      Object.values(incorrectPhrasesMap).forEach((p) => incorrectPhrases.push(p));
 
-        let correctCount = prev.correctCount;
-        let incorrectCount = prev.incorrectCount;
+      return {
+        ...prev,
+        answers: newAnswers,
+        correctCount,
+        incorrectCount,
+        incorrectPhrases,
+      };
+    });
+  }, [currentCardResult?.userAnswer, currentPhrase, session.direction, session.useContainsMode]);
 
-        // Adjust stats only if this is the first check for this card in this round
-        if (!wasAnsweredBefore) {
-          if (result.is_correct) {
-            correctCount += 1;
-          } else {
-            incorrectCount += 1;
-          }
-        } else if (previousCorrect !== null && previousCorrect !== result.is_correct) {
-          // Rare case: user changed answer and rechecked before moving on
-          if (previousCorrect) {
-            correctCount -= 1;
-            incorrectCount += 1;
-          } else {
-            incorrectCount -= 1;
-            correctCount += 1;
-          }
-        }
+  const goToNextCard = useCallback(() => {
+    setSession((prev) => {
+      if (prev.phase !== "in_progress") return prev;
 
-        const newAnswers: Record<string, CardResultState> = {
-          ...prev.answers,
-          [currentPhrase.id]: {
-            isChecked: true,
-            isCorrect: result.is_correct,
-            backendResult: result,
-            userAnswer,
-            correctAnswer,
-          },
-        };
-
-        const incorrectPhrasesMap: Record<string, LearnPhraseDTO> = {};
-        const incorrectPhrases: LearnPhraseDTO[] = [];
-
-        prev.currentRound.forEach((p) => {
-          const answer = newAnswers[p.id];
-          if (answer && answer.isChecked && answer.isCorrect === false) {
-            incorrectPhrasesMap[p.id] = p;
-          }
-        });
-
-        Object.values(incorrectPhrasesMap).forEach((p) => incorrectPhrases.push(p));
-
+      // End of round → show summary
+      if (prev.currentIndex >= prev.currentRound.length - 1) {
         return {
           ...prev,
-          answers: newAnswers,
-          correctCount,
-          incorrectCount,
-          incorrectPhrases,
+          phase: "round_summary",
         };
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to check answer.";
-      addToast({
-        type: "error",
-        title: "Check failed",
-        description: message,
-      });
-    }
-  };
+      }
 
-  const goToNextCard = () => {
-    if (session.phase !== "in_progress") return;
-
-    // End of round → show summary
-    if (session.currentIndex >= session.currentRound.length - 1) {
-      setSession((prev) => ({
+      return {
         ...prev,
-        phase: "round_summary",
-      }));
-      return;
-    }
+        currentIndex: prev.currentIndex + 1,
+      };
+    });
+  }, []);
 
-    setSession((prev) => ({
-      ...prev,
-      currentIndex: prev.currentIndex + 1,
-    }));
-  };
-
-  const handleSkip = () => {
-    if (!currentPhrase || session.phase !== "in_progress") return;
-
+  const handleSkip = useCallback(() => {
     // Skip: move to next card without changing stats or incorrect list
     goToNextCard();
-  };
+  }, [goToNextCard]);
 
-  const handleEnterKey = useCallback(() => {
-    if (!currentPhrase || session.phase !== "in_progress") return;
-
-    const isChecked = currentCardResult?.isChecked ?? false;
-
-    if (!isChecked) {
-      void handleCheckAnswer();
-      return;
-    }
-
-    goToNextCard();
-  }, [currentCardResult, currentPhrase, handleCheckAnswer, session.phase, goToNextCard]);
-
-  const handleStartNextRoundWithIncorrect = () => {
+  const handleStartNextRoundWithIncorrect = useCallback(() => {
     if (!session.incorrectPhrases.length) {
       // Nothing left to repeat – reset to initial screen
       setSession((prev) => ({
@@ -629,9 +469,9 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
       answers: {},
       incorrectPhrases: [],
     }));
-  };
+  }, [session.incorrectPhrases.length]);
 
-  const handleRestartFromBeginning = () => {
+  const handleRestartFromBeginning = useCallback(() => {
     if (!manifest || !manifest.phrases.length) {
       setSession((prev) => ({
         ...createInitialSessionState(),
@@ -653,7 +493,52 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
       answers: {},
       incorrectPhrases: [],
     }));
-  };
+  }, [manifest]);
+
+  const handleEnterKey = useCallback(() => {
+    if (session.phase === "round_summary") {
+      // In round summary: Enter starts next round or restarts
+      if (session.incorrectPhrases.length > 0) {
+        handleStartNextRoundWithIncorrect();
+      } else {
+        handleRestartFromBeginning();
+      }
+      return;
+    }
+
+    if (!currentPhrase || session.phase !== "in_progress") return;
+
+    const isChecked = currentCardResult?.isChecked ?? false;
+
+    if (!isChecked) {
+      void handleCheckAnswer();
+      return;
+    }
+
+    goToNextCard();
+  }, [
+    currentCardResult,
+    currentPhrase,
+    handleCheckAnswer,
+    session.phase,
+    session.incorrectPhrases.length,
+    goToNextCard,
+    handleStartNextRoundWithIncorrect,
+    handleRestartFromBeginning,
+  ]);
+
+  // Auto-focus textarea when new phrase appears (not checked yet)
+  useEffect(() => {
+    if (session.phase === "in_progress" && currentPhrase && !currentCardResult?.isChecked) {
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+        }
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [currentPhrase, session.phase, currentCardResult?.isChecked]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -662,18 +547,19 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
 
       // Allow typing in textarea
       if (target.tagName === "TEXTAREA" || target.tagName === "INPUT") {
-        if (event.key === "Enter" && !event.shiftKey && session.phase === "in_progress") {
+        if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();
           handleEnterKey();
         }
         return;
       }
 
-      if (session.phase !== "in_progress") return;
-
-      if (event.key === "Enter") {
-        event.preventDefault();
-        handleEnterKey();
+      // Handle Enter for in_progress and round_summary phases
+      if (session.phase === "in_progress" || session.phase === "round_summary") {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          handleEnterKey();
+        }
       }
     };
 
@@ -683,28 +569,32 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
 
   if (!isAuthenticated) {
     return (
-      <div className="text-center py-12">
-        <p className="text-muted-foreground">Authentication required</p>
+      <div className="max-w-5xl mx-auto px-4 md:p-6">
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">Authentication required</p>
+        </div>
       </div>
     );
   }
 
   if (manifestLoading) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="h-8 bg-muted animate-pulse rounded w-48" />
-          <a
-            href={`/notebooks/${notebookId}`}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            ← Back to Notebook
-          </a>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-6 space-y-4">
-          <div className="h-10 bg-muted animate-pulse rounded w-1/2" />
-          <div className="h-6 bg-muted animate-pulse rounded w-1/3" />
-          <div className="h-40 bg-muted animate-pulse rounded" />
+      <div className="max-w-5xl mx-auto px-4 md:p-6">
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="h-8 bg-muted animate-pulse rounded w-48" />
+            <a
+              href={`/notebooks/${notebookId}`}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              ← Back to Notebook
+            </a>
+          </div>
+          <div className="bg-card border border-border rounded-lg p-6 space-y-4">
+            <div className="h-10 bg-muted animate-pulse rounded w-1/2" />
+            <div className="h-6 bg-muted animate-pulse rounded w-1/3" />
+            <div className="h-40 bg-muted animate-pulse rounded" />
+          </div>
         </div>
       </div>
     );
@@ -712,18 +602,22 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
 
   if (manifestError) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-foreground">Learn mode</h1>
-          <a
-            href={`/notebooks/${notebookId}`}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            ← Back to Notebook
-          </a>
-        </div>
-        <div className="p-4 rounded-md bg-destructive/10 border border-destructive/20">
-          <p className="text-sm text-destructive">{manifestError}</p>
+      <div className="max-w-5xl mx-auto px-4 md:p-6">
+        <div className="space-y-6">
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Learn mode</h1>
+            </div>
+            <a
+              href={`/notebooks/${notebookId}`}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              ← Back to Notebook
+            </a>
+          </div>
+          <div className="p-4 rounded-md bg-destructive/10 border border-destructive/20">
+            <p className="text-sm text-destructive">{manifestError}</p>
+          </div>
         </div>
       </div>
     );
@@ -733,9 +627,9 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
 
   const renderStartScreen = () => (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Learn mode</h1>
+          <h1 className="text-2xl font-bold text-foreground">Learn mode</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Notebook: <span className="text-foreground">{notebookName || notebookId}</span>
           </p>
@@ -834,8 +728,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
           </div>
         </div>
 
-        <div className="flex items-center justify-between pt-2">
-          <p className="text-xs text-muted-foreground">ENTER: check / next card</p>
+        <div className="flex items-center justify-end pt-2">
           <Button type="button" onClick={handleStart} disabled={phraseCount === 0}>
             Start session
           </Button>
@@ -846,9 +739,9 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
 
   const renderRoundSummary = () => (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Round {session.roundNumber} summary</h1>
+          <h1 className="text-2xl font-bold text-foreground">Round {session.roundNumber} summary</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Notebook: <span className="text-foreground">{notebookName || notebookId}</span>
           </p>
@@ -924,8 +817,11 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
       return null;
     }
 
-    const promptHtml = parseMarkdownToHtml(getPromptText(currentPhrase, session.direction));
+    const promptText = getPromptText(currentPhrase, session.direction);
+    const promptHtml = parseMarkdownToHtml(promptText);
     const progressLabel = `Card ${session.currentIndex + 1} / ${session.currentRound.length}`;
+    const promptLang = session.direction === "en_to_pl" ? "en" : "pl";
+    const promptTokens = promptLang === "en" ? currentPhrase.tokens?.en : currentPhrase.tokens?.pl;
 
     const isChecked = currentCardResult?.isChecked ?? false;
     const isCorrect = currentCardResult?.isCorrect ?? null;
@@ -935,9 +831,9 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
     return (
       <div className="space-y-6" role="region" aria-label="Learn mode session">
         {/* Header with notebook name and progress */}
-        <div className="flex items-center justify-between">
+        <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Learn mode</h1>
+            <h1 className="text-2xl font-bold text-foreground">Learn mode</h1>
             <p className="text-sm text-muted-foreground mt-1">
               Round {session.roundNumber} · {progressLabel}
             </p>
@@ -971,8 +867,42 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
           </div>
 
           {/* Prompt section */}
-          <div className="rounded-md bg-muted/40 border border-border/80 p-4">
-            <div className="text-sm text-foreground" dangerouslySetInnerHTML={{ __html: promptHtml }} />
+          <div
+            className={`rounded-lg border bg-card px-4 py-3 transition-colors ${
+              isPromptAudioPlaying
+                ? "bg-yellow-400/10 ring-1 ring-yellow-400/30"
+                : isChecked
+                  ? isCorrect
+                    ? "bg-emerald-500/5 ring-1 ring-emerald-500/30"
+                    : "bg-destructive/5 ring-1 ring-destructive/30"
+                  : ""
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <span
+                className={`text-xs font-medium px-2 py-0.5 rounded border ${
+                  promptLang === "en"
+                    ? "bg-blue-500/20 text-blue-300 border-blue-500/40"
+                    : "bg-green-500/20 text-green-300 border-green-500/40"
+                }`}
+              >
+                {promptLang === "en" ? "EN" : "PL"}
+              </span>
+              {isPromptAudioPlaying && <span className="text-xs text-muted-foreground animate-pulse">●</span>}
+            </div>
+            {promptTokens && promptTokens.length > 0 ? (
+              <PhraseTokenPills
+                tokens={promptTokens}
+                originalText={promptText}
+                highlight={isPromptAudioPlaying}
+                size="lg"
+              />
+            ) : (
+              <div
+                className="text-base md:text-lg leading-6 md:leading-7 text-foreground"
+                dangerouslySetInnerHTML={{ __html: promptHtml }}
+              />
+            )}
           </div>
 
           {/* STAN A: Before check - Answering */}
@@ -983,24 +913,19 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
                   Your answer ({getAnswerLanguageLabel(session.direction)})
                 </label>
                 <textarea
+                  ref={textareaRef}
                   className="w-full min-h-[72px] rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   placeholder={
                     session.direction === "en_to_pl" ? "Type the Polish translation…" : "Type the English translation…"
                   }
                   value={userAnswer}
                   onChange={(e) => handleUserAnswerChange(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleEnterKey();
-                    }
-                  }}
                 />
               </div>
 
               {/* Controls - Before check */}
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <Button type="button" size="sm" variant="outline" onClick={handleSkip}>
+              <div className="hidden sm:flex items-center justify-end gap-3 pt-2">
+                <Button type="button" size="sm" onClick={handleSkip}>
                   Skip
                 </Button>
                 <Button type="button" size="sm" onClick={handleCheckAnswer}>
@@ -1033,7 +958,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
               />
 
               {/* Controls - After check */}
-              <div className="flex justify-end pt-2">
+              <div className="hidden sm:flex justify-end pt-2">
                 <Button type="button" size="sm" onClick={goToNextCard}>
                   {session.currentIndex >= session.currentRound.length - 1 ? "Finish round" : "Next card"}
                 </Button>
@@ -1041,23 +966,46 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
             </div>
           )}
         </div>
-
-        <p className="text-xs text-muted-foreground">
-          ENTER: {isChecked ? "next card / finish round" : "check answer"}
-        </p>
       </div>
     );
   };
 
-  if (session.phase === "idle") {
-    return renderStartScreen();
-  }
+  const content =
+    session.phase === "idle"
+      ? renderStartScreen()
+      : session.phase === "round_summary"
+        ? renderRoundSummary()
+        : renderInProgress();
 
-  if (session.phase === "round_summary") {
-    return renderRoundSummary();
-  }
+  const currentIsChecked = currentCardResult?.isChecked ?? false;
 
-  return renderInProgress();
+  return (
+    <div className="max-w-5xl mx-auto px-4 pb-32 md:p-6 md:pb-6">
+      {content}
+
+      {/* Mobile action bar (matches Player's fixed bottom controls) */}
+      {session.phase === "in_progress" && currentPhrase && (
+        <div className="fixed inset-x-0 bottom-0 z-30 bg-background/95 backdrop-blur border-t pb-[env(safe-area-inset-bottom)] sm:hidden">
+          <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3 justify-end">
+            {!currentIsChecked ? (
+              <>
+                <Button type="button" onClick={handleSkip}>
+                  Skip
+                </Button>
+                <Button type="button" className="flex-1" onClick={handleCheckAnswer}>
+                  Check answer
+                </Button>
+              </>
+            ) : (
+              <Button type="button" className="flex-1" onClick={goToNextCard}>
+                {session.currentIndex >= session.currentRound.length - 1 ? "Finish round" : "Next card"}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function LearnView(props: LearnViewProps) {

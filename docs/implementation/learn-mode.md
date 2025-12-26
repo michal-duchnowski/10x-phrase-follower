@@ -53,6 +53,9 @@ Na `/notebooks/[id]/learn`:
     - Przełącznik: **EN→PL** / **PL→EN** (radio / segment control).
   - Kolejność:
     - Checkbox/przełącznik: **Shuffle** (domyślnie włączony).
+  - Tryb odpowiedzi:
+    - **Exact match** (domyślnie): wymaga pełnej, dokładnej odpowiedzi.
+    - **Contains mode**: akceptuje odpowiedź, jeśli pasuje do dowolnego słowa w poprawnej odpowiedzi (np. dla "siniak stłuczenie sińce" akceptuje "siniak" lub "sińce").
 - Informacja o liczbie fraz w notatniku (np. `30 fraz w tym notatniku`).
 - Przycisk: **“Start”**:
   - Tworzy listę fraz do rundy 1:
@@ -74,10 +77,11 @@ Po naciśnięciu **Start** użytkownik widzi **widok karty w jednym z dwóch sta
   - Jeśli PL→EN: wyświetlane jest `pl_text`.
   - Markdown renderowany (jak w tabeli fraz).
 - **Audio**:
-  - Próba automatycznego odtworzenia:
+  - Automatyczne odtwarzanie **tylko raz** przy wejściu na kartę (w stanie _Before check_):
     - EN→PL: EN (angielski slot).
     - PL→EN: PL (polski slot).
-  - Widoczny przycisk np. "Odtwórz ponownie" (skrót klawiaturowy, np. spacja).
+  - Audio nie odtwarza się ponownie po naciśnięciu klawiszy.
+  - Jeśli w manifeście/audio brak segmentu dla właściwego języka, sesja działa normalnie tekstowo.
 - **Dodatkowe statystyki sesji (opcjonalne)**:
   - Małe, pasywne liczniki `Correct / Incorrect / Left`.
   - Umieszczone **z dala od inputu i głównego promptu** (np. w górnym pasku lub bocznym pasku), tak aby **nie konkurowały z zadaniem**.
@@ -93,6 +97,7 @@ Widoczne:
   - Pole jest **edytowalne**.
 - **Przycisk "Sprawdź odpowiedź"**:
   - Funkcjonalny odpowiednik ENTER **przed** sprawdzeniem.
+  - Nazwa przycisku nie zawiera "(Enter)" – skrót klawiaturowy jest opisany w podpowiedzi.
 - **Przycisk "Skip"** (opcjonalny, tylko w tym stanie):
   - Pomija kartę bez zaliczenia na poprawną / błędną.
   - Karta skipnięta **nie jest traktowana jako błędna** (nie dodajemy do listy "błędnych").
@@ -117,8 +122,9 @@ Widoczne:
   - Z diffem pokazującym różnice względem poprawnej odpowiedzi.
 - **Poprawna odpowiedź**:
   - Z diffem pokazującym różnice względem odpowiedzi użytkownika.
-- **Przycisk "Następna karta"**:
+- **Przycisk "Następna karta"** (lub "Finish round" dla ostatniej karty):
   - Funkcjonalny odpowiednik ENTER **po** sprawdzeniu.
+  - Nazwa przycisku nie zawiera "(Enter)" – skrót klawiaturowy jest opisany w podpowiedzi.
 
 Ukryte w tym stanie:
 
@@ -132,7 +138,8 @@ Ukryte w tym stanie:
 
 Po naciśnięciu **ENTER** lub przycisku "Sprawdź odpowiedź":
 
-- Odpowiedź użytkownika jest **przetwarzana i porównywana** z właściwym tekstem.
+- Odpowiedź użytkownika jest **przetwarzana i porównywana lokalnie** (na frontendzie) z właściwym tekstem.
+- Porównanie jest **natychmiastowe** (bez opóźnień sieciowych) – wykorzystuje dane już dostępne w manifeście sesji.
 - Po poprawnym wysłaniu odpowiedzi następuje **twarde przejście** ze stanu _Before check_ do stanu _After check_:
   - Pole odpowiedzi jest blokowane (`readonly`) albo całkowicie ukrywane.
   - Użytkownik **nie może poprawić odpowiedzi po fakcie** – próba jest jednoznacznie zamknięta.
@@ -160,6 +167,7 @@ Po naciśnięciu **ENTER** lub przycisku "Sprawdź odpowiedź":
 Po przejściu wszystkich kart w rundzie:
 
 - Ekran podsumowania:
+  - Wyświetla **nazwę notatnika** (nie ID).
   - `X / Y poprawnych`.
   - `Z błędnych (do powtórki)`.
 - Jeśli **są błędne frazy**:
@@ -172,7 +180,7 @@ Po przejściu wszystkich kart w rundzie:
 
 ---
 
-## 4. Logika porównywania odpowiedzi (backend)
+## 4. Logika porównywania odpowiedzi
 
 ### 4.1. Ogólne założenia
 
@@ -182,10 +190,20 @@ Po przejściu wszystkich kart w rundzie:
   - Ignorujemy nadmiarowe spacje.
 - Ten sam algorytm dopasowania dla:
   - EN→PL i PL→EN (z możliwością późniejszego zaostrzenia PL→EN).
-- Algorytm porównywania działa **po stronie backendu** (endpoint `POST /api/notebooks/:id/learn/check-answer`),
-  a frontend korzysta z niego, przesyłając `phrase_id`, `userAnswer` (tekst wpisany przez użytkownika) i `direction`.
+- Algorytm porównywania działa **po stronie frontendu** (lokalnie) dla natychmiastowej odpowiedzi.
+- Endpoint `POST /api/notebooks/:id/learn/check-answer` istnieje w backendzie, ale w MVP nie jest używany – porównanie odbywa się lokalnie.
 
-### 4.2. Normalizacja przed porównaniem (backend)
+### 4.2. Tryby sprawdzania odpowiedzi
+
+- **Exact match** (domyślnie):
+  - Wymaga pełnej, dokładnej odpowiedzi po normalizacji.
+  - `normalizedUser === normalizedCorrect`.
+- **Contains mode** (opcjonalny):
+  - Akceptuje odpowiedź, jeśli znormalizowana odpowiedź użytkownika pasuje do **dowolnego słowa** w znormalizowanej poprawnej odpowiedzi.
+  - Przykład: dla poprawnej odpowiedzi "siniak stłuczenie sińce" akceptuje "siniak", "stłuczenie" lub "sińce".
+  - Użyteczne dla fraz z wieloma synonimami/odpowiedziami.
+
+### 4.3. Normalizacja przed porównaniem
 
 Dla obu tekstów (`userAnswer`, `correctAnswer`):
 
@@ -204,10 +222,10 @@ Dla obu tekstów (`userAnswer`, `correctAnswer`):
   - Różnice są **wizualnie podkreślane** po stronie frontendu na podstawie wyniku porównania / struktury diffu,
     aby użytkownik widział, że "prawie trafił".
 
-### 4.3. Wizualny diff
+### 4.4. Wizualny diff
 
 - Na potrzeby UI:
-  - Generujemy strukturę różnic (np. na poziomie słów lub znaków), wykorzystując dane po normalizacji **wyłącznie po stronie backendu**.
+  - Generujemy strukturę różnic (np. na poziomie słów lub znaków), wykorzystując dane po normalizacji **lokalnie na frontendzie**.
   - Wyświetlanie:
     - W "Twojej odpowiedzi": różne fragmenty oznaczone kolorem (np. czerwone tło/podkreślenie).
     - W "Poprawnej odpowiedzi": brakujące / inne fragmenty oznaczone na zielono.
@@ -220,21 +238,20 @@ Dla obu tekstów (`userAnswer`, `correctAnswer`):
 
 ### 5.1. Zasady odtwarzania
 
-- **Po wejściu na kartę**:
+- **Po wejściu na kartę** (tylko w stanie _Before check_):
   - EN→PL:
     - Automatycznie odtwarzany odpowiedni angielski segment audio (np. EN1 lub spójnie wybrany głos).
   - PL→EN:
     - Automatycznie odtwarzany polski segment audio.
+- Audio odtwarza się **tylko raz** przy wejściu na kartę.
+- Po przejściu do stanu _After check_ audio nie odtwarza się ponownie.
 - Jeśli w manifeście/audio brak segmentu dla właściwego języka:
   - Sesja nauki działa normalnie tekstowo.
-  - Przycisk audio jest nieaktywny / pokazuje “Brak audio”.
+  - Brak automatycznego odtwarzania.
 
 ### 5.2. Sterowanie audio
 
-- **Przycisk “Play” / “Odtwórz ponownie”**:
-  - Umożliwia ręczne ponowne odtworzenie audio.
-- **Skrót klawiaturowy**:
-  - Np. spacja → odtwórz/pauzuj audio w kontekście bieżącej karty.
+- **Brak przycisku Play** – audio odtwarza się tylko automatycznie.
 - Prędkość odtwarzania:
   - Docelowo może być współdzielona z globalnymi ustawieniami playera (0.75 / 0.9 / 1.0 / 1.25), ale to szczegół implementacyjny.
 
@@ -257,14 +274,16 @@ Dla obu tekstów (`userAnswer`, `correctAnswer`):
 
 ### 6.2. Wymagania dla backendu (wysoki poziom)
 
-- Endpointy do trybu nauki **mogą korzystać z istniejących**:
-  - Pobieranie fraz notatnika.
-  - Pobieranie manifestu audio (opcjonalnie – jeśli potrzebne do nauki).
-- W pierwszej wersji większość logiki **może być czysto frontendowa**:
+- Endpointy do trybu nauki **korzystają z istniejących**:
+  - Pobieranie fraz notatnika (`GET /api/notebooks/:id/learn-manifest`).
+  - Pobieranie manifestu audio (`GET /api/notebooks/:id/playback-manifest`).
+  - Pobieranie nazwy notatnika (`GET /api/notebooks/:id`).
+- W MVP cała logika jest **czysto frontendowa**:
   - Losowanie/shuffle.
   - Budowa listy rund.
   - Liczenie statystyk.
-  - Walidacja odpowiedzi (porównanie tekstowe).
+  - **Walidacja odpowiedzi (porównanie tekstowe)** – wykonywane lokalnie na frontendzie dla natychmiastowej odpowiedzi.
+- Endpoint `POST /api/notebooks/:id/learn/check-answer` istnieje w backendzie, ale w MVP nie jest używany (porównanie lokalne).
 - W przyszłości:
   - Możliwość przeniesienia części logiki (np. zapis progresu) do backendu.
 
@@ -275,9 +294,8 @@ Dla obu tekstów (`userAnswer`, `correctAnswer`):
 - **ENTER**:
   - Jeśli odpowiedź nie jest jeszcze sprawdzona (`!isChecked`) → **Sprawdź odpowiedź** (`checkAnswer`).
   - Jeśli odpowiedź jest już sprawdzona (`isChecked`) → **Następna karta** (`nextCard`) lub zakończenie rundy, jeśli to ostatnia karta.
-- **Spacja**:
-  - Odtwórz/pauzuj audio dla bieżącej karty (o ile dostępne).
 - Brak innych wyjątków / warunków dla ENTER – zachowanie jest **jednoznaczne** w obu stanach.
+- **Uwaga**: Skróty klawiaturowe są opisane w podpowiedziach UI, ale nie są częścią nazw przycisków.
 
 ---
 
@@ -291,7 +309,7 @@ Dla obu tekstów (`userAnswer`, `correctAnswer`):
   - Wejście w tryb nauki powinno być zablokowane / pokazywać informację “Brak fraz w notatniku”.
 - **Brak audio**:
   - Nauka tekstowa działa w pełni.
-  - W razie braku audio dla języka docelowego – tylko wyłączenie przycisku Play.
+  - W razie braku audio dla języka docelowego – brak automatycznego odtwarzania.
 - **Odświeżenie strony / zamknięcie karty**:
   - Sesja jest tracona (statystyki i rundy od zera po wejściu ponownie).
 
@@ -301,10 +319,14 @@ Dla obu tekstów (`userAnswer`, `correctAnswer`):
 
 - Tryb nauki to **osobna ścieżka** `/notebooks/[id]/learn` z **full-focus UI** dla pojedynczej karty.
 - Obsługuje **EN→PL i PL→EN**, z **tolerancyjnym porównaniem** (ignorujemy case, końcową interpunkcję, nadmiarowe spacje).
+- **Dwa tryby sprawdzania odpowiedzi**:
+  - **Exact match**: wymaga pełnej, dokładnej odpowiedzi.
+  - **Contains mode**: akceptuje odpowiedź, jeśli pasuje do dowolnego słowa w poprawnej odpowiedzi.
 - Sesje składają się z **rund**:
   - Runda 1: wszystkie frazy (z opcją shuffle).
   - Kolejne rundy: tylko błędne z poprzedniej.
+- **Porównywanie odpowiedzi jest lokalne** (frontend) dla natychmiastowej odpowiedzi bez opóźnień sieciowych.
 - Audio jest **opcjonalnym, ale preferowanym** dodatkiem:
-  - Automatyczne odtwarzanie właściwego języka przy wejściu na kartę.
-  - Ręczne odtwarzanie klawiszem / przyciskiem.
-- MVP **nie wymaga zmian w DB** – cała logika nauki i statystyki są na frontendzie, przyszłe rozszerzenia mogą dodać “hard flags” i trwały progres.
+  - Automatyczne odtwarzanie właściwego języka przy wejściu na kartę (tylko raz).
+  - Brak przycisku Play – audio odtwarza się tylko automatycznie.
+- MVP **nie wymaga zmian w DB** – cała logika nauki i statystyki są na frontendzie, przyszłe rozszerzenia mogą dodać "hard flags" i trwały progres.

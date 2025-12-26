@@ -10,7 +10,7 @@ if (!id) {
 }
 ---
 
-<AppLayout title="Learn mode - Phrase Follower" currentPath={`/notebooks/${id}/learn`}>
+<AppLayout title="Learn mode - Phrase Follower" currentPath={`/notebooks/${id}/learn`} fullWidth={true}>
   <AuthGuard client:load>
     <LearnView notebookId={id} client:load />
   </AuthGuard>
