@@ -386,3 +386,42 @@ export interface TokenTimingsHint {
   startMs: number;
   endMs: number;
 }
+
+// ------------------------------------
+// Learn Mode
+// ------------------------------------
+
+export type LearnDirection = "en_to_pl" | "pl_to_en";
+
+export interface LearnPhraseAudioAvailability {
+  has_en_audio: boolean;
+  has_pl_audio: boolean;
+}
+
+export interface LearnPhraseDTO {
+  id: UUID;
+  position: number;
+  en_text: string;
+  pl_text: string;
+  tokens: PhraseTokens | null;
+  audio: LearnPhraseAudioAvailability;
+}
+
+export interface LearnManifestDTO {
+  notebook_id: UUID;
+  phrase_count: number;
+  phrases: LearnPhraseDTO[];
+}
+
+export interface CheckAnswerCommand {
+  phrase_id: UUID;
+  user_answer: string;
+  direction: LearnDirection;
+  use_contains_mode?: boolean; // If true, user answer is correct if it matches any word in correct answer
+}
+
+export interface CheckAnswerResultDTO {
+  is_correct: boolean;
+  normalized_user: string;
+  normalized_correct: string;
+}
