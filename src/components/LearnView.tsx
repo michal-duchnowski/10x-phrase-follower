@@ -210,70 +210,119 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
 
   // Auto-play audio when entering a card (Before check state) - only once per card
   const lastAutoPlayedPhraseIdRef = useRef<string | null>(null);
+  const lastEnglishAudioPlayedRef = useRef<string | null>(null);
 
+  // Auto-play English audio when entering a card (EN→PL) or after checking answer (PL→EN)
   useEffect(() => {
     if (!currentPhrase || session.phase !== "in_progress") {
       return;
     }
 
     const isChecked = currentCardResult?.isChecked ?? false;
-    if (isChecked) {
-      return; // Don't auto-play in After check state
-    }
 
-    // Only auto-play once per phrase
-    if (lastAutoPlayedPhraseIdRef.current === currentPhrase.id) {
-      return;
-    }
-
-    const hasAudio = getHasAudio(currentPhrase, session.direction);
-    if (!hasAudio || !playbackManifestRef.current) {
-      return;
-    }
-
-    // Find the phrase in playback manifest
-    const manifestItem = playbackManifestRef.current.sequence.find((item) => item.phrase.id === currentPhrase.id);
-
-    if (!manifestItem) {
-      return;
-    }
-
-    // Find appropriate segment based on direction
-    let targetSegment = null;
+    // For EN→PL: play English audio at the start (before check)
     if (session.direction === "en_to_pl") {
+      if (isChecked) {
+        return; // Don't auto-play in After check state
+      }
+
+      // Only auto-play once per phrase
+      if (lastAutoPlayedPhraseIdRef.current === currentPhrase.id) {
+        return;
+      }
+
+      const hasAudio = getHasAudio(currentPhrase, session.direction);
+      if (!hasAudio || !playbackManifestRef.current) {
+        return;
+      }
+
+      // Find the phrase in playback manifest
+      const manifestItem = playbackManifestRef.current.sequence.find((item) => item.phrase.id === currentPhrase.id);
+
+      if (!manifestItem) {
+        return;
+      }
+
       // Prefer EN1, fallback to EN2 or EN3
-      targetSegment =
+      const targetSegment =
         manifestItem.segments.find((s) => s.slot === "EN1") ||
         manifestItem.segments.find((s) => s.slot === "EN2") ||
         manifestItem.segments.find((s) => s.slot === "EN3");
-    } else {
-      // PL → EN: use PL segment
-      targetSegment = manifestItem.segments.find((s) => s.slot === "PL");
+
+      if (targetSegment && targetSegment.url) {
+        // Auto-play audio only once
+        lastAutoPlayedPhraseIdRef.current = currentPhrase.id;
+        const audio = new Audio(targetSegment.url);
+        audio.playbackRate = 1.0;
+        setIsPromptAudioPlaying(true);
+        audio.play().catch((err) => {
+          // Silently fail - audio auto-play may be blocked by browser
+          // eslint-disable-next-line no-console
+          console.error("[LearnView] Failed to auto-play audio:", err);
+          setIsPromptAudioPlaying(false);
+        });
+        audioRef.current = audio;
+
+        // Clean up when audio ends
+        audio.addEventListener("ended", () => {
+          audioRef.current = null;
+          setIsPromptAudioPlaying(false);
+        });
+
+        audio.addEventListener("pause", () => {
+          setIsPromptAudioPlaying(false);
+        });
+      }
     }
+    // For PL→EN: play English audio after checking answer
+    else if (session.direction === "pl_to_en" && isChecked) {
+      // Only auto-play once per phrase after check
+      const audioKey = `${currentPhrase.id}-after-check`;
+      if (lastEnglishAudioPlayedRef.current === audioKey) {
+        return;
+      }
 
-    if (targetSegment && targetSegment.url) {
-      // Auto-play audio only once
-      lastAutoPlayedPhraseIdRef.current = currentPhrase.id;
-      const audio = new Audio(targetSegment.url);
-      audio.playbackRate = 1.0;
-      setIsPromptAudioPlaying(true);
-      audio.play().catch((err) => {
-        // Silently fail - audio auto-play may be blocked by browser
-        // eslint-disable-next-line no-console
-        console.error("[LearnView] Failed to auto-play audio:", err);
-        setIsPromptAudioPlaying(false);
-      });
-      audioRef.current = audio;
+      if (!playbackManifestRef.current) {
+        return;
+      }
 
-      // Clean up when audio ends
-      audio.addEventListener("ended", () => {
-        audioRef.current = null;
-        setIsPromptAudioPlaying(false);
-      });
+      // Find the phrase in playback manifest
+      const manifestItem = playbackManifestRef.current.sequence.find((item) => item.phrase.id === currentPhrase.id);
 
-      audio.addEventListener("pause", () => {
-        setIsPromptAudioPlaying(false);
-      });
+      if (!manifestItem) {
+        return;
+      }
+
+      // Play English audio (EN1, EN2, or EN3)
+      const targetSegment =
+        manifestItem.segments.find((s) => s.slot === "EN1") ||
+        manifestItem.segments.find((s) => s.slot === "EN2") ||
+        manifestItem.segments.find((s) => s.slot === "EN3");
+
+      if (targetSegment && targetSegment.url) {
+        // Mark as played
+        lastEnglishAudioPlayedRef.current = audioKey;
+        const audio = new Audio(targetSegment.url);
+        audio.playbackRate = 1.0;
+        setIsPromptAudioPlaying(true);
+        audio.play().catch((err) => {
+          // Silently fail - audio auto-play may be blocked by browser
+          // eslint-disable-next-line no-console
+          console.error("[LearnView] Failed to auto-play English audio:", err);
+          setIsPromptAudioPlaying(false);
+        });
+        audioRef.current = audio;
+
+        // Clean up when audio ends
+        audio.addEventListener("ended", () => {
+          audioRef.current = null;
+          setIsPromptAudioPlaying(false);
+        });
+
+        audio.addEventListener("pause", () => {
+          setIsPromptAudioPlaying(false);
+        });
+      }
     }
   }, [currentPhrase, session.direction, session.phase, currentCardResult]);
 
@@ -330,6 +379,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
 
     // Reset auto-play tracking when starting new round
     lastAutoPlayedPhraseIdRef.current = null;
+    lastEnglishAudioPlayedRef.current = null;
 
     setSession((prev) => ({
       ...prev,
@@ -552,6 +602,9 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
   ]);
 
   const goToNextCard = useCallback(() => {
+    // Reset audio tracking when moving to next card
+    lastEnglishAudioPlayedRef.current = null;
+
     setSession((prev) => {
       if (prev.phase !== "in_progress") return prev;
 
@@ -811,7 +864,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
 
       <div className="bg-card border border-border rounded-lg p-6 space-y-6">
         <div className="space-y-1">
-          <h2 className="text-lg font-semibold">Session settings</h2>
+          <h2 className="text-lg font-semibold text-foreground">Session settings</h2>
           <p className="text-sm text-muted-foreground">Choose direction and order for this learning session.</p>
         </div>
 
@@ -892,7 +945,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
                 </div>
               </div>
 
-              {session.answerInputMode === "text" && (
+              {(session.answerInputMode === "text" || session.answerInputMode === "hybrid") && (
                 <div>
                   <div className="text-xs font-medium text-muted-foreground mb-1.5">Answer mode</div>
                   <button
@@ -912,11 +965,11 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
                         : "Exact match (full answer required)"}
                     </span>
                   </button>
-                </div>
-              )}
-              {session.answerInputMode === "hybrid" && (
-                <div className="text-xs text-muted-foreground">
-                  Automatically uses text input for 1-2 words, word bank for 3+ words.
+                  {session.answerInputMode === "hybrid" && (
+                    <p className="text-xs text-muted-foreground mt-1.5">
+                      Automatically uses text input for 1-2 words, word bank for 3+ words.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
