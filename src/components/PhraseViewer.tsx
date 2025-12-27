@@ -194,7 +194,7 @@ export default function PhraseViewer({
               key={index}
               onClick={() => onSeekToToken(index, language)}
               className={`
-                rounded-md px-2 py-1 text-lg min-[480px]:text-2xl sm:text-2xl lg:text-2xl leading-6 min-[480px]:leading-8 sm:leading-8 lg:leading-8
+                rounded-md px-2 py-1 text-lg min-[480px]:text-2xl sm:text-2xl lg:text-xl leading-6 min-[480px]:leading-8 sm:leading-8 lg:leading-7
                 transition-all duration-200
                 ${
                   isTokenActive
