@@ -21,6 +21,8 @@ import { useSignedUrlGuard } from "../lib/hooks/useSignedUrlGuard";
 import { useClickToSeek } from "../lib/hooks/useClickToSeek";
 import { useAuth } from "../lib/hooks/useAuth";
 import { useApi } from "../lib/hooks/useApi";
+import MobileActionMenu from "./MobileActionMenu";
+import DifficultyBadge from "./DifficultyBadge";
 
 interface PlayerShellProps {
   notebookId: string;
@@ -28,7 +30,11 @@ interface PlayerShellProps {
   difficultyFilter?: string;
 }
 
-export default function PlayerShell({ notebookId, startPhraseId, difficultyFilter: initialDifficultyFilter }: PlayerShellProps) {
+export default function PlayerShell({
+  notebookId,
+  startPhraseId,
+  difficultyFilter: initialDifficultyFilter,
+}: PlayerShellProps) {
   // Authentication
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { apiCall } = useApi();
@@ -431,70 +437,98 @@ export default function PlayerShell({ notebookId, startPhraseId, difficultyFilte
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 pb-32 md:p-6 md:pb-6">
+    <div className="max-w-6xl lg:max-w-7xl mx-auto px-4 sm:px-6 pb-32 md:p-6 md:pb-6">
       <KeyboardShortcutsHandler {...shortcuts} />
 
       {/* Header with title, phrase counter and Back to Notebook link (no extra row) */}
       <div className="mb-6 space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Audio Player</h1>
-            <p className="text-sm text-muted-foreground mt-1" aria-live="polite" aria-atomic="true">
+            <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Audio Player</h1>
+            <p
+              className="text-sm min-[480px]:text-base sm:text-lg text-muted-foreground mt-1"
+              aria-live="polite"
+              aria-atomic="true"
+            >
               Phrase <span className="font-medium text-foreground">{phraseIndex + 1}</span> of{" "}
               <span className="font-medium text-foreground">{manifest.sequence.length}</span>
-              {currentPhrase?.phrase.difficulty && (
-                <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded border bg-muted text-muted-foreground">
-                  {currentPhrase.phrase.difficulty}
-                </span>
-              )}
+              <DifficultyBadge
+                difficulty={currentPhrase?.phrase.difficulty}
+                className="ml-2"
+                labelPrefix="Difficulty"
+              />
             </p>
           </div>
-          <a
-            href={`/notebooks/${notebookId}`}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            ← Back to Notebook
-          </a>
-        </div>
-        {/* Difficulty marking buttons (for mobile) */}
-        {currentPhrase && (
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-muted-foreground">Mark difficulty:</span>
-              <Button
-                variant={currentPhrase.phrase.difficulty === "easy" ? "default" : "outline"}
-                size="sm"
-                onClick={() => handleMarkDifficulty("easy")}
-              >
-                Easy
-              </Button>
-              <Button
-                variant={currentPhrase.phrase.difficulty === "medium" ? "default" : "outline"}
-                size="sm"
-                onClick={() => handleMarkDifficulty("medium")}
-              >
-                Medium
-              </Button>
-              <Button
-                variant={currentPhrase.phrase.difficulty === "hard" ? "default" : "outline"}
-                size="sm"
-                onClick={() => handleMarkDifficulty("hard")}
-              >
-                Hard
-              </Button>
-              <Button
-                variant={!currentPhrase.phrase.difficulty ? "default" : "outline"}
-                size="sm"
-                onClick={() => handleMarkDifficulty(null)}
-              >
-                Clear
-              </Button>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Keyboard shortcuts: 1=Easy, 2=Medium, 3=Hard, 0=Clear
-            </div>
+          <div className="flex items-center gap-2">
+            {/* Mobile: difficulty menu tucked into header */}
+            {currentPhrase && (
+              <div className="md:hidden">
+                <MobileActionMenu triggerLabel="Difficulty" triggerIcon triggerVariant="default" triggerSize="icon">
+                  {({ close }) => (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          type="button"
+                          variant="default"
+                          size="sm"
+                          className="w-full"
+                          onClick={() => {
+                            handleMarkDifficulty("easy");
+                            close();
+                          }}
+                        >
+                          Easy
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="default"
+                          size="sm"
+                          className="w-full"
+                          onClick={() => {
+                            handleMarkDifficulty("medium");
+                            close();
+                          }}
+                        >
+                          Medium
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="default"
+                          size="sm"
+                          className="w-full"
+                          onClick={() => {
+                            handleMarkDifficulty("hard");
+                            close();
+                          }}
+                        >
+                          Hard
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={!currentPhrase.phrase.difficulty ? "default" : "outline"}
+                          size="sm"
+                          className="w-full"
+                          onClick={() => {
+                            handleMarkDifficulty(null);
+                            close();
+                          }}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </MobileActionMenu>
+              </div>
+            )}
+            <a
+              href={`/notebooks/${notebookId}`}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              ← Back to Notebook
+            </a>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Phrase viewer - vertical layout: EN on top, PL below */}

@@ -4,8 +4,8 @@ services:
   app:
     # Image name should be set via environment variable or replace with your actual GHCR path
     # Example: ghcr.io/your-username/10x-phrase-follower:latest
-    # image: ${DOCKER_IMAGE:-ghcr.io/michal-duchnowski/10x-phrase-follower:latest}
-    image: phrase-follower:local # zamiast ghcr.io/...
+    image: ${DOCKER_IMAGE:-ghcr.io/michal-duchnowski/10x-phrase-follower:latest}
+    # image: phrase-follower:local # zamiast ghcr.io/...
     container_name: phrase-follower
     restart: unless-stopped
     ports:

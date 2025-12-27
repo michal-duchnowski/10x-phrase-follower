@@ -5,6 +5,7 @@ Ten przewodnik opisuje jak zastosować migrację dodającą kolumnę `difficulty
 ## Przegląd migracji
 
 Migracja `20251227093548_add_phrase_difficulty.sql` dodaje:
+
 - Kolumnę `difficulty` (nullable text) do tabeli `phrases`
 - Constraint sprawdzający wartości: `difficulty IN ('easy', 'medium', 'hard')`
 - Indeks złożony: `(notebook_id, difficulty, position)` dla wydajnego filtrowania
@@ -97,6 +98,7 @@ WHERE table_name = 'phrases' AND column_name = 'difficulty';
 ```
 
 Powinieneś zobaczyć:
+
 - `column_name`: `difficulty`
 - `data_type`: `text`
 - `is_nullable`: `YES`
@@ -121,11 +123,11 @@ Otwórz plik `supabase/migrations/20251227093548_add_phrase_difficulty.sql` i sk
 ALTER TABLE phrases ADD COLUMN difficulty text NULL;
 
 -- Add check constraint to ensure only valid values
-ALTER TABLE phrases ADD CONSTRAINT phrases_difficulty_check 
+ALTER TABLE phrases ADD CONSTRAINT phrases_difficulty_check
   CHECK (difficulty IS NULL OR difficulty IN ('easy', 'medium', 'hard'));
 
 -- Add composite index for efficient filtering by notebook_id, difficulty, and position
-CREATE INDEX phrases_idx_notebook_difficulty_position 
+CREATE INDEX phrases_idx_notebook_difficulty_position
   ON phrases(notebook_id, difficulty, position);
 
 -- Add comment
@@ -186,8 +188,8 @@ supabase gen types typescript --linked > src/db/database.types.ts
 phrases: {
   Row: {
     // ... inne pola
-    difficulty: string | null;  // <-- powinno być tutaj
-  };
+    difficulty: string | null; // <-- powinno być tutaj
+  }
   // ...
 }
 ```
@@ -199,8 +201,8 @@ phrases: {
 Jeśli widzisz błąd `column "difficulty" already exists`, oznacza to, że migracja została już zastosowana. Możesz to sprawdzić:
 
 ```sql
-SELECT column_name 
-FROM information_schema.columns 
+SELECT column_name
+FROM information_schema.columns
 WHERE table_name = 'phrases' AND column_name = 'difficulty';
 ```
 
@@ -212,8 +214,8 @@ Jeśli constraint już istnieje, możesz go usunąć przed ponownym dodaniem:
 
 ```sql
 -- Sprawdź czy constraint istnieje
-SELECT constraint_name 
-FROM information_schema.table_constraints 
+SELECT constraint_name
+FROM information_schema.table_constraints
 WHERE table_name = 'phrases' AND constraint_name = 'phrases_difficulty_check';
 
 -- Jeśli istnieje, usuń go
@@ -228,8 +230,8 @@ Jeśli indeks już istnieje:
 
 ```sql
 -- Sprawdź czy indeks istnieje
-SELECT indexname 
-FROM pg_indexes 
+SELECT indexname
+FROM pg_indexes
 WHERE tablename = 'phrases' AND indexname = 'phrases_idx_notebook_difficulty_position';
 
 -- Jeśli istnieje, usuń go
@@ -241,6 +243,7 @@ DROP INDEX IF EXISTS phrases_idx_notebook_difficulty_position;
 ### Problem: "permission denied"
 
 Upewnij się, że:
+
 - Jesteś zalogowany do Supabase Dashboard
 - Masz uprawnienia do modyfikacji schematu bazy danych
 - Używasz odpowiedniego klucza API (service_role dla operacji administracyjnych)
@@ -266,15 +269,15 @@ Możesz przetestować funkcjonalność:
 
 ```sql
 -- Przetestuj dodanie difficulty do frazy
-UPDATE phrases 
-SET difficulty = 'hard' 
-WHERE id = '<some-phrase-id>' 
+UPDATE phrases
+SET difficulty = 'hard'
+WHERE id = '<some-phrase-id>'
 RETURNING id, en_text, difficulty;
 
 -- Przetestuj filtrowanie
-SELECT id, en_text, difficulty 
-FROM phrases 
-WHERE difficulty = 'hard' 
+SELECT id, en_text, difficulty
+FROM phrases
+WHERE difficulty = 'hard'
 LIMIT 5;
 ```
 
@@ -289,4 +292,3 @@ Po pomyślnej migracji:
    - Oznaczanie difficulty w LearnView (klawisze 1/2/3/0)
    - Masowe oznaczanie w NotebookView
 3. ✅ Sprawdź czy wszystkie istniejące frazy mają `difficulty = NULL` (co jest poprawne - oznacza "unset")
-

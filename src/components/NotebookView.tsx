@@ -4,7 +4,9 @@ import { useApi } from "../lib/hooks/useApi";
 import { ToastProvider, useToast } from "./ui/toast";
 import GenerateAudioButton from "./GenerateAudioButton";
 import ExportZipButton from "./ExportZipButton";
+import MobileActionMenu from "./MobileActionMenu";
 import { Trash2 } from "lucide-react";
+import DifficultyBadge from "./DifficultyBadge";
 import type {
   PhraseDTO,
   PhraseListResponse,
@@ -28,11 +30,6 @@ interface NotebookState {
   activeJob: JobDTO | null;
 }
 
-// Helper to get difficulty display value
-const getDifficultyDisplay = (difficulty: PhraseDifficulty | null): PhraseDifficultyOrUnset => {
-  return difficulty || "unset";
-};
-
 // Internal component that uses toast
 function NotebookViewContent({ notebookId }: NotebookViewProps) {
   const { apiCall, isAuthenticated } = useApi();
@@ -51,7 +48,14 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
   useEffect(() => {
     if (typeof window !== "undefined" && typeof localStorage !== "undefined") {
       const savedFilter = localStorage.getItem(`notebook-difficulty-filter-${notebookId}`);
-      if (savedFilter && (savedFilter === "all" || savedFilter === "unset" || savedFilter === "easy" || savedFilter === "medium" || savedFilter === "hard")) {
+      if (
+        savedFilter &&
+        (savedFilter === "all" ||
+          savedFilter === "unset" ||
+          savedFilter === "easy" ||
+          savedFilter === "medium" ||
+          savedFilter === "hard")
+      ) {
         setDifficultyFilter(savedFilter as PhraseDifficultyOrUnset | "all");
       }
     }
@@ -326,12 +330,12 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">{state.notebook?.name || "Notebook"}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{state.phrases.length} phrases</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">{state.notebook?.name || "Notebook"}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{state.phrases.length} phrases</p>
         </div>
         <div className="flex items-center gap-3">
           <a href="/notebooks" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -368,44 +372,96 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
 
       {/* Phrases table */}
       <div className="bg-card border border-border rounded-lg">
-        <div className="p-4 border-b border-border">
+        <div className="p-3 sm:p-4 border-b border-border">
           <div className="flex flex-col gap-3">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <h2 className="text-lg font-semibold">Phrases</h2>
-            <div className="flex items-center gap-2 flex-wrap">
-              <Button asChild size="sm" variant="default" className="shrink-0">
-                <a
-                  href={`/player/${notebookId}${difficultyFilter !== "all" ? `?difficulty=${difficultyFilter}` : ""}`}
-                  title="Open Player"
-                >
-                  Open Player
-                </a>
-              </Button>
-              <Button asChild size="sm" variant="default" className="shrink-0">
-                <a
-                  href={`/notebooks/${notebookId}/learn${difficultyFilter !== "all" ? `?difficulty=${difficultyFilter}` : ""}`}
-                  title="Open Learn Mode"
-                >
-                  Learn mode
-                </a>
-              </Button>
-              <GenerateAudioButton
-                notebookId={notebookId}
-                onJobCreated={handleJobCreated}
-                onJobCompleted={handleJobCompleted}
-                onJobUpdated={handleJobUpdated}
-                activeJobId={state.activeJob?.id || null}
-              />
-              <ExportZipButton
-                notebookId={notebookId}
-                disabled={!state.notebook?.current_build_id}
-                disabledReason={!state.notebook?.current_build_id ? "Generate audio first to enable export" : undefined}
-              />
+              {/* Desktop actions */}
+              <div className="hidden md:flex items-center gap-2 flex-wrap">
+                <Button asChild size="sm" variant="default" className="shrink-0">
+                  <a
+                    href={`/player/${notebookId}${difficultyFilter !== "all" ? `?difficulty=${difficultyFilter}` : ""}`}
+                    title="Open Player"
+                  >
+                    Player
+                  </a>
+                </Button>
+                <Button asChild size="sm" variant="default" className="shrink-0">
+                  <a
+                    href={`/notebooks/${notebookId}/learn${difficultyFilter !== "all" ? `?difficulty=${difficultyFilter}` : ""}`}
+                    title="Open Learn Mode"
+                  >
+                    Learn
+                  </a>
+                </Button>
+                <GenerateAudioButton
+                  notebookId={notebookId}
+                  onJobCreated={handleJobCreated}
+                  onJobCompleted={handleJobCompleted}
+                  onJobUpdated={handleJobUpdated}
+                  activeJobId={state.activeJob?.id || null}
+                />
+                <ExportZipButton
+                  notebookId={notebookId}
+                  disabled={!state.notebook?.current_build_id}
+                  disabledReason={
+                    !state.notebook?.current_build_id ? "Generate audio first to enable export" : undefined
+                  }
+                />
+              </div>
             </div>
+
+            {/* Mobile actions */}
+            <div className="md:hidden">
+              <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-stretch">
+                <Button asChild size="lg" variant="default" className="w-full">
+                  <a
+                    href={`/player/${notebookId}${difficultyFilter !== "all" ? `?difficulty=${difficultyFilter}` : ""}`}
+                    title="Open Player"
+                  >
+                    Player
+                  </a>
+                </Button>
+                <Button asChild size="lg" variant="secondary" className="w-full">
+                  <a
+                    href={`/notebooks/${notebookId}/learn${difficultyFilter !== "all" ? `?difficulty=${difficultyFilter}` : ""}`}
+                    title="Open Learn Mode"
+                  >
+                    Learn
+                  </a>
+                </Button>
+
+                <MobileActionMenu triggerLabel="Actions" triggerIcon triggerVariant="outline" triggerSize="icon">
+                  {() => (
+                    <div className="space-y-2">
+                      <GenerateAudioButton
+                        notebookId={notebookId}
+                        onJobCreated={handleJobCreated}
+                        onJobCompleted={handleJobCompleted}
+                        onJobUpdated={handleJobUpdated}
+                        activeJobId={state.activeJob?.id || null}
+                        containerClassName="w-full"
+                        buttonClassName="w-full"
+                      />
+                      <ExportZipButton
+                        notebookId={notebookId}
+                        disabled={!state.notebook?.current_build_id}
+                        disabledReason={
+                          !state.notebook?.current_build_id ? "Generate audio first to enable export" : undefined
+                        }
+                        showLabel
+                        size="default"
+                        variant="default"
+                        className="w-full justify-start"
+                      />
+                    </div>
+                  )}
+                </MobileActionMenu>
+              </div>
             </div>
             {/* Difficulty filter and bulk actions */}
             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="hidden md:flex items-center gap-2 flex-wrap">
                 <span className="text-sm text-muted-foreground">Filter:</span>
                 <Button
                   variant={difficultyFilter === "all" ? "default" : "outline"}
@@ -443,47 +499,89 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                   Hard
                 </Button>
               </div>
+
+              <div className="md:hidden w-full space-y-2">
+                <div className="text-sm text-muted-foreground">Filter</div>
+                <select
+                  value={difficultyFilter}
+                  onChange={(e) => setDifficultyFilter(e.target.value as PhraseDifficultyOrUnset | "all")}
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                  aria-label="Difficulty filter"
+                >
+                  <option value="all">All</option>
+                  <option value="unset">Unset</option>
+                  <option value="easy">Easy</option>
+                  <option value="medium">Medium</option>
+                  <option value="hard">Hard</option>
+                </select>
+              </div>
               {selectedPhraseIds.size > 0 && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm text-muted-foreground">
-                    {selectedPhraseIds.size} selected:
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleBulkUpdateDifficulty("easy")}
-                  >
-                    Mark Easy
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleBulkUpdateDifficulty("medium")}
-                  >
-                    Mark Medium
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleBulkUpdateDifficulty("hard")}
-                  >
-                    Mark Hard
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleBulkUpdateDifficulty(null)}
-                  >
-                    Clear
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setSelectedPhraseIds(new Set())}
-                  >
-                    Deselect All
-                  </Button>
-                </div>
+                <>
+                  <div className="hidden md:flex items-center gap-2 flex-wrap">
+                    <span className="text-sm text-muted-foreground">{selectedPhraseIds.size} selected:</span>
+                    <Button variant="default" size="sm" onClick={() => handleBulkUpdateDifficulty("easy")}>
+                      Mark Easy
+                    </Button>
+                    <Button variant="default" size="sm" onClick={() => handleBulkUpdateDifficulty("medium")}>
+                      Mark Medium
+                    </Button>
+                    <Button variant="default" size="sm" onClick={() => handleBulkUpdateDifficulty("hard")}>
+                      Mark Hard
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => handleBulkUpdateDifficulty(null)}>
+                      Clear
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setSelectedPhraseIds(new Set())}>
+                      Deselect All
+                    </Button>
+                  </div>
+
+                  <div className="md:hidden w-full space-y-2">
+                    <div className="text-sm text-muted-foreground">{selectedPhraseIds.size} selected</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => handleBulkUpdateDifficulty("easy")}
+                      >
+                        Easy
+                      </Button>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => handleBulkUpdateDifficulty("medium")}
+                      >
+                        Medium
+                      </Button>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => handleBulkUpdateDifficulty("hard")}
+                      >
+                        Hard
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => handleBulkUpdateDifficulty(null)}
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => setSelectedPhraseIds(new Set())}
+                    >
+                      Deselect All
+                    </Button>
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -525,26 +623,6 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
         )}
       </div>
     </div>
-  );
-}
-
-// Difficulty Badge Component
-function DifficultyBadge({ difficulty }: { difficulty: PhraseDifficulty | null }) {
-  const display = getDifficultyDisplay(difficulty);
-  const colors = {
-    easy: "bg-green-500/20 text-green-300 border-green-500/40",
-    medium: "bg-yellow-500/20 text-yellow-300 border-yellow-500/40",
-    hard: "bg-red-500/20 text-red-300 border-red-500/40",
-    unset: "bg-muted text-muted-foreground border-transparent",
-  };
-
-  return (
-    <span
-      className={`text-xs font-medium px-2 py-0.5 rounded border ${colors[display]}`}
-      title={`Difficulty: ${display}`}
-    >
-      {display === "unset" ? "—" : display}
-    </span>
   );
 }
 
@@ -643,14 +721,7 @@ interface PhraseRowProps {
   onSelectionChange: (ids: Set<string>) => void;
 }
 
-function PhraseRow({
-  phrase,
-  index,
-  onDelete,
-  onRowClick,
-  selectedPhraseIds,
-  onSelectionChange,
-}: PhraseRowProps) {
+function PhraseRow({ phrase, index, onDelete, onRowClick, selectedPhraseIds, onSelectionChange }: PhraseRowProps) {
   const isSelected = selectedPhraseIds.has(phrase.id);
 
   const handleClick = (e: React.MouseEvent) => {
@@ -797,14 +868,7 @@ interface PhraseCardProps {
   onSelectionChange: (ids: Set<string>) => void;
 }
 
-function PhraseCard({
-  phrase,
-  index,
-  onDelete,
-  onRowClick,
-  selectedPhraseIds,
-  onSelectionChange,
-}: PhraseCardProps) {
+function PhraseCard({ phrase, index, onDelete, onRowClick, selectedPhraseIds, onSelectionChange }: PhraseCardProps) {
   const isSelected = selectedPhraseIds.has(phrase.id);
 
   const handleClick = (e: React.MouseEvent) => {

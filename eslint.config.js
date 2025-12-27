@@ -89,7 +89,24 @@ const nodeScriptsConfig = tseslint.config({
   },
 });
 
+// Ignore patterns for performance
+const ignoreConfig = tseslint.config({
+  ignores: [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/.astro/**",
+    "**/coverage/**",
+    "**/*.min.js",
+    "**/*.bundle.js",
+    "**/build/**",
+    "**/.next/**",
+    "**/.vercel/**",
+    "**/.cache/**",
+  ],
+});
+
 export default tseslint.config(
+  ignoreConfig,
   includeIgnoreFile(gitignorePath),
   baseConfig,
   jsxA11yConfig,

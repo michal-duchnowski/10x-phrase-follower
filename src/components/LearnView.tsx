@@ -18,6 +18,8 @@ import { compareWordBankAnswer, tokenizePhrase } from "../lib/word-bank.service"
 import AnswerDiffView from "./learn/AnswerDiffView";
 import PhraseTokenPills from "./learn/PhraseTokenPills";
 import WordBank from "./learn/WordBank";
+import MobileActionMenu from "./MobileActionMenu";
+import DifficultyBadge from "./DifficultyBadge";
 
 interface LearnViewProps {
   notebookId: string;
@@ -870,7 +872,7 @@ function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilte
 
   if (!isAuthenticated) {
     return (
-      <div className="max-w-5xl mx-auto px-4 md:p-6">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 md:p-6">
         <div className="text-center py-12">
           <p className="text-muted-foreground">Authentication required</p>
         </div>
@@ -880,7 +882,7 @@ function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilte
 
   if (manifestLoading) {
     return (
-      <div className="max-w-5xl mx-auto px-4 md:p-6">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 md:p-6">
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div className="h-8 bg-muted animate-pulse rounded w-48" />
@@ -903,11 +905,11 @@ function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilte
 
   if (manifestError) {
     return (
-      <div className="max-w-5xl mx-auto px-4 md:p-6">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 md:p-6">
         <div className="space-y-6">
           <div className="mb-6 flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-foreground">Learn mode</h1>
+              <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Learn mode</h1>
             </div>
             <a
               href={`/notebooks/${notebookId}`}
@@ -930,7 +932,7 @@ function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilte
     <div className="space-y-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Learn mode</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Learn mode</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Notebook: <span className="text-foreground">{notebookName || notebookId}</span>
           </p>
@@ -946,7 +948,9 @@ function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilte
       <div className="bg-card border border-border rounded-lg p-6 space-y-6">
         <div className="space-y-1">
           <h2 className="text-lg font-semibold text-foreground">Session settings</h2>
-          <p className="text-sm text-muted-foreground">Choose direction and order for this learning session.</p>
+          <p className="hidden sm:block text-sm text-muted-foreground">
+            Choose direction and order for this learning session.
+          </p>
         </div>
 
         <div className="grid gap-4 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
@@ -1047,7 +1051,7 @@ function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilte
                     </span>
                   </button>
                   {session.answerInputMode === "hybrid" && (
-                    <p className="text-xs text-muted-foreground mt-1.5">
+                    <p className="hidden sm:block text-xs text-muted-foreground mt-1.5">
                       Automatically uses text input for 1-2 words, word bank for 3+ words.
                     </p>
                   )}
@@ -1056,13 +1060,13 @@ function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilte
             </div>
           </div>
 
-          <div className="space-y-3 rounded-md bg-muted/40 border border-dashed border-border/80 p-4">
+          <div className="space-y-2 rounded-md bg-muted/40 border border-dashed border-border/80 p-3 sm:p-4">
             <div className="text-sm font-medium text-foreground">
               {phraseCount === 0
                 ? "No phrases"
                 : `${phraseCount} phrase${phraseCount === 1 ? "" : "s"} in this notebook`}
             </div>
-            <p className="text-xs text-muted-foreground leading-relaxed">
+            <p className="hidden sm:block text-xs text-muted-foreground leading-relaxed">
               You will work card by card. At the end of each round, only incorrect phrases will be repeated in the next
               round.
             </p>
@@ -1174,53 +1178,20 @@ function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilte
         {/* Header with notebook name and progress */}
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Learn mode</h1>
-            <p className="text-sm text-muted-foreground mt-1">
+            <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Learn mode</h1>
+            <p className="text-sm sm:text-base text-muted-foreground mt-1">
               Round {session.roundNumber} · {progressLabel}
+              <DifficultyBadge difficulty={currentPhrase.difficulty} className="ml-2" labelPrefix="Difficulty" />
             </p>
           </div>
-          <a
-            href={`/notebooks/${notebookId}`}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            ← Back to Notebook
-          </a>
-        </div>
-
-        {/* Difficulty marking buttons (for mobile) */}
-        <div className="flex flex-col gap-2 mb-4">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-muted-foreground">Mark difficulty:</span>
-            <Button
-              variant={currentPhrase.difficulty === "easy" ? "default" : "outline"}
-              size="sm"
-              onClick={() => handleMarkDifficulty("easy")}
+          <div className="flex items-center gap-2">
+            <a
+              href={`/notebooks/${notebookId}`}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              Easy
-            </Button>
-            <Button
-              variant={currentPhrase.difficulty === "medium" ? "default" : "outline"}
-              size="sm"
-              onClick={() => handleMarkDifficulty("medium")}
-            >
-              Medium
-            </Button>
-            <Button
-              variant={currentPhrase.difficulty === "hard" ? "default" : "outline"}
-              size="sm"
-              onClick={() => handleMarkDifficulty("hard")}
-            >
-              Hard
-            </Button>
-            <Button
-              variant={!currentPhrase.difficulty ? "default" : "outline"}
-              size="sm"
-              onClick={() => handleMarkDifficulty(null)}
-            >
-              Clear
-            </Button>
+              ← Back to Notebook
+            </a>
           </div>
-          <div className="text-xs text-muted-foreground">Keyboard shortcuts: 1=Easy, 2=Medium, 3=Hard, 0=Clear</div>
         </div>
 
         <div className="bg-card border border-border rounded-lg p-5 md:p-6 space-y-5">
@@ -1255,7 +1226,7 @@ function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilte
                   : ""
             }`}
           >
-            <div className="flex items-center gap-2 mb-2">
+            <div className="hidden sm:flex items-center gap-2 mb-2">
               <span
                 className={`text-xs font-medium px-2 py-0.5 rounded border ${
                   promptLang === "en"
@@ -1276,7 +1247,7 @@ function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilte
               />
             ) : (
               <div
-                className="text-base md:text-lg leading-6 md:leading-7 text-foreground"
+                className="text-base min-[480px]:text-lg sm:text-xl lg:text-2xl leading-6 min-[480px]:leading-7 sm:leading-7 lg:leading-8 text-foreground"
                 dangerouslySetInnerHTML={{ __html: promptHtml }}
               />
             )}
@@ -1304,7 +1275,7 @@ function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilte
                   </label>
                   <textarea
                     ref={textareaRef}
-                    className="w-full min-h-[72px] rounded-md border border-border bg-card px-3 py-2 text-base md:text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    className="w-full min-h-[72px] rounded-md border border-border bg-card px-3 py-2 text-base min-[480px]:text-lg sm:text-xl text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     placeholder={
                       session.direction === "en_to_pl"
                         ? "Type the Polish translation…"
@@ -1376,6 +1347,57 @@ function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilte
                 result={currentCardResult?.backendResult ?? null}
               />
 
+              {/* Difficulty marking - After check (desktop/tablet) */}
+              <div className="hidden sm:block">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm text-muted-foreground">
+                    Difficulty{" "}
+                    <DifficultyBadge
+                      difficulty={currentPhrase.difficulty}
+                      className="ml-2 align-middle"
+                      labelPrefix="Difficulty"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap justify-end">
+                    <Button
+                      type="button"
+                      variant={currentPhrase.difficulty === "easy" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => handleMarkDifficulty("easy")}
+                    >
+                      Easy
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={currentPhrase.difficulty === "medium" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => handleMarkDifficulty("medium")}
+                    >
+                      Medium
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={currentPhrase.difficulty === "hard" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => handleMarkDifficulty("hard")}
+                    >
+                      Hard
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={!currentPhrase.difficulty ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => handleMarkDifficulty(null)}
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                </div>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Keyboard shortcuts: 1=Easy, 2=Medium, 3=Hard, 0=Clear
+                </div>
+              </div>
+
               {/* Controls - After check */}
               <div className="hidden sm:flex justify-end pt-2">
                 <Button type="button" size="sm" onClick={goToNextCard}>
@@ -1399,13 +1421,13 @@ function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilte
   const currentIsChecked = currentCardResult?.isChecked ?? false;
 
   return (
-    <div className="max-w-5xl mx-auto px-4 pb-32 md:p-6 md:pb-6">
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-32 md:p-6 md:pb-6">
       {content}
 
       {/* Mobile action bar (matches Player's fixed bottom controls) */}
       {session.phase === "in_progress" && currentPhrase && (
         <div className="fixed inset-x-0 bottom-0 z-30 bg-background/95 backdrop-blur border-t pb-[env(safe-area-inset-bottom)] sm:hidden">
-          <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3 justify-end">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center gap-3 justify-end">
             {!currentIsChecked ? (
               <>
                 <Button type="button" onClick={handleSkip}>
@@ -1427,9 +1449,74 @@ function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilte
                 )}
               </>
             ) : (
-              <Button type="button" className="flex-1" onClick={goToNextCard}>
-                {session.currentIndex >= session.currentRound.length - 1 ? "Finish round" : "Next card"}
-              </Button>
+              <>
+                <MobileActionMenu
+                  triggerLabel="Difficulty"
+                  triggerIcon
+                  triggerVariant="default"
+                  triggerSize="lg"
+                  triggerClassName="w-[9.5rem] justify-center"
+                  side="top"
+                >
+                  {({ close }) => (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          type="button"
+                          variant="default"
+                          size="sm"
+                          className="w-full"
+                          onClick={() => {
+                            handleMarkDifficulty("easy");
+                            close();
+                          }}
+                        >
+                          Easy
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="default"
+                          size="sm"
+                          className="w-full"
+                          onClick={() => {
+                            handleMarkDifficulty("medium");
+                            close();
+                          }}
+                        >
+                          Medium
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="default"
+                          size="sm"
+                          className="w-full"
+                          onClick={() => {
+                            handleMarkDifficulty("hard");
+                            close();
+                          }}
+                        >
+                          Hard
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={!currentPhrase.difficulty ? "default" : "outline"}
+                          size="sm"
+                          className="w-full"
+                          onClick={() => {
+                            handleMarkDifficulty(null);
+                            close();
+                          }}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </MobileActionMenu>
+                <Button type="button" className="flex-1" onClick={goToNextCard}>
+                  {session.currentIndex >= session.currentRound.length - 1 ? "Finish round" : "Next card"}
+                </Button>
+              </>
             )}
           </div>
         </div>

@@ -4,13 +4,30 @@ import { useToast } from "./ui/toast";
 import { useApi } from "../lib/hooks/useApi";
 import { Download } from "lucide-react";
 
+type ButtonVariant = "default" | "destructive" | "outline" | "secondary" | "ghost" | "link";
+type ButtonSize = "default" | "sm" | "lg" | "icon";
+
 interface ExportZipButtonProps {
   notebookId: string;
   disabled?: boolean;
   disabledReason?: string;
+  showLabel?: boolean;
+  label?: string;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  className?: string;
 }
 
-export default function ExportZipButton({ notebookId, disabled = false, disabledReason }: ExportZipButtonProps) {
+export default function ExportZipButton({
+  notebookId,
+  disabled = false,
+  disabledReason,
+  showLabel = false,
+  label = "Download ZIP",
+  variant = "default",
+  size = "sm",
+  className,
+}: ExportZipButtonProps) {
   const { addToast } = useToast();
   const { token, isAuthenticated } = useApi();
   const [isExporting, setIsExporting] = useState(false);
@@ -107,12 +124,13 @@ export default function ExportZipButton({ notebookId, disabled = false, disabled
     <Button
       onClick={handleExport}
       disabled={disabled || isExporting || !isAuthenticated}
-      variant="default"
-      size="sm"
+      variant={variant}
+      size={size}
       title={disabledReason || (isExporting ? "Exporting..." : "Export ZIP file")}
-      className={`p-2 shrink-0 ${isExporting ? "export-pulsing" : ""}`}
+      className={`${showLabel ? "gap-2 px-3" : "p-2"} shrink-0 ${isExporting ? "export-pulsing" : ""} ${className || ""}`}
     >
       <Download className="size-4" />
+      {showLabel && <span>{label}</span>}
     </Button>
   );
 }

@@ -77,7 +77,7 @@ export default function PhraseTokenPills({
 
   const base =
     size === "lg"
-      ? "rounded-md px-2 py-1 text-base md:text-lg leading-5 md:leading-6"
+      ? "rounded-md px-2 py-1 text-base min-[480px]:text-lg sm:text-xl lg:text-2xl leading-5 min-[480px]:leading-6 sm:leading-7 lg:leading-8"
       : "rounded-md px-2 py-1 text-sm leading-5";
 
   const tokenClass = highlight

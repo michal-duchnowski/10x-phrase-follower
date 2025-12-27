@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "./ui/button";
 import { useApi } from "../lib/hooks/useApi";
 import { useToast } from "./ui/toast";
-import { generateUUID } from "../lib/utils";
+import { cn, generateUUID } from "../lib/utils";
 import type { TtsCredentialsStateDTO, UserVoicesListResponse, JobDTO } from "../types";
 
 interface GenerateAudioButtonProps {
@@ -11,6 +11,8 @@ interface GenerateAudioButtonProps {
   onJobCompleted?: (job: JobDTO | null) => void;
   onJobUpdated?: (job: JobDTO) => void;
   activeJobId?: string | null;
+  containerClassName?: string;
+  buttonClassName?: string;
 }
 
 interface GenerationState {
@@ -28,6 +30,8 @@ export default function GenerateAudioButton({
   onJobCompleted,
   onJobUpdated,
   activeJobId,
+  containerClassName,
+  buttonClassName,
 }: GenerateAudioButtonProps) {
   const { apiCall } = useApi();
   const { addToast } = useToast();
@@ -278,13 +282,13 @@ export default function GenerateAudioButton({
   };
 
   return (
-    <div className="flex flex-col gap-2 shrink-0">
+    <div className={cn("flex flex-col gap-2", containerClassName)}>
       <Button
         onClick={handleGenerateAudio}
         disabled={getButtonDisabled()}
         variant={getButtonVariant()}
         title={getTooltipText()}
-        className="min-w-[140px] shrink-0"
+        className={cn("min-w-[140px]", buttonClassName)}
       >
         {getButtonText()}
       </Button>

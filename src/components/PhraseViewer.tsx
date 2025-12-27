@@ -194,7 +194,7 @@ export default function PhraseViewer({
               key={index}
               onClick={() => onSeekToToken(index, language)}
               className={`
-                rounded-md px-2 py-1 text-base md:text-lg leading-5 md:leading-6
+                rounded-md px-2 py-1 text-base min-[480px]:text-lg sm:text-xl lg:text-2xl leading-5 min-[480px]:leading-6 sm:leading-7 lg:leading-8
                 transition-all duration-200
                 ${
                   isTokenActive
@@ -228,7 +228,7 @@ export default function PhraseViewer({
   const renderLanguageBadge = (language: "en" | "pl", label: string) => {
     const isActive = activeLang === language;
     return (
-      <div className="flex items-center gap-2 mb-1">
+      <div className="hidden sm:flex items-center gap-2 mb-1">
         <span
           className={`text-xs font-medium px-2 py-0.5 rounded ${
             isActive
