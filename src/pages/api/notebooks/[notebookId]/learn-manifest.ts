@@ -26,12 +26,25 @@ async function fetchNotebookForUser(supabase: Supabase, notebookId: string, user
   return notebook;
 }
 
-async function fetchPhrasesForNotebook(supabase: Supabase, notebookId: string) {
-  const { data, error } = await supabase
+async function fetchPhrasesForNotebook(supabase: Supabase, notebookId: string, difficultyFilter?: string) {
+  let query = supabase
     .from("phrases")
-    .select("id, position, en_text, pl_text, tokens")
+    .select("id, position, en_text, pl_text, tokens, difficulty")
     .eq("notebook_id", notebookId)
     .order("position");
+
+  // Apply difficulty filter if provided
+  if (difficultyFilter) {
+    if (difficultyFilter === "unset") {
+      query = query.is("difficulty", null);
+    } else if (difficultyFilter === "easy" || difficultyFilter === "medium" || difficultyFilter === "hard") {
+      query = query.eq("difficulty", difficultyFilter);
+    } else {
+      throw ApiErrors.validationError("Invalid difficulty filter. Must be 'easy', 'medium', 'hard', or 'unset'");
+    }
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     // eslint-disable-next-line no-console
@@ -125,7 +138,11 @@ const getLearnManifest = async (context: APIContext): Promise<Response> => {
 
   await fetchNotebookForUser(supabase, notebookId, locals.userId);
 
-  const phrases = await fetchPhrasesForNotebook(supabase, notebookId);
+  // Parse difficulty filter from query params
+  const url = new URL(context.request.url);
+  const difficultyParam = url.searchParams.get("difficulty");
+
+  const phrases = await fetchPhrasesForNotebook(supabase, notebookId, difficultyParam || undefined);
 
   if (phrases.length === 0) {
     const emptyResponse: LearnManifestDTO = {
@@ -160,6 +177,7 @@ const getLearnManifest = async (context: APIContext): Promise<Response> => {
         en_text: phrase.en_text,
         pl_text: phrase.pl_text,
         tokens: (phrase.tokens as LearnManifestDTO["phrases"][number]["tokens"]) ?? null,
+        difficulty: phrase.difficulty,
         audio,
       };
     }),

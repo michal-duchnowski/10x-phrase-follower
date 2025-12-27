@@ -212,15 +212,30 @@ export async function GET(context: APIContext) {
       });
     }
 
+    // Parse difficulty filter from query params
+    const url = new URL(context.request.url);
+    const difficultyParam = url.searchParams.get("difficulty");
+
     // Get phrases for the notebook
     let phrasesQuery = supabase
       .from("phrases")
-      .select("id, position, en_text, pl_text, tokens")
+      .select("id, position, en_text, pl_text, tokens, difficulty")
       .eq("notebook_id", notebookId)
       .order("position");
 
     if (phraseIds && phraseIds.length > 0) {
       phrasesQuery = phrasesQuery.in("id", phraseIds);
+    }
+
+    // Apply difficulty filter if provided
+    if (difficultyParam) {
+      if (difficultyParam === "unset") {
+        phrasesQuery = phrasesQuery.is("difficulty", null);
+      } else if (difficultyParam === "easy" || difficultyParam === "medium" || difficultyParam === "hard") {
+        phrasesQuery = phrasesQuery.eq("difficulty", difficultyParam);
+      } else {
+        throw ApiErrors.validationError("Invalid difficulty filter. Must be 'easy', 'medium', 'hard', or 'unset'");
+      }
     }
 
     const { data: phrasesData, error: phrasesError } = await phrasesQuery;
@@ -358,6 +373,7 @@ export async function GET(context: APIContext) {
           en_text: phrase.en_text,
           pl_text: phrase.pl_text,
           tokens: phraseTokens,
+          difficulty: phrase.difficulty,
         },
         segments: orderedSegments.map(
           (segment): PlaybackManifestSegment => ({

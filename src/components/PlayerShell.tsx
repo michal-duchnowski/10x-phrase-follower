@@ -7,12 +7,15 @@ import type {
   WordTiming,
   VoiceSlot,
   PlaybackSpeed,
+  PhraseDifficultyOrUnset,
+  PhraseDifficulty,
 } from "../types";
 import PlayerControls from "./PlayerControls";
 import SegmentSequenceBar from "./SegmentSequenceBar";
 import PhraseViewer from "./PhraseViewer";
 import KeyboardShortcutsHandler from "./KeyboardShortcutsHandler";
 import RefreshManifestButton from "./RefreshManifestButton";
+import { Button } from "./ui/button";
 import { usePlaybackEngine } from "../lib/hooks/usePlaybackEngine";
 import { useSignedUrlGuard } from "../lib/hooks/useSignedUrlGuard";
 import { useClickToSeek } from "../lib/hooks/useClickToSeek";
@@ -22,9 +25,10 @@ import { useApi } from "../lib/hooks/useApi";
 interface PlayerShellProps {
   notebookId: string;
   startPhraseId?: string;
+  difficultyFilter?: string;
 }
 
-export default function PlayerShell({ notebookId, startPhraseId }: PlayerShellProps) {
+export default function PlayerShell({ notebookId, startPhraseId, difficultyFilter: initialDifficultyFilter }: PlayerShellProps) {
   // Authentication
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { apiCall } = useApi();
@@ -40,6 +44,16 @@ export default function PlayerShell({ notebookId, startPhraseId }: PlayerShellPr
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  // Get difficulty filter from props (URL params) - no localStorage fallback
+  const difficultyFilter: PhraseDifficultyOrUnset | "all" =
+    initialDifficultyFilter &&
+    (initialDifficultyFilter === "all" ||
+      initialDifficultyFilter === "unset" ||
+      initialDifficultyFilter === "easy" ||
+      initialDifficultyFilter === "medium" ||
+      initialDifficultyFilter === "hard")
+      ? (initialDifficultyFilter as PhraseDifficultyOrUnset | "all")
+      : "all";
   const toastRef = useRef<{ show: (message: string) => void } | null>(null);
 
   // Detect mobile
@@ -74,9 +88,11 @@ export default function PlayerShell({ notebookId, startPhraseId }: PlayerShellPr
       setLoading(true);
       setError(null);
 
-      const data = await apiCall<PlaybackManifestDTO>(
-        `/api/notebooks/${notebookId}/playback-manifest?highlight=${highlight ? "on" : "off"}&speed=${speed}`
-      );
+      let manifestUrl = `/api/notebooks/${notebookId}/playback-manifest?highlight=${highlight ? "on" : "off"}&speed=${speed}`;
+      if (difficultyFilter !== "all") {
+        manifestUrl += `&difficulty=${difficultyFilter}`;
+      }
+      const data = await apiCall<PlaybackManifestDTO>(manifestUrl);
 
       // eslint-disable-next-line no-console
       console.log("[PlayerShell] Playback manifest loaded:", data);
@@ -91,6 +107,7 @@ export default function PlayerShell({ notebookId, startPhraseId }: PlayerShellPr
             position: item.phrase.position,
             en_text: item.phrase.en_text,
             pl_text: item.phrase.pl_text,
+            difficulty: item.phrase.difficulty,
             tokens: {
               en:
                 item.phrase.tokens?.en?.map((t) => ({
@@ -130,7 +147,7 @@ export default function PlayerShell({ notebookId, startPhraseId }: PlayerShellPr
     } finally {
       setLoading(false);
     }
-  }, [notebookId, highlight, speed, isAuthenticated, apiCall]);
+  }, [notebookId, highlight, speed, difficultyFilter, isAuthenticated, apiCall]);
 
   // Initial manifest fetch
   useEffect(() => {
@@ -289,6 +306,33 @@ export default function PlayerShell({ notebookId, startPhraseId }: PlayerShellPr
     await fetchManifest();
   }, [fetchManifest]);
 
+  // Handle difficulty marking
+  const handleMarkDifficulty = useCallback(
+    async (difficulty: PhraseDifficulty | null) => {
+      if (!currentPhrase) return;
+
+      try {
+        await apiCall(`/api/phrases/${currentPhrase.phrase.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ difficulty }),
+        });
+
+        // Reload manifest to reflect the change
+        await fetchManifest();
+
+        const difficultyLabel = difficulty || "unset";
+        if (toastRef.current) {
+          toastRef.current.show(`Marked as ${difficultyLabel}`);
+        }
+      } catch (err) {
+        if (toastRef.current) {
+          toastRef.current.show(`Failed to update difficulty: ${err instanceof Error ? err.message : "Unknown error"}`);
+        }
+      }
+    },
+    [currentPhrase, apiCall, fetchManifest]
+  );
+
   // Touch gesture handlers
   const handleSwipeLeft = useCallback(() => {
     onAdvanceNext();
@@ -325,6 +369,7 @@ export default function PlayerShell({ notebookId, startPhraseId }: PlayerShellPr
     onSeekLarge: seekLarge,
     onPrevPhrase: onAdvancePrev,
     onNextPhrase: onAdvanceNext,
+    onMarkDifficulty: handleMarkDifficulty,
   };
 
   if (authLoading) {
@@ -390,20 +435,66 @@ export default function PlayerShell({ notebookId, startPhraseId }: PlayerShellPr
       <KeyboardShortcutsHandler {...shortcuts} />
 
       {/* Header with title, phrase counter and Back to Notebook link (no extra row) */}
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Audio Player</h1>
-          <p className="text-sm text-muted-foreground mt-1" aria-live="polite" aria-atomic="true">
-            Phrase <span className="font-medium text-foreground">{phraseIndex + 1}</span> of{" "}
-            <span className="font-medium text-foreground">{manifest.sequence.length}</span>
-          </p>
+      <div className="mb-6 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Audio Player</h1>
+            <p className="text-sm text-muted-foreground mt-1" aria-live="polite" aria-atomic="true">
+              Phrase <span className="font-medium text-foreground">{phraseIndex + 1}</span> of{" "}
+              <span className="font-medium text-foreground">{manifest.sequence.length}</span>
+              {currentPhrase?.phrase.difficulty && (
+                <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded border bg-muted text-muted-foreground">
+                  {currentPhrase.phrase.difficulty}
+                </span>
+              )}
+            </p>
+          </div>
+          <a
+            href={`/notebooks/${notebookId}`}
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            ← Back to Notebook
+          </a>
         </div>
-        <a
-          href={`/notebooks/${notebookId}`}
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          ← Back to Notebook
-        </a>
+        {/* Difficulty marking buttons (for mobile) */}
+        {currentPhrase && (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-muted-foreground">Mark difficulty:</span>
+              <Button
+                variant={currentPhrase.phrase.difficulty === "easy" ? "default" : "outline"}
+                size="sm"
+                onClick={() => handleMarkDifficulty("easy")}
+              >
+                Easy
+              </Button>
+              <Button
+                variant={currentPhrase.phrase.difficulty === "medium" ? "default" : "outline"}
+                size="sm"
+                onClick={() => handleMarkDifficulty("medium")}
+              >
+                Medium
+              </Button>
+              <Button
+                variant={currentPhrase.phrase.difficulty === "hard" ? "default" : "outline"}
+                size="sm"
+                onClick={() => handleMarkDifficulty("hard")}
+              >
+                Hard
+              </Button>
+              <Button
+                variant={!currentPhrase.phrase.difficulty ? "default" : "outline"}
+                size="sm"
+                onClick={() => handleMarkDifficulty(null)}
+              >
+                Clear
+              </Button>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Keyboard shortcuts: 1=Easy, 2=Medium, 3=Hard, 0=Clear
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Phrase viewer - vertical layout: EN on top, PL below */}

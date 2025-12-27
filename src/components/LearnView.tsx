@@ -9,6 +9,8 @@ import type {
   LearnPhraseDTO,
   NotebookDTO,
   PlaybackManifestDTO,
+  PhraseDifficultyOrUnset,
+  PhraseDifficulty,
 } from "../types";
 import { parseMarkdownToHtml } from "../lib/utils";
 import { compareAnswers } from "../lib/learn.service";
@@ -19,6 +21,7 @@ import WordBank from "./learn/WordBank";
 
 interface LearnViewProps {
   notebookId: string;
+  difficultyFilter?: string;
 }
 
 type SessionPhase = "idle" | "in_progress" | "round_summary";
@@ -110,7 +113,7 @@ function getHasAudio(phrase: LearnPhraseDTO, direction: LearnDirection): boolean
   return direction === "en_to_pl" ? phrase.audio.has_en_audio : phrase.audio.has_pl_audio;
 }
 
-function LearnViewContent({ notebookId }: LearnViewProps) {
+function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilter }: LearnViewProps) {
   const { apiCall, isAuthenticated } = useApi();
   const { addToast } = useToast();
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -122,6 +125,16 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
   const [manifestLoading, setManifestLoading] = useState<boolean>(true);
   const [manifestError, setManifestError] = useState<string | null>(null);
   const [notebookName, setNotebookName] = useState<string | null>(null);
+  // Get difficulty filter from props (URL params) - no localStorage fallback
+  const difficultyFilter: PhraseDifficultyOrUnset | "all" =
+    initialDifficultyFilter &&
+    (initialDifficultyFilter === "all" ||
+      initialDifficultyFilter === "unset" ||
+      initialDifficultyFilter === "easy" ||
+      initialDifficultyFilter === "medium" ||
+      initialDifficultyFilter === "hard")
+      ? (initialDifficultyFilter as PhraseDifficultyOrUnset | "all")
+      : "all";
 
   const [session, setSession] = useState<LearnSessionState>(() => createInitialSessionState());
 
@@ -149,12 +162,18 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
       setManifestError(null);
 
       try {
+        // Build learn-manifest URL with difficulty filter
+        let manifestUrl = `/api/notebooks/${notebookId}/learn-manifest`;
+        if (difficultyFilter !== "all") {
+          manifestUrl += `?difficulty=${difficultyFilter}`;
+        }
+
         // Load notebook name and manifest in parallel
         const [notebookData, manifestData] = await Promise.all([
           apiCall<NotebookDTO>(`/api/notebooks/${notebookId}`, {
             method: "GET",
           }),
-          apiCall<LearnManifestDTO>(`/api/notebooks/${notebookId}/learn-manifest`, {
+          apiCall<LearnManifestDTO>(manifestUrl, {
             method: "GET",
           }),
         ]);
@@ -175,7 +194,7 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
     };
 
     loadData();
-  }, [apiCall, notebookId, isAuthenticated, addToast]);
+  }, [apiCall, notebookId, isAuthenticated, addToast, difficultyFilter]);
 
   // Fetch playback manifest for audio
   const fetchPlaybackManifest = useCallback(
@@ -724,6 +743,43 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
     handleRestartFromBeginning,
   ]);
 
+  // Handle difficulty marking
+  const handleMarkDifficulty = useCallback(
+    async (difficulty: PhraseDifficulty | null) => {
+      if (!currentPhrase) return;
+
+      try {
+        await apiCall(`/api/phrases/${currentPhrase.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ difficulty }),
+        });
+
+        // Update local manifest
+        setManifest((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            phrases: prev.phrases.map((p) => (p.id === currentPhrase.id ? { ...p, difficulty } : p)),
+          };
+        });
+
+        const difficultyLabel = difficulty || "unset";
+        addToast({
+          type: "success",
+          title: "Difficulty updated",
+          description: `Marked as ${difficultyLabel}`,
+        });
+      } catch (err) {
+        addToast({
+          type: "error",
+          title: "Update failed",
+          description: err instanceof Error ? err.message : "Failed to update difficulty",
+        });
+      }
+    },
+    [currentPhrase, apiCall, addToast]
+  );
+
   // Auto-focus textarea when new phrase appears (not checked yet, text mode only)
   useEffect(() => {
     if (
@@ -781,11 +837,36 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
           }
         }
       }
+
+      // Difficulty marking shortcuts (1/2/3/0) - only when not typing
+      if (target.tagName !== "TEXTAREA" && target.tagName !== "INPUT" && currentPhrase) {
+        if (event.key === "1") {
+          event.preventDefault();
+          handleMarkDifficulty("easy");
+        } else if (event.key === "2") {
+          event.preventDefault();
+          handleMarkDifficulty("medium");
+        } else if (event.key === "3") {
+          event.preventDefault();
+          handleMarkDifficulty("hard");
+        } else if (event.key === "0") {
+          event.preventDefault();
+          handleMarkDifficulty(null);
+        }
+      }
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [handleEnterKey, session.phase, effectiveInputMode, currentPhrase, currentCardResult, handleWordBankTokenRemove]);
+  }, [
+    handleEnterKey,
+    session.phase,
+    effectiveInputMode,
+    currentPhrase,
+    currentCardResult,
+    handleWordBankTokenRemove,
+    handleMarkDifficulty,
+  ]);
 
   if (!isAuthenticated) {
     return (
@@ -1104,6 +1185,42 @@ function LearnViewContent({ notebookId }: LearnViewProps) {
           >
             ← Back to Notebook
           </a>
+        </div>
+
+        {/* Difficulty marking buttons (for mobile) */}
+        <div className="flex flex-col gap-2 mb-4">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-muted-foreground">Mark difficulty:</span>
+            <Button
+              variant={currentPhrase.difficulty === "easy" ? "default" : "outline"}
+              size="sm"
+              onClick={() => handleMarkDifficulty("easy")}
+            >
+              Easy
+            </Button>
+            <Button
+              variant={currentPhrase.difficulty === "medium" ? "default" : "outline"}
+              size="sm"
+              onClick={() => handleMarkDifficulty("medium")}
+            >
+              Medium
+            </Button>
+            <Button
+              variant={currentPhrase.difficulty === "hard" ? "default" : "outline"}
+              size="sm"
+              onClick={() => handleMarkDifficulty("hard")}
+            >
+              Hard
+            </Button>
+            <Button
+              variant={!currentPhrase.difficulty ? "default" : "outline"}
+              size="sm"
+              onClick={() => handleMarkDifficulty(null)}
+            >
+              Clear
+            </Button>
+          </div>
+          <div className="text-xs text-muted-foreground">Keyboard shortcuts: 1=Easy, 2=Medium, 3=Hard, 0=Clear</div>
         </div>
 
         <div className="bg-card border border-border rounded-lg p-5 md:p-6 space-y-5">

@@ -4,6 +4,7 @@ import AuthGuard from "../../../components/AuthGuard";
 import LearnView from "../../../components/LearnView";
 
 const { id } = Astro.params;
+const difficulty = Astro.url.searchParams.get("difficulty");
 
 if (!id) {
   return Astro.redirect("/notebooks");
@@ -12,6 +13,6 @@ if (!id) {
 
 <AppLayout title="Learn mode - Phrase Follower" currentPath={`/notebooks/${id}/learn`} fullWidth={true}>
   <AuthGuard client:load>
-    <LearnView notebookId={id} client:load />
+    <LearnView notebookId={id} difficultyFilter={difficulty || undefined} client:load />
   </AuthGuard>
 </AppLayout>

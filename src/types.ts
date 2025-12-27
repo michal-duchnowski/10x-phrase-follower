@@ -92,20 +92,37 @@ export interface PhraseTokens {
   pl: PhraseToken[];
 }
 
+/**
+ * Difficulty level for a phrase: easy, medium, or hard.
+ * NULL in database represents "unset" (not assessed yet).
+ */
+export type PhraseDifficulty = "easy" | "medium" | "hard";
+
+/**
+ * Difficulty level including "unset" state for UI purposes.
+ * Maps to: PhraseDifficulty | null in database.
+ */
+export type PhraseDifficultyOrUnset = PhraseDifficulty | "unset";
+
 export type PhraseDTO = Pick<
   Tables<"phrases">,
   "id" | "position" | "en_text" | "pl_text" | "created_at" | "updated_at"
 > & {
   // Strongly typed version of DB Json
   tokens: PhraseTokens | null;
+  // Difficulty: null means "unset"
+  difficulty: PhraseDifficulty | null;
 };
 
 export type CreatePhraseCommand = Pick<TablesInsert<"phrases">, "position" | "en_text" | "pl_text"> & {
   tokens?: PhraseTokens | null;
+  difficulty?: PhraseDifficulty | null;
 };
 
 export type UpdatePhraseCommand = Partial<Pick<TablesUpdate<"phrases">, "position" | "en_text" | "pl_text">> & {
   tokens?: PhraseTokens | null;
+  // null clears difficulty (sets to unset), undefined means "no change"
+  difficulty?: PhraseDifficulty | null;
 };
 
 export type PhraseListResponse = Paginated<PhraseDTO>;
@@ -118,6 +135,15 @@ export interface ReorderPhrasesCommand {
 }
 
 export interface ReorderPhrasesResultDTO {
+  updated: number;
+}
+
+export interface BulkUpdatePhrasesCommand {
+  phrase_ids: UUID[];
+  difficulty: PhraseDifficulty | null;
+}
+
+export interface BulkUpdatePhrasesResultDTO {
   updated: number;
 }
 
@@ -281,7 +307,7 @@ export interface PlaybackManifestSegment {
 }
 
 export interface PlaybackManifestItem {
-  phrase: Pick<PhraseDTO, "id" | "position" | "en_text" | "pl_text" | "tokens">;
+  phrase: Pick<PhraseDTO, "id" | "position" | "en_text" | "pl_text" | "tokens" | "difficulty">;
   segments: PlaybackManifestSegment[];
 }
 
@@ -332,6 +358,7 @@ export interface PhraseVM {
   position: number;
   en_text: string;
   pl_text: string;
+  difficulty: PhraseDifficulty | null;
   tokens: {
     en: Token[];
     pl: Token[];
@@ -404,6 +431,7 @@ export interface LearnPhraseDTO {
   en_text: string;
   pl_text: string;
   tokens: PhraseTokens | null;
+  difficulty: PhraseDifficulty | null;
   audio: LearnPhraseAudioAvailability;
 }
 

@@ -22,7 +22,7 @@ const updatePhrase = async (context: APIContext): Promise<Response> => {
   }
 
   const body = await context.request.json();
-  const { position, en_text, pl_text, tokens }: UpdatePhraseCommand = body;
+  const { position, en_text, pl_text, tokens, difficulty }: UpdatePhraseCommand = body;
 
   // Validate input
   if (position !== undefined && (typeof position !== "number" || !Number.isInteger(position))) {
@@ -47,6 +47,12 @@ const updatePhrase = async (context: APIContext): Promise<Response> => {
     }
   }
 
+  if (difficulty !== undefined) {
+    if (difficulty !== null && difficulty !== "easy" && difficulty !== "medium" && difficulty !== "hard") {
+      throw ApiErrors.validationError("Difficulty must be 'easy', 'medium', 'hard', or null");
+    }
+  }
+
   // Build update object
   const updateData: Record<string, unknown> = {};
   if (position !== undefined) {
@@ -61,6 +67,9 @@ const updatePhrase = async (context: APIContext): Promise<Response> => {
   if (tokens !== undefined) {
     updateData.tokens = tokens;
   }
+  if (difficulty !== undefined) {
+    updateData.difficulty = difficulty;
+  }
   updateData.updated_at = new Date().toISOString();
 
   if (Object.keys(updateData).length === 1) {
@@ -74,7 +83,7 @@ const updatePhrase = async (context: APIContext): Promise<Response> => {
     .eq("id", phraseId)
     .select(
       `
-      id, position, en_text, pl_text, tokens, created_at, updated_at,
+      id, position, en_text, pl_text, tokens, difficulty, created_at, updated_at,
       notebook:notebooks!inner(id, user_id)
     `
     )

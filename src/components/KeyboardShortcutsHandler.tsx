@@ -8,6 +8,7 @@ interface KeyboardShortcutsHandlerProps {
   onSeekLarge?: (direction: "left" | "right") => void;
   onPrevPhrase: () => void;
   onNextPhrase: () => void;
+  onMarkDifficulty?: (difficulty: "easy" | "medium" | "hard" | null) => void;
 }
 
 export default function KeyboardShortcutsHandler({
@@ -18,6 +19,7 @@ export default function KeyboardShortcutsHandler({
   onSeekLarge,
   onPrevPhrase,
   onNextPhrase,
+  onMarkDifficulty,
 }: KeyboardShortcutsHandlerProps) {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -78,12 +80,40 @@ export default function KeyboardShortcutsHandler({
           preventDefault();
           onNextPhrase();
           break;
+
+        case "1":
+          if (onMarkDifficulty) {
+            preventDefault();
+            onMarkDifficulty("easy");
+          }
+          break;
+
+        case "2":
+          if (onMarkDifficulty) {
+            preventDefault();
+            onMarkDifficulty("medium");
+          }
+          break;
+
+        case "3":
+          if (onMarkDifficulty) {
+            preventDefault();
+            onMarkDifficulty("hard");
+          }
+          break;
+
+        case "0":
+          if (onMarkDifficulty) {
+            preventDefault();
+            onMarkDifficulty(null);
+          }
+          break;
       }
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onPlayPause, onStop, onRestart, onSeekSmall, onSeekLarge, onPrevPhrase, onNextPhrase]);
+  }, [onPlayPause, onStop, onRestart, onSeekSmall, onSeekLarge, onPrevPhrase, onNextPhrase, onMarkDifficulty]);
 
   return null; // This component doesn't render anything
 }

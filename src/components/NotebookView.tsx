@@ -5,7 +5,15 @@ import { ToastProvider, useToast } from "./ui/toast";
 import GenerateAudioButton from "./GenerateAudioButton";
 import ExportZipButton from "./ExportZipButton";
 import { Trash2 } from "lucide-react";
-import type { PhraseDTO, PhraseListResponse, NotebookDTO, JobDTO } from "../types";
+import type {
+  PhraseDTO,
+  PhraseListResponse,
+  NotebookDTO,
+  JobDTO,
+  PhraseDifficultyOrUnset,
+  PhraseDifficulty,
+  BulkUpdatePhrasesCommand,
+} from "../types";
 import { parseMarkdownToHtml } from "../lib/utils";
 
 interface NotebookViewProps {
@@ -20,6 +28,11 @@ interface NotebookState {
   activeJob: JobDTO | null;
 }
 
+// Helper to get difficulty display value
+const getDifficultyDisplay = (difficulty: PhraseDifficulty | null): PhraseDifficultyOrUnset => {
+  return difficulty || "unset";
+};
+
 // Internal component that uses toast
 function NotebookViewContent({ notebookId }: NotebookViewProps) {
   const { apiCall, isAuthenticated } = useApi();
@@ -31,6 +44,25 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
     error: null,
     activeJob: null,
   });
+  const [difficultyFilter, setDifficultyFilter] = useState<PhraseDifficultyOrUnset | "all">("all");
+  const [selectedPhraseIds, setSelectedPhraseIds] = useState<Set<string>>(new Set());
+
+  // Load difficulty filter from localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined" && typeof localStorage !== "undefined") {
+      const savedFilter = localStorage.getItem(`notebook-difficulty-filter-${notebookId}`);
+      if (savedFilter && (savedFilter === "all" || savedFilter === "unset" || savedFilter === "easy" || savedFilter === "medium" || savedFilter === "hard")) {
+        setDifficultyFilter(savedFilter as PhraseDifficultyOrUnset | "all");
+      }
+    }
+  }, [notebookId]);
+
+  // Save difficulty filter to localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined" && typeof localStorage !== "undefined") {
+      localStorage.setItem(`notebook-difficulty-filter-${notebookId}`, difficultyFilter);
+    }
+  }, [difficultyFilter, notebookId]);
 
   // Load notebook and phrases
   useEffect(() => {
@@ -40,10 +72,16 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
       try {
+        // Build phrases URL with difficulty filter
+        let phrasesUrl = `/api/notebooks/${notebookId}/phrases?sort=position&order=asc&limit=100`;
+        if (difficultyFilter !== "all") {
+          phrasesUrl += `&difficulty=${difficultyFilter}`;
+        }
+
         // Load notebook and phrases in parallel
         const [notebookData, phrasesData] = await Promise.all([
           apiCall<NotebookDTO>(`/api/notebooks/${notebookId}`, { method: "GET" }),
-          apiCall<PhraseListResponse>(`/api/notebooks/${notebookId}/phrases?sort=position&order=asc&limit=100`, {
+          apiCall<PhraseListResponse>(phrasesUrl, {
             method: "GET",
           }),
         ]);
@@ -88,6 +126,8 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
           activeJob,
           isLoading: false,
         }));
+        // Clear selection when filter changes
+        setSelectedPhraseIds(new Set());
       } catch (err) {
         setState((prev) => ({
           ...prev,
@@ -98,7 +138,61 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
     };
 
     loadData();
-  }, [notebookId, isAuthenticated, apiCall]);
+  }, [notebookId, isAuthenticated, apiCall, difficultyFilter]);
+
+  // Handle bulk difficulty update
+  const handleBulkUpdateDifficulty = async (difficulty: PhraseDifficulty | null) => {
+    if (selectedPhraseIds.size === 0) {
+      addToast({
+        type: "error",
+        title: "No phrases selected",
+        description: "Please select at least one phrase to update.",
+      });
+      return;
+    }
+
+    try {
+      const command: BulkUpdatePhrasesCommand = {
+        phrase_ids: Array.from(selectedPhraseIds),
+        difficulty,
+      };
+
+      await apiCall(`/api/notebooks/${notebookId}/phrases/bulk-update`, {
+        method: "POST",
+        body: JSON.stringify(command),
+      });
+
+      // Reload phrases to reflect changes
+      const phrasesUrl = `/api/notebooks/${notebookId}/phrases?sort=position&order=asc&limit=100${
+        difficultyFilter !== "all" ? `&difficulty=${difficultyFilter}` : ""
+      }`;
+      const phrasesData = await apiCall<PhraseListResponse>(phrasesUrl, {
+        method: "GET",
+      });
+
+      setState((prev) => ({
+        ...prev,
+        phrases: phrasesData.items,
+      }));
+
+      // Clear selection
+      setSelectedPhraseIds(new Set());
+
+      const difficultyLabel = difficulty || "unset";
+      addToast({
+        type: "success",
+        title: "Difficulty updated",
+        description: `Updated ${selectedPhraseIds.size} phrase(s) to ${difficultyLabel}.`,
+      });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to update phrases";
+      addToast({
+        type: "error",
+        title: "Update failed",
+        description: errorMessage,
+      });
+    }
+  };
 
   // Handle phrase deletion
   const handleDeletePhrase = async (phraseId: string) => {
@@ -275,16 +369,23 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
       {/* Phrases table */}
       <div className="bg-card border border-border rounded-lg">
         <div className="p-4 border-b border-border">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <h2 className="text-lg font-semibold">Phrases</h2>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <h2 className="text-lg font-semibold">Phrases</h2>
             <div className="flex items-center gap-2 flex-wrap">
               <Button asChild size="sm" variant="default" className="shrink-0">
-                <a href={`/player/${notebookId}`} title="Open Player">
+                <a
+                  href={`/player/${notebookId}${difficultyFilter !== "all" ? `?difficulty=${difficultyFilter}` : ""}`}
+                  title="Open Player"
+                >
                   Open Player
                 </a>
               </Button>
               <Button asChild size="sm" variant="default" className="shrink-0">
-                <a href={`/notebooks/${notebookId}/learn`} title="Open Learn Mode">
+                <a
+                  href={`/notebooks/${notebookId}/learn${difficultyFilter !== "all" ? `?difficulty=${difficultyFilter}` : ""}`}
+                  title="Open Learn Mode"
+                >
                   Learn mode
                 </a>
               </Button>
@@ -300,6 +401,90 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                 disabled={!state.notebook?.current_build_id}
                 disabledReason={!state.notebook?.current_build_id ? "Generate audio first to enable export" : undefined}
               />
+            </div>
+            </div>
+            {/* Difficulty filter and bulk actions */}
+            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm text-muted-foreground">Filter:</span>
+                <Button
+                  variant={difficultyFilter === "all" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setDifficultyFilter("all")}
+                >
+                  All
+                </Button>
+                <Button
+                  variant={difficultyFilter === "unset" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setDifficultyFilter("unset")}
+                >
+                  Unset
+                </Button>
+                <Button
+                  variant={difficultyFilter === "easy" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setDifficultyFilter("easy")}
+                >
+                  Easy
+                </Button>
+                <Button
+                  variant={difficultyFilter === "medium" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setDifficultyFilter("medium")}
+                >
+                  Medium
+                </Button>
+                <Button
+                  variant={difficultyFilter === "hard" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setDifficultyFilter("hard")}
+                >
+                  Hard
+                </Button>
+              </div>
+              {selectedPhraseIds.size > 0 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm text-muted-foreground">
+                    {selectedPhraseIds.size} selected:
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleBulkUpdateDifficulty("easy")}
+                  >
+                    Mark Easy
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleBulkUpdateDifficulty("medium")}
+                  >
+                    Mark Medium
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleBulkUpdateDifficulty("hard")}
+                  >
+                    Mark Hard
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleBulkUpdateDifficulty(null)}
+                  >
+                    Clear
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedPhraseIds(new Set())}
+                  >
+                    Deselect All
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -321,6 +506,9 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
               phrases={state.phrases}
               notebookId={notebookId}
               onDelete={handleDeletePhrase}
+              selectedPhraseIds={selectedPhraseIds}
+              onSelectionChange={setSelectedPhraseIds}
+              difficultyFilter={difficultyFilter}
               className="hidden md:block"
             />
             {/* Mobile card view */}
@@ -328,6 +516,9 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
               phrases={state.phrases}
               notebookId={notebookId}
               onDelete={handleDeletePhrase}
+              selectedPhraseIds={selectedPhraseIds}
+              onSelectionChange={setSelectedPhraseIds}
+              difficultyFilter={difficultyFilter}
               className="md:hidden"
             />
           </>
@@ -337,36 +528,104 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
   );
 }
 
+// Difficulty Badge Component
+function DifficultyBadge({ difficulty }: { difficulty: PhraseDifficulty | null }) {
+  const display = getDifficultyDisplay(difficulty);
+  const colors = {
+    easy: "bg-green-500/20 text-green-300 border-green-500/40",
+    medium: "bg-yellow-500/20 text-yellow-300 border-yellow-500/40",
+    hard: "bg-red-500/20 text-red-300 border-red-500/40",
+    unset: "bg-muted text-muted-foreground border-transparent",
+  };
+
+  return (
+    <span
+      className={`text-xs font-medium px-2 py-0.5 rounded border ${colors[display]}`}
+      title={`Difficulty: ${display}`}
+    >
+      {display === "unset" ? "—" : display}
+    </span>
+  );
+}
+
 // Phrase Table Component (Desktop)
 interface PhraseTableProps {
   phrases: PhraseDTO[];
   notebookId: string;
   onDelete: (phraseId: string) => void;
+  selectedPhraseIds: Set<string>;
+  onSelectionChange: (ids: Set<string>) => void;
+  difficultyFilter: PhraseDifficultyOrUnset | "all";
   className?: string;
 }
 
-function PhraseTable({ phrases, notebookId, onDelete, className }: PhraseTableProps) {
+function PhraseTable({
+  phrases,
+  notebookId,
+  onDelete,
+  selectedPhraseIds,
+  onSelectionChange,
+  difficultyFilter,
+  className,
+}: PhraseTableProps) {
   const handleRowClick = (phraseId: string, e: React.MouseEvent | React.KeyboardEvent) => {
+    // Don't navigate if clicking on checkbox
+    if ((e.target as HTMLElement).closest("input[type='checkbox']")) {
+      return;
+    }
     e.preventDefault();
     const link = document.createElement("a");
-    link.href = `/player/${notebookId}?start_phrase_id=${phraseId}`;
+    const difficultyParam = difficultyFilter !== "all" ? `&difficulty=${difficultyFilter}` : "";
+    link.href = `/player/${notebookId}?start_phrase_id=${phraseId}${difficultyParam}`;
     link.click();
   };
+
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      onSelectionChange(new Set(phrases.map((p) => p.id)));
+    } else {
+      onSelectionChange(new Set());
+    }
+  };
+
+  const allSelected = phrases.length > 0 && phrases.every((p) => selectedPhraseIds.has(p.id));
+  const someSelected = phrases.some((p) => selectedPhraseIds.has(p.id));
 
   return (
     <div className={`overflow-x-auto ${className || ""}`}>
       <table className="w-full">
         <thead>
           <tr className="border-b border-border">
+            <th className="text-left p-4 font-medium text-muted-foreground w-12">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                ref={(input) => {
+                  if (input) input.indeterminate = someSelected && !allSelected;
+                }}
+                onChange={handleSelectAll}
+                className="cursor-pointer"
+                aria-label="Select all phrases"
+              />
+            </th>
             <th className="text-left p-4 font-medium text-muted-foreground w-14">#</th>
             <th className="text-left p-4 font-medium text-muted-foreground">English</th>
             <th className="text-left p-4 font-medium text-muted-foreground">Polish</th>
+            <th className="text-left p-4 font-medium text-muted-foreground w-24">Difficulty</th>
             <th className="text-left p-4 font-medium text-muted-foreground w-16">Actions</th>
           </tr>
         </thead>
         <tbody>
           {phrases.map((phrase, index) => (
-            <PhraseRow key={phrase.id} phrase={phrase} index={index} onDelete={onDelete} onRowClick={handleRowClick} />
+            <PhraseRow
+              key={phrase.id}
+              phrase={phrase}
+              index={index}
+              onDelete={onDelete}
+              onRowClick={handleRowClick}
+              selectedPhraseIds={selectedPhraseIds}
+              onSelectionChange={onSelectionChange}
+            />
           ))}
         </tbody>
       </table>
@@ -380,12 +639,23 @@ interface PhraseRowProps {
   index: number;
   onDelete: (phraseId: string) => void;
   onRowClick: PhraseRowClickHandler;
+  selectedPhraseIds: Set<string>;
+  onSelectionChange: (ids: Set<string>) => void;
 }
 
-function PhraseRow({ phrase, index, onDelete, onRowClick }: PhraseRowProps) {
+function PhraseRow({
+  phrase,
+  index,
+  onDelete,
+  onRowClick,
+  selectedPhraseIds,
+  onSelectionChange,
+}: PhraseRowProps) {
+  const isSelected = selectedPhraseIds.has(phrase.id);
+
   const handleClick = (e: React.MouseEvent) => {
-    // Don't trigger row click if clicking on buttons
-    if ((e.target as HTMLElement).closest("button, a")) {
+    // Don't trigger row click if clicking on buttons or checkbox
+    if ((e.target as HTMLElement).closest("button, a, input[type='checkbox']")) {
       return;
     }
     onRowClick(phrase.id, e);
@@ -403,15 +673,36 @@ function PhraseRow({ phrase, index, onDelete, onRowClick }: PhraseRowProps) {
     }
   };
 
+  const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    const newSelection = new Set(selectedPhraseIds);
+    if (e.target.checked) {
+      newSelection.add(phrase.id);
+    } else {
+      newSelection.delete(phrase.id);
+    }
+    onSelectionChange(newSelection);
+  };
+
   return (
     <tr
-      className="group cursor-pointer hover:bg-muted/50 transition-colors"
+      className={`group cursor-pointer hover:bg-muted/50 transition-colors ${isSelected ? "bg-muted/30" : ""}`}
       onClick={handleClick}
       role="button"
       tabIndex={0}
       onKeyDown={handleKeyDown}
       aria-label={`Phrase ${index + 1}: ${phrase.en_text}`}
     >
+      <td className="p-4 w-12">
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={handleCheckboxChange}
+          onClick={(e) => e.stopPropagation()}
+          className="cursor-pointer"
+          aria-label={`Select phrase ${index + 1}`}
+        />
+      </td>
       <td className="p-4 w-14">
         <span className="text-xs font-medium text-muted-foreground">{index + 1}</span>
       </td>
@@ -426,6 +717,9 @@ function PhraseRow({ phrase, index, onDelete, onRowClick }: PhraseRowProps) {
           className="text-sm text-muted-foreground"
           dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(phrase.pl_text) }}
         />
+      </td>
+      <td className="p-4 w-24">
+        <DifficultyBadge difficulty={phrase.difficulty} />
       </td>
       <td className="p-4 w-16 text-right">
         <Button
@@ -447,23 +741,47 @@ interface PhraseListProps {
   phrases: PhraseDTO[];
   notebookId: string;
   onDelete: (phraseId: string) => void;
+  selectedPhraseIds: Set<string>;
+  onSelectionChange: (ids: Set<string>) => void;
+  difficultyFilter: PhraseDifficultyOrUnset | "all";
   className?: string;
 }
 
 type PhraseRowClickHandler = (phraseId: string, e: React.MouseEvent | React.KeyboardEvent) => void;
 
-function PhraseList({ phrases, notebookId, onDelete, className }: PhraseListProps) {
+function PhraseList({
+  phrases,
+  notebookId,
+  onDelete,
+  selectedPhraseIds,
+  onSelectionChange,
+  difficultyFilter,
+  className,
+}: PhraseListProps) {
   const handleRowClick = (phraseId: string, e: React.MouseEvent | React.KeyboardEvent) => {
+    // Don't navigate if clicking on checkbox
+    if ((e.target as HTMLElement).closest("input[type='checkbox']")) {
+      return;
+    }
     e.preventDefault();
     const link = document.createElement("a");
-    link.href = `/player/${notebookId}?start_phrase_id=${phraseId}`;
+    const difficultyParam = difficultyFilter !== "all" ? `&difficulty=${difficultyFilter}` : "";
+    link.href = `/player/${notebookId}?start_phrase_id=${phraseId}${difficultyParam}`;
     link.click();
   };
 
   return (
     <div className={className || ""}>
       {phrases.map((phrase, index) => (
-        <PhraseCard key={phrase.id} phrase={phrase} index={index} onDelete={onDelete} onRowClick={handleRowClick} />
+        <PhraseCard
+          key={phrase.id}
+          phrase={phrase}
+          index={index}
+          onDelete={onDelete}
+          onRowClick={handleRowClick}
+          selectedPhraseIds={selectedPhraseIds}
+          onSelectionChange={onSelectionChange}
+        />
       ))}
     </div>
   );
@@ -475,11 +793,22 @@ interface PhraseCardProps {
   index: number;
   onDelete: (phraseId: string) => void;
   onRowClick: PhraseRowClickHandler;
+  selectedPhraseIds: Set<string>;
+  onSelectionChange: (ids: Set<string>) => void;
 }
 
-function PhraseCard({ phrase, index, onDelete, onRowClick }: PhraseCardProps) {
+function PhraseCard({
+  phrase,
+  index,
+  onDelete,
+  onRowClick,
+  selectedPhraseIds,
+  onSelectionChange,
+}: PhraseCardProps) {
+  const isSelected = selectedPhraseIds.has(phrase.id);
+
   const handleClick = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest("button, a")) {
+    if ((e.target as HTMLElement).closest("button, a, input[type='checkbox']")) {
       return;
     }
     onRowClick(phrase.id, e);
@@ -497,9 +826,22 @@ function PhraseCard({ phrase, index, onDelete, onRowClick }: PhraseCardProps) {
     }
   };
 
+  const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    const newSelection = new Set(selectedPhraseIds);
+    if (e.target.checked) {
+      newSelection.add(phrase.id);
+    } else {
+      newSelection.delete(phrase.id);
+    }
+    onSelectionChange(newSelection);
+  };
+
   return (
     <div
-      className="flex items-center justify-between px-4 py-3 border-b border-border cursor-pointer hover:bg-muted/50 transition-colors"
+      className={`flex items-center justify-between px-4 py-3 border-b border-border cursor-pointer hover:bg-muted/50 transition-colors ${
+        isSelected ? "bg-muted/30" : ""
+      }`}
       onClick={handleClick}
       role="button"
       tabIndex={0}
@@ -507,14 +849,25 @@ function PhraseCard({ phrase, index, onDelete, onRowClick }: PhraseCardProps) {
       aria-label={`Phrase ${index + 1}: ${phrase.en_text}`}
     >
       <div className="flex items-start gap-3 min-w-0 flex-1">
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={handleCheckboxChange}
+          onClick={(e) => e.stopPropagation()}
+          className="cursor-pointer mt-1"
+          aria-label={`Select phrase ${index + 1}`}
+        />
         <span className="size-6 rounded-full bg-muted text-[11px] flex items-center justify-center font-medium text-muted-foreground">
           {index + 1}
         </span>
         <div className="min-w-0 flex-1">
-          <div
-            className="text-[15px] text-foreground truncate font-medium"
-            dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(phrase.en_text) }}
-          />
+          <div className="flex items-center gap-2 mb-1">
+            <div
+              className="text-[15px] text-foreground truncate font-medium"
+              dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(phrase.en_text) }}
+            />
+            <DifficultyBadge difficulty={phrase.difficulty} />
+          </div>
           <div
             className="text-xs text-muted-foreground truncate"
             dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(phrase.pl_text) }}

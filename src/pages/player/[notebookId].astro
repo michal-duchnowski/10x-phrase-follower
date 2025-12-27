@@ -8,6 +8,7 @@ export const prerender = false;
 // Get notebook ID from params
 const { notebookId } = Astro.params;
 const startPhraseId = Astro.url.searchParams.get("start_phrase_id");
+const difficulty = Astro.url.searchParams.get("difficulty");
 
 // Validate notebook ID format (UUID)
 const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -29,7 +30,12 @@ if (startPhraseId && !uuidRegex.test(startPhraseId)) {
 <Layout title="Player - Phrase Follower" fullWidth={true}>
   <main class="min-h-screen">
     <AuthGuard client:load>
-      <PlayerShell notebookId={notebookId} startPhraseId={startPhraseId || undefined} client:load />
+      <PlayerShell
+        notebookId={notebookId}
+        startPhraseId={startPhraseId || undefined}
+        difficultyFilter={difficulty || undefined}
+        client:load
+      />
     </AuthGuard>
   </main>
 </Layout>

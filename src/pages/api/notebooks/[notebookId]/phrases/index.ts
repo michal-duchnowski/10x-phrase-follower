@@ -44,13 +44,28 @@ const getPhrases = async (context: APIContext): Promise<Response> => {
     throw ApiErrors.notFound("Notebook not found");
   }
 
+  // Parse difficulty filter from query params
+  const url = new URL(context.request.url);
+  const difficultyParam = url.searchParams.get("difficulty");
+
   // Build query
   let query = supabase
     .from("phrases")
-    .select("id, position, en_text, pl_text, tokens, created_at, updated_at")
+    .select("id, position, en_text, pl_text, tokens, difficulty, created_at, updated_at")
     .eq("notebook_id", notebookId)
     .order(sort, { ascending: order === "asc" })
     .limit(limit + 1); // Get one extra to check if there are more
+
+  // Apply difficulty filter if provided
+  if (difficultyParam) {
+    if (difficultyParam === "unset") {
+      query = query.is("difficulty", null);
+    } else if (difficultyParam === "easy" || difficultyParam === "medium" || difficultyParam === "hard") {
+      query = query.eq("difficulty", difficultyParam);
+    } else {
+      throw ApiErrors.validationError("Invalid difficulty filter. Must be 'easy', 'medium', 'hard', or 'unset'");
+    }
+  }
 
   // Apply cursor pagination
   if (cursor) {
@@ -142,8 +157,9 @@ const createPhrase = async (context: APIContext): Promise<Response> => {
       en_text: sanitizedEnText,
       pl_text: sanitizedPlText,
       tokens: tokens || null,
+      difficulty: null, // Default to unset
     })
-    .select("id, position, en_text, pl_text, tokens, created_at, updated_at")
+    .select("id, position, en_text, pl_text, tokens, difficulty, created_at, updated_at")
     .single();
 
   if (error) {
