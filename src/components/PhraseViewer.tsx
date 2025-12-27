@@ -194,7 +194,7 @@ export default function PhraseViewer({
               key={index}
               onClick={() => onSeekToToken(index, language)}
               className={`
-                rounded-md px-2 py-1 text-lg min-[480px]:text-2xl sm:text-2xl lg:text-xl leading-6 min-[480px]:leading-8 sm:leading-8 lg:leading-7
+                rounded-md px-2 py-1 text-base min-[480px]:text-lg sm:text-xl lg:text-2xl leading-5 min-[480px]:leading-6 sm:leading-7 lg:leading-8
                 transition-all duration-200
                 ${
                   isTokenActive
@@ -251,16 +251,16 @@ export default function PhraseViewer({
       onTouchStart={touchHandlers.onTouchStart}
       onTouchMove={touchHandlers.onTouchMove}
       onTouchEnd={touchHandlers.onTouchEnd}
-      className="h-auto md:h-[clamp(240px,32vh,360px)] overflow-visible md:overflow-y-auto rounded-lg border bg-card px-4 py-3"
+      className="h-auto md:h-[clamp(200px,28vh,300px)] overflow-visible md:overflow-y-auto rounded-lg border bg-card px-4 py-3"
     >
       {/* English text - on top */}
-      <div className="min-h-[64px] md:min-h-[72px] mb-2 md:mb-3">
+      <div className="min-h-[48px] md:min-h-[56px] mb-2 md:mb-2">
         {renderLanguageBadge("en", "EN")}
         {renderTokens(phrase.tokens.en, "en")}
       </div>
 
       {/* Polish text - below */}
-      <div className="min-h-[64px] md:min-h-[72px]">
+      <div className="min-h-[48px] md:min-h-[56px]">
         {renderLanguageBadge("pl", "PL")}
         {renderTokens(phrase.tokens.pl, "pl")}
       </div>

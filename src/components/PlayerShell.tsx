@@ -444,9 +444,9 @@ export default function PlayerShell({
       <div className="mb-6 space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Audio Player</h1>
+            <h1 className="text-2xl sm:text-2xl font-bold text-foreground">Audio Player</h1>
             <p
-              className="text-sm min-[480px]:text-base sm:text-lg text-muted-foreground mt-1"
+              className="text-sm min-[480px]:text-base sm:text-base text-muted-foreground mt-1"
               aria-live="polite"
               aria-atomic="true"
             >
