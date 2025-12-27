@@ -42,10 +42,14 @@ export const GET: APIRoute = async () => {
       );
     }
 
+    // Get TTL from DevJwtGenerator to keep it in sync
+    const { DevJwtGenerator } = await import("../../../lib/dev-jwt");
+    const expiresIn = DevJwtGenerator.getDefaultTtlSeconds();
+
     return new Response(
       JSON.stringify({
         token,
-        expires_in: 300, // 5 minutes
+        expires_in: expiresIn,
         user_id: "0a1f3212-c55f-4a62-bc0f-4121a7a72283", // DEFAULT_USER_ID
       }),
       {

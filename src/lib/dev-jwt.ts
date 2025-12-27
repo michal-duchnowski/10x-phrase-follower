@@ -8,7 +8,21 @@ import { DEFAULT_USER_ID } from "../db/supabase.client";
  */
 export class DevJwtGenerator {
   private readonly secret: string;
-  private readonly ttlSeconds: number = 300; // 5 minutes
+  private readonly ttlSeconds: number = 3600; // 1 hour (can be increased up to 604800 = 1 week)
+
+  /**
+   * Get the TTL (time to live) in seconds for DEV_JWT tokens
+   */
+  getTtlSeconds(): number {
+    return this.ttlSeconds;
+  }
+
+  /**
+   * Get the default TTL in seconds (static method for convenience)
+   */
+  static getDefaultTtlSeconds(): number {
+    return 3600; // 1 hour (can be increased up to 604800 = 1 week)
+  }
 
   constructor() {
     if (import.meta.env.NODE_ENV !== "development") {
