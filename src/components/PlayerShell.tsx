@@ -462,7 +462,7 @@ export default function PlayerShell({
           <div className="flex items-center gap-2">
             {/* Mobile: difficulty menu tucked into header */}
             {currentPhrase && (
-              <div className="md:hidden">
+              <div className="lg:hidden">
                 <MobileActionMenu triggerLabel="Difficulty" triggerIcon triggerVariant="default" triggerSize="icon">
                   {({ close }) => (
                     <div className="space-y-2">
