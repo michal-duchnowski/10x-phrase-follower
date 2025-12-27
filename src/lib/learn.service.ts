@@ -57,10 +57,12 @@ export function compareAnswers(
   let isCorrect: boolean;
 
   if (useContainsMode) {
-    // In contains mode: check if normalized user answer matches any word in normalized correct answer
-    // Split correct answer by spaces and check if user answer matches any word exactly
+    // In contains mode: check if any word from user answer matches any word in correct answer
+    // Split both answers by spaces and check if any word from user matches any word from correct
+    // Note: Both normalizedUser and normalizedCorrect are already lowercase (case-insensitive comparison)
+    const userWords = normalizedUser.split(/\s+/).filter((w) => w.length > 0);
     const correctWords = normalizedCorrect.split(/\s+/).filter((w) => w.length > 0);
-    isCorrect = correctWords.some((word) => word === normalizedUser);
+    isCorrect = userWords.some((userWord) => correctWords.some((correctWord) => userWord === correctWord));
   } else {
     // Exact match mode: full string comparison
     isCorrect = normalizedUser === normalizedCorrect;
