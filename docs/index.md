@@ -34,6 +34,7 @@ Główny dokument wymagań produktu (PRD) - opis funkcjonalności, wymagań bizn
 
 - [Phase 2 - Implementacja](./implementation/phase2-implementation.md) - Dokumentacja zaimplementowanego Phase 2
 - [Auth DEV Mode Fix](./implementation/auth-dev-fix-summary.md) - Podsumowanie naprawy trybu developerskiego
+- [Phrase difficulty (easy/medium/hard)](./implementation/phrase-difficulty.md) - Spec: oznaczanie trudności fraz + filtrowanie (Notebook/Player/Learn)
 
 ### Szczegóły techniczne
 
