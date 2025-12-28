@@ -9,6 +9,13 @@ const difficulty = Astro.url.searchParams.get("difficulty");
 if (!id) {
   return Astro.redirect("/notebooks");
 }
+
+// Validate notebook ID format (UUID or virtual notebook ID)
+const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const virtualNotebookRegex = /^difficulty-(easy|medium|hard)$/;
+if (!uuidRegex.test(id) && !virtualNotebookRegex.test(id)) {
+  return Astro.redirect("/notebooks");
+}
 ---
 
 <AppLayout title="Learn mode - Phrase Follower" currentPath={`/notebooks/${id}/learn`} fullWidth={true}>

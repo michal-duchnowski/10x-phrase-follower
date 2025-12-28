@@ -4,7 +4,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "../../../../db/database.types";
 import { ApiErrors } from "../../../../lib/errors";
 import type { PlaybackManifestDTO, PlaybackManifestItem, PlaybackManifestSegment } from "../../../../types";
-import { getSupabaseClient } from "../../../../lib/utils";
+import { getSupabaseClient, isVirtualNotebook, getDifficultyFromVirtualNotebook } from "../../../../lib/utils";
 
 export const prerender = false;
 
@@ -24,7 +24,7 @@ function getUserId(context: APIContext): string {
 type Supabase = SupabaseClient<Database>;
 type PhraseRow = Pick<
   Database["public"]["Tables"]["phrases"]["Row"],
-  "id" | "position" | "en_text" | "pl_text" | "tokens"
+  "id" | "position" | "en_text" | "pl_text" | "tokens" | "difficulty"
 >;
 type AudioSegmentSelection = Pick<
   Database["public"]["Tables"]["audio_segments"]["Row"],
@@ -177,64 +177,121 @@ export async function GET(context: APIContext) {
     // Parse query parameters
     const { phraseIds } = parseQueryParams(new URL(context.request.url));
 
-    // Get the current build for the notebook
-    const { data: notebook, error: notebookError } = await supabase
-      .from("notebooks")
-      .select("current_build_id")
-      .eq("id", notebookId)
-      .single();
+    // Check if this is a virtual notebook (cross-notebook difficulty view)
+    const isVirtual = isVirtualNotebook(notebookId);
+    const difficulty = isVirtual ? getDifficultyFromVirtualNotebook(notebookId) : null;
 
-    if (notebookError) {
-      if (notebookError.code === "PGRST116") {
-        throw ApiErrors.notFound("Notebook not found");
+    let phrasesQuery;
+    let currentBuildId: string | null = null;
+
+    if (isVirtual && difficulty) {
+      // Virtual notebook: query all phrases from user's notebooks with matching difficulty
+      // First, get all notebook IDs for this user
+      const userId = getUserId(context);
+      const { data: userNotebooks, error: notebooksError } = await supabase
+        .from("notebooks")
+        .select("id")
+        .eq("user_id", userId);
+
+      if (notebooksError) {
+        // eslint-disable-next-line no-console
+        console.error("Database error fetching user notebooks:", notebooksError);
+        throw ApiErrors.internal("Failed to fetch user notebooks");
       }
-      throw ApiErrors.internal("Failed to fetch notebook");
-    }
 
-    const currentBuildId = notebook.current_build_id;
+      if (!userNotebooks || userNotebooks.length === 0) {
+        // User has no notebooks, return empty manifest
+        const response: PlaybackManifestDTO = {
+          notebook_id: notebookId,
+          build_id: null,
+          sequence: [],
+          expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        };
+        return new Response(JSON.stringify(response), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        });
+      }
 
-    if (!currentBuildId) {
-      // No active build, return empty manifest
-      const response: PlaybackManifestDTO = {
-        notebook_id: notebookId,
-        build_id: null,
-        sequence: [],
-        expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1 hour from now
-      };
-      return new Response(JSON.stringify(response), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-          "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-          Pragma: "no-cache",
-          Expires: "0",
-        },
-      });
-    }
+      const notebookIds = userNotebooks.map((nb) => nb.id);
 
-    // Parse difficulty filter from query params
-    const url = new URL(context.request.url);
-    const difficultyParam = url.searchParams.get("difficulty");
+      // Query phrases from user's notebooks with matching difficulty
+      phrasesQuery = supabase
+        .from("phrases")
+        .select("id, position, en_text, pl_text, tokens, difficulty, notebook_id")
+        .in("notebook_id", notebookIds)
+        .eq("difficulty", difficulty)
+        .order("created_at", { ascending: false })
+        .limit(1000); // Reasonable limit for virtual notebooks
 
-    // Get phrases for the notebook
-    let phrasesQuery = supabase
-      .from("phrases")
-      .select("id, position, en_text, pl_text, tokens, difficulty")
-      .eq("notebook_id", notebookId)
-      .order("position");
+      if (phraseIds && phraseIds.length > 0) {
+        phrasesQuery = phrasesQuery.in("id", phraseIds);
+      }
+    } else {
+      // Regular notebook: get the current build for the notebook
+      const { data: notebook, error: notebookError } = await supabase
+        .from("notebooks")
+        .select("current_build_id")
+        .eq("id", notebookId)
+        .single();
 
-    if (phraseIds && phraseIds.length > 0) {
-      phrasesQuery = phrasesQuery.in("id", phraseIds);
-    }
+      if (notebookError) {
+        if (notebookError.code === "PGRST116") {
+          throw ApiErrors.notFound("Notebook not found");
+        }
+        throw ApiErrors.internal("Failed to fetch notebook");
+      }
 
-    // Apply difficulty filter if provided
-    if (difficultyParam) {
-      if (difficultyParam === "unset") {
-        phrasesQuery = phrasesQuery.is("difficulty", null);
-      } else if (difficultyParam === "easy" || difficultyParam === "medium" || difficultyParam === "hard") {
-        phrasesQuery = phrasesQuery.eq("difficulty", difficultyParam);
-      } else {
-        throw ApiErrors.validationError("Invalid difficulty filter. Must be 'easy', 'medium', 'hard', or 'unset'");
+      currentBuildId = notebook.current_build_id;
+
+      if (!currentBuildId) {
+        // No active build, return empty manifest
+        const response: PlaybackManifestDTO = {
+          notebook_id: notebookId,
+          build_id: null,
+          sequence: [],
+          expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1 hour from now
+        };
+        return new Response(JSON.stringify(response), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        });
+      }
+
+      // Parse difficulty filter from query params
+      const url = new URL(context.request.url);
+      const difficultyParam = url.searchParams.get("difficulty");
+
+      // Get phrases for the notebook
+      phrasesQuery = supabase
+        .from("phrases")
+        .select("id, position, en_text, pl_text, tokens, difficulty")
+        .eq("notebook_id", notebookId)
+        .order("position");
+
+      if (phraseIds && phraseIds.length > 0) {
+        phrasesQuery = phrasesQuery.in("id", phraseIds);
+      }
+
+      // Apply difficulty filter if provided
+      if (difficultyParam) {
+        if (difficultyParam === "unset") {
+          phrasesQuery = phrasesQuery.is("difficulty", null);
+        } else if (difficultyParam === "easy" || difficultyParam === "medium" || difficultyParam === "hard") {
+          phrasesQuery = phrasesQuery.eq("difficulty", difficultyParam);
+        } else {
+          throw ApiErrors.validationError("Invalid difficulty filter. Must be 'easy', 'medium', 'hard', or 'unset'");
+        }
       }
     }
 
@@ -268,30 +325,101 @@ export async function GET(context: APIContext) {
 
     const phraseIdsForQuery = phrases.map((phrase) => phrase.id);
 
-    // Get active audio segments for the current build
-    const { data: activeSegmentsData, error: activeSegmentsError } = await supabase
-      .from("audio_segments")
-      .select(
+    let activeSegmentsData: AudioSegmentSelection[] | null = null;
+    let activeSegmentsError: Error | null = null;
+
+    if (isVirtual && difficulty) {
+      // For virtual notebooks, get segments from all notebooks
+      // Group phrases by notebook_id
+      const phrasesWithNotebook = phrases as ((typeof phrases)[0] & { notebook_id?: string })[];
+      const phrasesByNotebook = new Map<string, string[]>();
+      for (const phrase of phrasesWithNotebook) {
+        if (phrase.notebook_id) {
+          const existing = phrasesByNotebook.get(phrase.notebook_id);
+          if (existing) {
+            existing.push(phrase.id);
+          } else {
+            phrasesByNotebook.set(phrase.notebook_id, [phrase.id]);
+          }
+        }
+      }
+
+      // Collect segments from all notebooks
+      const allSegments: AudioSegmentSelection[] = [];
+
+      for (const [originalNotebookId, phraseIdsForNotebook] of phrasesByNotebook) {
+        const { data: notebook, error: notebookError } = await supabase
+          .from("notebooks")
+          .select("current_build_id")
+          .eq("id", originalNotebookId)
+          .single();
+
+        if (notebookError || !notebook?.current_build_id) {
+          continue;
+        }
+
+        const { data: segments, error: segmentsError } = await supabase
+          .from("audio_segments")
+          .select(
+            `
+            id, phrase_id, voice_slot, build_id, path, duration_ms, size_bytes,
+            sample_rate_hz, bitrate_kbps, status, error_code, word_timings
+          `
+          )
+          .eq("build_id", notebook.current_build_id)
+          .eq("is_active", true)
+          .in("phrase_id", phraseIdsForNotebook);
+
+        if (segmentsError) {
+          // eslint-disable-next-line no-console
+          console.error(
+            `[playback-manifest] Error fetching segments for notebook ${originalNotebookId}:`,
+            segmentsError
+          );
+          continue;
+        }
+
+        if (segments) {
+          allSegments.push(...(segments as AudioSegmentSelection[]));
+        }
+      }
+
+      activeSegmentsData = allSegments;
+      activeSegmentsError = null;
+    } else {
+      // Regular notebook: get active audio segments for the current build
+      const { data, error } = await supabase
+        .from("audio_segments")
+        .select(
+          `
+          id, phrase_id, voice_slot, build_id, path, duration_ms, size_bytes,
+          sample_rate_hz, bitrate_kbps, status, error_code, word_timings
         `
-        id, phrase_id, voice_slot, build_id, path, duration_ms, size_bytes,
-        sample_rate_hz, bitrate_kbps, status, error_code, word_timings
-      `
-      )
-      .eq("build_id", currentBuildId)
-      .eq("is_active", true)
-      .in("phrase_id", phraseIdsForQuery);
+        )
+        .eq("build_id", currentBuildId)
+        .eq("is_active", true)
+        .in("phrase_id", phraseIdsForQuery);
+
+      activeSegmentsData = data as AudioSegmentSelection[] | null;
+      activeSegmentsError = error;
+    }
 
     if (activeSegmentsError) {
+      // eslint-disable-next-line no-console
       console.error("[playback-manifest] Error fetching active segments:", activeSegmentsError);
       throw ApiErrors.internal("Failed to fetch audio segments");
     }
 
     let segmentsToUse = (activeSegmentsData ?? []) as AudioSegmentSelection[];
-    console.log(`[playback-manifest] Found ${segmentsToUse.length} active segments for build ${currentBuildId}`);
+    // eslint-disable-next-line no-console
+    console.log(
+      `[playback-manifest] Found ${segmentsToUse.length} active segments${currentBuildId ? ` for build ${currentBuildId}` : " (virtual notebook)"}`
+    );
 
     // Fallback: if there are no active segments (some builds might not have been activated),
     // use the latest completed segments for the current build.
-    if (segmentsToUse.length === 0) {
+    if (segmentsToUse.length === 0 && !isVirtual && currentBuildId) {
+      // eslint-disable-next-line no-console
       console.log(
         `[playback-manifest] No active segments found, trying fallback: completed segments for build ${currentBuildId}`
       );
@@ -373,7 +501,7 @@ export async function GET(context: APIContext) {
           en_text: phrase.en_text,
           pl_text: phrase.pl_text,
           tokens: phraseTokens,
-          difficulty: phrase.difficulty,
+          difficulty: phrase.difficulty as "easy" | "medium" | "hard" | null,
         },
         segments: orderedSegments.map(
           (segment): PlaybackManifestSegment => ({

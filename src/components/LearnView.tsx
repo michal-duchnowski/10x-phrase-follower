@@ -12,7 +12,7 @@ import type {
   PhraseDifficultyOrUnset,
   PhraseDifficulty,
 } from "../types";
-import { parseMarkdownToHtml } from "../lib/utils";
+import { parseMarkdownToHtml, isVirtualNotebook } from "../lib/utils";
 import { compareAnswers } from "../lib/learn.service";
 import { compareWordBankAnswer, tokenizePhrase } from "../lib/word-bank.service";
 import AnswerDiffView from "./learn/AnswerDiffView";
@@ -170,11 +170,28 @@ function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilte
           manifestUrl += `?difficulty=${difficultyFilter}`;
         }
 
-        // Load notebook name and manifest in parallel
+        const isVirtual = isVirtualNotebook(notebookId);
+
+        // Load notebook name and manifest
+        // For virtual notebooks, skip notebook name fetch (it doesn't exist in DB)
         const [notebookData, manifestData] = await Promise.all([
-          apiCall<NotebookDTO>(`/api/notebooks/${notebookId}`, {
-            method: "GET",
-          }),
+          isVirtual
+            ? Promise.resolve({
+                id: notebookId,
+                name:
+                  notebookId === "difficulty-easy"
+                    ? "All Easy"
+                    : notebookId === "difficulty-medium"
+                      ? "All Medium"
+                      : "All Hard",
+                current_build_id: null,
+                last_generate_job_id: null,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              } as NotebookDTO)
+            : apiCall<NotebookDTO>(`/api/notebooks/${notebookId}`, {
+                method: "GET",
+              }),
           apiCall<LearnManifestDTO>(manifestUrl, {
             method: "GET",
           }),

@@ -112,6 +112,9 @@ export type PhraseDTO = Pick<
   tokens: PhraseTokens | null;
   // Difficulty: null means "unset"
   difficulty: PhraseDifficulty | null;
+  // For virtual notebooks (cross-notebook views), include source notebook info
+  notebook_id?: UUID;
+  notebook_name?: string;
 };
 
 export type CreatePhraseCommand = Pick<TablesInsert<"phrases">, "position" | "en_text" | "pl_text"> & {

@@ -233,23 +233,63 @@ Learn filtering:
 - Same filter presets as Player (persisted).
 - Filter affects which phrases are included in the session.
 
-## Smart lists (dynamic views) – phased
+## Smart lists (cross-notebook virtual notebooks) – MVP
 
-### Phase (recommended after MVP)
+### Overview
 
-Implement a “Smart list” like:
+Implement **3 virtual notebooks** that show phrases from **all user's notebooks** filtered by difficulty:
 
-- **Hard (All notebooks)**: shows all phrases where `difficulty = hard` across user’s notebooks.
+- **All Easy**: `difficulty-easy` - shows all phrases with `difficulty = 'easy'` across all notebooks
+- **All Medium**: `difficulty-medium` - shows all phrases with `difficulty = 'medium'` across all notebooks
+- **All Hard**: `difficulty-hard` - shows all phrases with `difficulty = 'hard'` across all notebooks
 
-Implementation guidance:
+### Implementation details
 
-- It should be a **query-driven view**, not a new “notebook” with copied phrases.
-- Audio generation remains per original notebook/phrase; smart list does **not** own audio.
+#### Virtual notebook IDs
 
-API approach (one of):
+- Use special IDs: `difficulty-easy`, `difficulty-medium`, `difficulty-hard`
+- These are **not real notebooks** in the database - they are query-driven views
+- Audio generation remains per original notebook/phrase; virtual notebooks do **not** own audio
 
-- Add `GET /api/phrases?difficulty=hard` (scoped to current user via RLS)
-- Or add `GET /api/smart-lists/hard` returning phrase + notebook metadata
+#### UI placement
+
+- Display in **separate "Smart Lists" section** at the top of notebook list
+- Show phrase count in name: "All Easy (15 phrases)", "All Medium (42 phrases)", "All Hard (8 phrases)"
+- Visual distinction: badge or icon to indicate these are smart lists
+
+#### API implementation
+
+- **Extend existing endpoint**: `GET /api/notebooks/[notebookId]/phrases`
+- When `notebookId` is one of the virtual IDs (`difficulty-easy`, etc.):
+  - Query all phrases from user's notebooks where `difficulty = 'easy'` (or medium/hard)
+  - Include `notebook_id` and `notebook.name` in response (for showing source notebook)
+  - Sort by `created_at` DESC (newest first)
+  - Return phrases with notebook metadata
+
+#### Phrase display in virtual notebooks
+
+- Show **notebook name badge** for each phrase (indicates source notebook)
+- Sort by `created_at` DESC (newest phrases first)
+- Allow **only difficulty changes** (no text editing, no deletion)
+- Text editing/deletion must be done in original notebook
+
+#### Player and Learn support
+
+- Player works with virtual notebooks (plays all phrases matching difficulty)
+- Learn mode works with virtual notebooks
+- Both use the same virtual notebook ID in URL
+
+#### Empty state
+
+- If no phrases match difficulty: show message "No easy phrases found across your notebooks"
+- Still show the virtual notebook in list (with count 0)
+
+#### Notebook metadata in response
+
+When querying virtual notebook, include:
+
+- `notebook_id`: original notebook UUID
+- `notebook_name`: original notebook name (for badge display)
 
 ## Audio generation / export ZIP (explicitly unchanged)
 
@@ -279,6 +319,11 @@ Reason: difficulty is a study/playback filter only; TTS audio is tied to phrase 
 - Can filter **Player playback** to only phrases matching selected difficulty preset.
 - Can filter **Learn** session to selected difficulty preset.
 - Can bulk mark difficulty in **Notebook** (select multiple → set hard).
+- **Virtual notebooks** (All Easy, All Medium, All Hard) appear in Smart Lists section.
+- Virtual notebooks show phrases from all notebooks with matching difficulty.
+- Virtual notebooks display notebook name badge for each phrase.
+- Virtual notebooks support Player and Learn mode.
+- Can change difficulty in virtual notebooks (but not edit text/delete).
 - Existing notebooks still load correctly; all existing phrases appear as **Unset**.
 - No changes to audio generation behavior.
 
@@ -292,8 +337,16 @@ Reason: difficulty is a study/playback filter only; TTS audio is tied to phrase 
   - accept/validate PATCH `difficulty`
   - implement bulk update endpoint (recommended)
   - implement list filter param (recommended)
+  - **extend `/api/notebooks/[notebookId]/phrases` to handle virtual notebook IDs**:
+    - Detect `difficulty-easy`, `difficulty-medium`, `difficulty-hard`
+    - Query all user's phrases with matching difficulty
+    - Include `notebook_id` and `notebook.name` in response
+    - Sort by `created_at` DESC
 - Update UI:
   - Notebook: display + filter + bulk set
-  - Player: filter + keyboard shortcuts + PATCH
-  - Learn: filter + keyboard shortcuts (+ mobile popover)
+  - **NotebookList: add Smart Lists section with 3 virtual notebooks**
+  - **NotebookView: handle virtual notebooks (show notebook badge, disable text edit/delete)**
+  - Player: filter + keyboard shortcuts + PATCH + support virtual notebooks
+  - Learn: filter + keyboard shortcuts (+ mobile popover) + support virtual notebooks
 - Persist filter selection (localStorage)
+- Add helper function to detect virtual notebook IDs

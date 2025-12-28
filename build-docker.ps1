@@ -35,6 +35,9 @@ if ($missing.Count -gt 0) {
 # Build Docker image with build args
 Write-Host "Building Docker image with environment variables..." -ForegroundColor Green
 
+# Enable BuildKit for better layer caching (no Dockerfile changes needed)
+$env:DOCKER_BUILDKIT = "1"
+
 docker build `
     --build-arg PUBLIC_SUPABASE_URL="$($envVars['PUBLIC_SUPABASE_URL'])" `
     --build-arg PUBLIC_SUPABASE_KEY="$($envVars['PUBLIC_SUPABASE_KEY'])" `

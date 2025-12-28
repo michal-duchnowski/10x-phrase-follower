@@ -12,7 +12,12 @@ import {
   validateNonEmptyText,
   validateRateLimit,
 } from "../../../../../lib/validation.service";
-import { ensureUserExists, getSupabaseClient } from "../../../../../lib/utils";
+import {
+  ensureUserExists,
+  getSupabaseClient,
+  isVirtualNotebook,
+  getDifficultyFromVirtualNotebook,
+} from "../../../../../lib/utils";
 
 export const prerender = false;
 
@@ -25,45 +30,93 @@ const getPhrases = async (context: APIContext): Promise<Response> => {
 
   const { notebookId } = context.params as { notebookId: string };
 
-  // Validate UUID format
-  validateUUID(notebookId, "Notebook ID");
-
   // Validate query parameters
   const { limit, cursor } = validatePaginationParams(context.url);
-  const { sort, order } = validateSortParams(context.url, ["position", "created_at"], "position");
+  const { sort, order } = validateSortParams(context.url, ["position", "created_at"], "created_at");
 
-  // First verify the notebook exists and belongs to the user
-  const { data: notebook, error: notebookError } = await supabase
-    .from("notebooks")
-    .select("id")
-    .eq("id", notebookId)
-    .eq("user_id", locals.userId)
-    .single();
+  // Check if this is a virtual notebook (cross-notebook difficulty view)
+  const isVirtual = isVirtualNotebook(notebookId);
+  const difficulty = isVirtual ? getDifficultyFromVirtualNotebook(notebookId) : null;
 
-  if (notebookError || !notebook) {
-    throw ApiErrors.notFound("Notebook not found");
-  }
+  let query;
+  let notebookMap: Map<string, string> | undefined;
 
-  // Parse difficulty filter from query params
-  const url = new URL(context.request.url);
-  const difficultyParam = url.searchParams.get("difficulty");
+  if (isVirtual && difficulty) {
+    // Virtual notebook: query all phrases from user's notebooks with matching difficulty
+    // First, get all notebook IDs for this user
+    const { data: userNotebooks, error: notebooksError } = await supabase
+      .from("notebooks")
+      .select("id, name")
+      .eq("user_id", locals.userId);
 
-  // Build query
-  let query = supabase
-    .from("phrases")
-    .select("id, position, en_text, pl_text, tokens, difficulty, created_at, updated_at")
-    .eq("notebook_id", notebookId)
-    .order(sort, { ascending: order === "asc" })
-    .limit(limit + 1); // Get one extra to check if there are more
+    if (notebooksError) {
+      // eslint-disable-next-line no-console
+      console.error("Database error fetching user notebooks:", notebooksError);
+      throw ApiErrors.internal("Failed to fetch user notebooks");
+    }
 
-  // Apply difficulty filter if provided
-  if (difficultyParam) {
-    if (difficultyParam === "unset") {
-      query = query.is("difficulty", null);
-    } else if (difficultyParam === "easy" || difficultyParam === "medium" || difficultyParam === "hard") {
-      query = query.eq("difficulty", difficultyParam);
-    } else {
-      throw ApiErrors.validationError("Invalid difficulty filter. Must be 'easy', 'medium', 'hard', or 'unset'");
+    if (!userNotebooks || userNotebooks.length === 0) {
+      // User has no notebooks, return empty result
+      const response: PhraseListResponse = {
+        items: [],
+        next_cursor: null,
+      };
+      return new Response(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+    }
+
+    const notebookIds = userNotebooks.map((nb) => nb.id);
+    notebookMap = new Map(userNotebooks.map((nb) => [nb.id, nb.name]));
+
+    // Query phrases from user's notebooks with matching difficulty
+    query = supabase
+      .from("phrases")
+      .select("id, position, en_text, pl_text, tokens, difficulty, created_at, updated_at, notebook_id")
+      .in("notebook_id", notebookIds)
+      .eq("difficulty", difficulty)
+      .order(sort, { ascending: order === "asc" })
+      .limit(limit + 1);
+  } else {
+    // Regular notebook: validate UUID format
+    validateUUID(notebookId, "Notebook ID");
+
+    // First verify the notebook exists and belongs to the user
+    const { data: notebook, error: notebookError } = await supabase
+      .from("notebooks")
+      .select("id")
+      .eq("id", notebookId)
+      .eq("user_id", locals.userId)
+      .single();
+
+    if (notebookError || !notebook) {
+      throw ApiErrors.notFound("Notebook not found");
+    }
+
+    // Parse difficulty filter from query params
+    const url = new URL(context.request.url);
+    const difficultyParam = url.searchParams.get("difficulty");
+
+    // Build query
+    query = supabase
+      .from("phrases")
+      .select("id, position, en_text, pl_text, tokens, difficulty, created_at, updated_at")
+      .eq("notebook_id", notebookId)
+      .order(sort, { ascending: order === "asc" })
+      .limit(limit + 1); // Get one extra to check if there are more
+
+    // Apply difficulty filter if provided
+    if (difficultyParam) {
+      if (difficultyParam === "unset") {
+        query = query.is("difficulty", null);
+      } else if (difficultyParam === "easy" || difficultyParam === "medium" || difficultyParam === "hard") {
+        query = query.eq("difficulty", difficultyParam);
+      } else {
+        throw ApiErrors.validationError("Invalid difficulty filter. Must be 'easy', 'medium', 'hard', or 'unset'");
+      }
     }
   }
 
@@ -83,13 +136,35 @@ const getPhrases = async (context: APIContext): Promise<Response> => {
     throw ApiErrors.internal("Failed to fetch phrases");
   }
 
+  // Transform data for virtual notebooks (add notebook name)
+  let items;
+  if (isVirtual && difficulty && data && notebookMap) {
+    items = data.map((phrase) => {
+      const phraseWithNotebook = phrase as typeof phrase & { notebook_id?: string };
+      return {
+        id: phraseWithNotebook.id,
+        position: phraseWithNotebook.position,
+        en_text: phraseWithNotebook.en_text,
+        pl_text: phraseWithNotebook.pl_text,
+        tokens: phraseWithNotebook.tokens,
+        difficulty: phraseWithNotebook.difficulty,
+        created_at: phraseWithNotebook.created_at,
+        updated_at: phraseWithNotebook.updated_at,
+        notebook_id: phraseWithNotebook.notebook_id,
+        notebook_name: phraseWithNotebook.notebook_id ? notebookMap.get(phraseWithNotebook.notebook_id) || null : null,
+      };
+    });
+  } else {
+    items = data || [];
+  }
+
   // Check if there are more results
-  const hasMore = data && data.length > limit;
-  const items = hasMore ? data.slice(0, limit) : data || [];
+  const hasMore = items && items.length > limit;
+  const finalItems = hasMore ? items.slice(0, limit) : items || [];
   const nextCursor = hasMore ? (parseInt(cursor || "0") + limit).toString() : null;
 
   const response: PhraseListResponse = {
-    items,
+    items: finalItems,
     next_cursor: nextCursor,
   };
 

@@ -194,6 +194,16 @@ For production-like testing, it's recommended to run the application in Docker. 
   - Round-based learning: incorrect phrases are repeated in subsequent rounds
   - Two answer modes: exact match (default) or contains mode (accepts partial matches)
   - Session statistics and progress tracking
+- **Phrase Difficulty:** Mark phrases with difficulty levels (easy, medium, hard) to organize your learning
+  - Quick marking from Player using keyboard shortcuts: `1` (easy), `2` (medium), `3` (hard), `0` (clear)
+  - Bulk marking in Notebook view (select multiple phrases and set difficulty)
+  - Filter phrases by difficulty in Notebook, Player, and Learn mode
+  - Difficulty is per-phrase and persists across sessions
+- **Smart Lists:** Cross-notebook views that show phrases from all your notebooks filtered by difficulty
+  - Three smart lists: "All Easy", "All Medium", "All Hard"
+  - Accessible via "Smart" filter in the notebook list
+  - Each phrase shows its source notebook name
+  - Works with Player and Learn mode (uses audio from original notebooks)
 - **Export ZIP:** Export notebook audio as ZIP file with combined MP3 files (EN1 + 800ms silence + EN2 + 800ms silence + EN3 + 800ms silence + PL per phrase).
 - **Keyboard Shortcuts:** Space/K (play/pause), S (stop), R (restart), ←/→ (seek), Shift+←/→ (seek large), P/N (prev/next phrase)
 - **Touch Gestures:** Swipe navigation, double-tap play/pause, double-tap left/right for seeking

@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "../../../../db/database.types";
 import type { LocalsWithAuth } from "../../../../lib/types";
 import { withErrorHandling, requireAuth, ApiErrors } from "../../../../lib/errors";
-import { getSupabaseClient } from "../../../../lib/utils";
+import { getSupabaseClient, isVirtualNotebook, getDifficultyFromVirtualNotebook } from "../../../../lib/utils";
 import { validateUUID } from "../../../../lib/validation.service";
 import type { LearnManifestDTO, LearnPhraseAudioAvailability } from "../../../../types";
 
@@ -26,21 +26,60 @@ async function fetchNotebookForUser(supabase: Supabase, notebookId: string, user
   return notebook;
 }
 
-async function fetchPhrasesForNotebook(supabase: Supabase, notebookId: string, difficultyFilter?: string) {
-  let query = supabase
-    .from("phrases")
-    .select("id, position, en_text, pl_text, tokens, difficulty")
-    .eq("notebook_id", notebookId)
-    .order("position");
+async function fetchPhrasesForNotebook(
+  supabase: Supabase,
+  notebookId: string,
+  userId: string,
+  difficultyFilter?: string
+) {
+  const isVirtual = isVirtualNotebook(notebookId);
+  const difficulty = isVirtual ? getDifficultyFromVirtualNotebook(notebookId) : null;
 
-  // Apply difficulty filter if provided
-  if (difficultyFilter) {
-    if (difficultyFilter === "unset") {
-      query = query.is("difficulty", null);
-    } else if (difficultyFilter === "easy" || difficultyFilter === "medium" || difficultyFilter === "hard") {
-      query = query.eq("difficulty", difficultyFilter);
-    } else {
-      throw ApiErrors.validationError("Invalid difficulty filter. Must be 'easy', 'medium', 'hard', or 'unset'");
+  let query;
+
+  if (isVirtual && difficulty) {
+    // Virtual notebook: query all phrases from user's notebooks with matching difficulty
+    // First, get all notebook IDs for this user
+    const { data: userNotebooks, error: notebooksError } = await supabase
+      .from("notebooks")
+      .select("id")
+      .eq("user_id", userId);
+
+    if (notebooksError) {
+      // eslint-disable-next-line no-console
+      console.error("[learn-manifest] Failed to fetch user notebooks:", notebooksError);
+      throw ApiErrors.internal("Failed to fetch user notebooks");
+    }
+
+    if (!userNotebooks || userNotebooks.length === 0) {
+      return [];
+    }
+
+    const notebookIds = userNotebooks.map((nb) => nb.id);
+
+    query = supabase
+      .from("phrases")
+      .select("id, position, en_text, pl_text, tokens, difficulty, notebook_id")
+      .in("notebook_id", notebookIds)
+      .eq("difficulty", difficulty)
+      .order("created_at", { ascending: false });
+  } else {
+    // Regular notebook
+    query = supabase
+      .from("phrases")
+      .select("id, position, en_text, pl_text, tokens, difficulty")
+      .eq("notebook_id", notebookId)
+      .order("position");
+
+    // Apply difficulty filter if provided
+    if (difficultyFilter) {
+      if (difficultyFilter === "unset") {
+        query = query.is("difficulty", null);
+      } else if (difficultyFilter === "easy" || difficultyFilter === "medium" || difficultyFilter === "hard") {
+        query = query.eq("difficulty", difficultyFilter);
+      } else {
+        throw ApiErrors.validationError("Invalid difficulty filter. Must be 'easy', 'medium', 'hard', or 'unset'");
+      }
     }
   }
 
@@ -58,47 +97,17 @@ async function fetchPhrasesForNotebook(supabase: Supabase, notebookId: string, d
 async function fetchAudioAvailability(
   supabase: Supabase,
   notebookId: string,
-  phraseIds: string[]
+  phraseIds: string[],
+  phrases?: { id: string; notebook_id?: string }[]
 ): Promise<Map<string, LearnPhraseAudioAvailability>> {
   if (phraseIds.length === 0) {
     return new Map();
   }
 
-  // First, resolve the current build for the notebook
-  const { data: notebook, error: notebookError } = await supabase
-    .from("notebooks")
-    .select("current_build_id")
-    .eq("id", notebookId)
-    .single();
-
-  if (notebookError) {
-    // eslint-disable-next-line no-console
-    console.error("[learn-manifest] Failed to fetch notebook build info:", notebookError);
-    throw ApiErrors.internal("Failed to fetch audio availability");
-  }
-
-  const currentBuildId = notebook.current_build_id;
-
-  if (!currentBuildId) {
-    // No active build – treat as no audio available
-    return new Map();
-  }
-
-  // Query active segments for current build and notebook phrases
-  const { data: segments, error: segmentsError } = await supabase
-    .from("audio_segments")
-    .select("phrase_id, voice_slot, status")
-    .eq("build_id", currentBuildId)
-    .in("phrase_id", phraseIds);
-
-  if (segmentsError) {
-    // eslint-disable-next-line no-console
-    console.error("[learn-manifest] Failed to fetch audio segments:", segmentsError);
-    throw ApiErrors.internal("Failed to fetch audio availability");
-  }
-
+  const isVirtual = isVirtualNotebook(notebookId);
   const availability = new Map<string, LearnPhraseAudioAvailability>();
 
+  // Initialize all phrases as no audio
   for (const phraseId of phraseIds) {
     availability.set(phraseId, {
       has_en_audio: false,
@@ -106,20 +115,101 @@ async function fetchAudioAvailability(
     });
   }
 
-  for (const segment of segments ?? []) {
-    if (segment.status !== "complete") {
-      continue;
+  if (isVirtual && phrases) {
+    // For virtual notebooks, check audio for each phrase in its original notebook
+    // Group phrases by notebook_id
+    const phrasesByNotebook = new Map<string, string[]>();
+    for (const phrase of phrases) {
+      if (phrase.notebook_id) {
+        const existing = phrasesByNotebook.get(phrase.notebook_id);
+        if (existing) {
+          existing.push(phrase.id);
+        } else {
+          phrasesByNotebook.set(phrase.notebook_id, [phrase.id]);
+        }
+      }
     }
 
-    const phraseAvailability = availability.get(segment.phrase_id);
-    if (!phraseAvailability) {
-      continue;
+    // Check audio availability for each notebook
+    for (const [originalNotebookId, phraseIdsForNotebook] of phrasesByNotebook) {
+      const { data: notebook, error: notebookError } = await supabase
+        .from("notebooks")
+        .select("current_build_id")
+        .eq("id", originalNotebookId)
+        .single();
+
+      if (notebookError || !notebook?.current_build_id) {
+        continue;
+      }
+
+      const { data: segments, error: segmentsError } = await supabase
+        .from("audio_segments")
+        .select("phrase_id, voice_slot, status")
+        .eq("build_id", notebook.current_build_id)
+        .eq("is_active", true)
+        .in("phrase_id", phraseIdsForNotebook);
+
+      if (segmentsError) {
+        continue;
+      }
+
+      for (const segment of segments ?? []) {
+        if (segment.status !== "complete") {
+          continue;
+        }
+
+        const phraseAvailability = availability.get(segment.phrase_id);
+        if (!phraseAvailability) {
+          continue;
+        }
+
+        if (segment.voice_slot === "PL") {
+          phraseAvailability.has_pl_audio = true;
+        } else if (segment.voice_slot === "EN1" || segment.voice_slot === "EN2" || segment.voice_slot === "EN3") {
+          phraseAvailability.has_en_audio = true;
+        }
+      }
+    }
+  } else {
+    // Regular notebook: check audio for current build
+    const { data: notebook, error: notebookError } = await supabase
+      .from("notebooks")
+      .select("current_build_id")
+      .eq("id", notebookId)
+      .single();
+
+    if (notebookError || !notebook?.current_build_id) {
+      return availability;
     }
 
-    if (segment.voice_slot === "PL") {
-      phraseAvailability.has_pl_audio = true;
-    } else if (segment.voice_slot === "EN1" || segment.voice_slot === "EN2" || segment.voice_slot === "EN3") {
-      phraseAvailability.has_en_audio = true;
+    const { data: segments, error: segmentsError } = await supabase
+      .from("audio_segments")
+      .select("phrase_id, voice_slot, status")
+      .eq("build_id", notebook.current_build_id)
+      .eq("is_active", true)
+      .in("phrase_id", phraseIds);
+
+    if (segmentsError) {
+      // eslint-disable-next-line no-console
+      console.error("[learn-manifest] Failed to fetch audio segments:", segmentsError);
+      return availability;
+    }
+
+    for (const segment of segments ?? []) {
+      if (segment.status !== "complete") {
+        continue;
+      }
+
+      const phraseAvailability = availability.get(segment.phrase_id);
+      if (!phraseAvailability) {
+        continue;
+      }
+
+      if (segment.voice_slot === "PL") {
+        phraseAvailability.has_pl_audio = true;
+      } else if (segment.voice_slot === "EN1" || segment.voice_slot === "EN2" || segment.voice_slot === "EN3") {
+        phraseAvailability.has_en_audio = true;
+      }
     }
   }
 
@@ -134,15 +224,26 @@ const getLearnManifest = async (context: APIContext): Promise<Response> => {
 
   const { notebookId } = context.params as { notebookId: string };
 
-  validateUUID(notebookId, "Notebook ID");
+  // Check if this is a virtual notebook
+  const isVirtual = isVirtualNotebook(notebookId);
 
-  await fetchNotebookForUser(supabase, notebookId, locals.userId);
+  // For regular notebooks, validate UUID and check ownership
+  if (!isVirtual) {
+    validateUUID(notebookId, "Notebook ID");
+    await fetchNotebookForUser(supabase, notebookId, locals.userId);
+  }
 
-  // Parse difficulty filter from query params
+  // Parse difficulty filter from query params (only for regular notebooks)
   const url = new URL(context.request.url);
   const difficultyParam = url.searchParams.get("difficulty");
 
-  const phrases = await fetchPhrasesForNotebook(supabase, notebookId, difficultyParam || undefined);
+  // For virtual notebooks, difficulty is already determined by the notebook ID
+  const phrases = await fetchPhrasesForNotebook(
+    supabase,
+    notebookId,
+    locals.userId,
+    isVirtual ? undefined : difficultyParam || undefined
+  );
 
   if (phrases.length === 0) {
     const emptyResponse: LearnManifestDTO = {
@@ -160,7 +261,7 @@ const getLearnManifest = async (context: APIContext): Promise<Response> => {
   }
 
   const phraseIds = phrases.map((p) => p.id);
-  const availability = await fetchAudioAvailability(supabase, notebookId, phraseIds);
+  const availability = await fetchAudioAvailability(supabase, notebookId, phraseIds, phrases);
 
   const response: LearnManifestDTO = {
     notebook_id: notebookId,

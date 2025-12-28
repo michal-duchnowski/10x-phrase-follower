@@ -312,3 +312,42 @@ export function cleanMarkdownForTts(text: string): string {
 
   return cleaned;
 }
+
+/**
+ * Virtual notebook IDs for cross-notebook difficulty views.
+ * These are not real notebooks in the database - they are query-driven views.
+ */
+export const VIRTUAL_NOTEBOOK_IDS = {
+  EASY: "difficulty-easy",
+  MEDIUM: "difficulty-medium",
+  HARD: "difficulty-hard",
+} as const;
+
+export type VirtualNotebookId = (typeof VIRTUAL_NOTEBOOK_IDS)[keyof typeof VIRTUAL_NOTEBOOK_IDS];
+
+/**
+ * Checks if a notebook ID is a virtual notebook (cross-notebook difficulty view).
+ *
+ * @param notebookId - The notebook ID to check
+ * @returns True if the ID is a virtual notebook ID
+ */
+export function isVirtualNotebook(notebookId: string): notebookId is VirtualNotebookId {
+  return (
+    notebookId === VIRTUAL_NOTEBOOK_IDS.EASY ||
+    notebookId === VIRTUAL_NOTEBOOK_IDS.MEDIUM ||
+    notebookId === VIRTUAL_NOTEBOOK_IDS.HARD
+  );
+}
+
+/**
+ * Extracts the difficulty level from a virtual notebook ID.
+ *
+ * @param notebookId - The virtual notebook ID
+ * @returns The difficulty level ('easy', 'medium', 'hard') or null if not a virtual notebook
+ */
+export function getDifficultyFromVirtualNotebook(notebookId: string): "easy" | "medium" | "hard" | null {
+  if (notebookId === VIRTUAL_NOTEBOOK_IDS.EASY) return "easy";
+  if (notebookId === VIRTUAL_NOTEBOOK_IDS.MEDIUM) return "medium";
+  if (notebookId === VIRTUAL_NOTEBOOK_IDS.HARD) return "hard";
+  return null;
+}

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { Button } from "./ui/button";
 import { useApi } from "../lib/hooks/useApi";
 import type { NotebookDTO, NotebookListResponse } from "../types";
+import { VIRTUAL_NOTEBOOK_IDS, isVirtualNotebook } from "../lib/utils";
 
 interface NotebookListProps {
   initialItems?: NotebookDTO[];
@@ -18,10 +19,15 @@ export default function NotebookList({ initialItems = [] }: NotebookListProps) {
   const [activeLetter, setActiveLetter] = useState<string>("ALL");
 
   const LETTER_FILTER_ALL = "ALL";
+  const LETTER_FILTER_SMART = "SMART";
   const LETTER_FILTER_OTHER = "#";
 
-  const getBucketForName = (rawName: string | null | undefined): string => {
-    const name = (rawName ?? "").trim();
+  const getBucketForName = (notebook: NotebookDTO | VirtualNotebookDTO): string => {
+    if (isVirtualNotebook(notebook.id)) {
+      return LETTER_FILTER_SMART;
+    }
+
+    const name = (notebook.name ?? "").trim();
     if (!name) {
       return LETTER_FILTER_OTHER;
     }
@@ -34,13 +40,48 @@ export default function NotebookList({ initialItems = [] }: NotebookListProps) {
     return LETTER_FILTER_OTHER;
   };
 
+  // Create virtual notebooks DTOs
+  const virtualNotebooks = useMemo((): VirtualNotebookDTO[] => {
+    return [
+      {
+        id: VIRTUAL_NOTEBOOK_IDS.EASY,
+        name: "All Easy",
+        current_build_id: null,
+        last_generate_job_id: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      {
+        id: VIRTUAL_NOTEBOOK_IDS.MEDIUM,
+        name: "All Medium",
+        current_build_id: null,
+        last_generate_job_id: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      {
+        id: VIRTUAL_NOTEBOOK_IDS.HARD,
+        name: "All Hard",
+        current_build_id: null,
+        last_generate_job_id: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    ];
+  }, []);
+
+  // Combine regular notebooks with virtual notebooks
+  const allNotebooks = useMemo(() => {
+    return [...virtualNotebooks, ...notebooks];
+  }, [virtualNotebooks, notebooks]);
+
   const availableLetterBuckets = useMemo(() => {
     const buckets = new Set<string>();
-    for (const notebook of notebooks) {
-      buckets.add(getBucketForName(notebook.name));
+    for (const notebook of allNotebooks) {
+      buckets.add(getBucketForName(notebook));
     }
     return buckets;
-  }, [notebooks]);
+  }, [allNotebooks]);
 
   const letterFilters = useMemo(() => {
     const letters = Array.from(availableLetterBuckets);
@@ -49,22 +90,30 @@ export default function NotebookList({ initialItems = [] }: NotebookListProps) {
       return [LETTER_FILTER_ALL];
     }
 
+    const hasSmart = letters.includes(LETTER_FILTER_SMART);
     const hasOther = letters.includes(LETTER_FILTER_OTHER);
-    const alphaLetters = letters.filter((letter) => letter !== LETTER_FILTER_OTHER).sort();
+    const alphaLetters = letters
+      .filter((letter) => letter !== LETTER_FILTER_OTHER && letter !== LETTER_FILTER_SMART)
+      .sort();
 
-    return [LETTER_FILTER_ALL, ...(hasOther ? [LETTER_FILTER_OTHER] : []), ...alphaLetters];
+    return [
+      LETTER_FILTER_ALL,
+      ...(hasSmart ? [LETTER_FILTER_SMART] : []),
+      ...(hasOther ? [LETTER_FILTER_OTHER] : []),
+      ...alphaLetters,
+    ];
   }, [availableLetterBuckets]);
 
   const filteredNotebooks = useMemo(() => {
     if (activeLetter === LETTER_FILTER_ALL) {
-      return notebooks;
+      return allNotebooks;
     }
 
-    return notebooks.filter((notebook) => {
-      const bucket = getBucketForName(notebook.name);
+    return allNotebooks.filter((notebook) => {
+      const bucket = getBucketForName(notebook);
       return bucket === activeLetter;
     });
-  }, [activeLetter, notebooks]);
+  }, [activeLetter, allNotebooks]);
 
   useEffect(() => {
     if (activeLetter === LETTER_FILTER_ALL) {
@@ -198,7 +247,7 @@ export default function NotebookList({ initialItems = [] }: NotebookListProps) {
       )}
 
       {/* Letter filter */}
-      {notebooks.length > 0 && (
+      {allNotebooks.length > 0 && (
         <div className="flex items-center gap-1 overflow-x-auto pb-1 -mx-1 px-1">
           {letterFilters.map((letter) => (
             <Button
@@ -212,14 +261,14 @@ export default function NotebookList({ initialItems = [] }: NotebookListProps) {
               onClick={() => setActiveLetter(letter)}
               aria-pressed={activeLetter === letter}
             >
-              {letter === LETTER_FILTER_ALL ? "All" : letter}
+              {letter === LETTER_FILTER_ALL ? "All" : letter === LETTER_FILTER_SMART ? "Smart" : letter}
             </Button>
           ))}
         </div>
       )}
 
       {/* Notebooks grid */}
-      {notebooks.length === 0 && !isLoading ? (
+      {allNotebooks.length === 0 && !isLoading ? (
         <div className="text-center py-12">
           <p className="text-muted-foreground">No notebooks found.</p>
           <a
@@ -231,7 +280,7 @@ export default function NotebookList({ initialItems = [] }: NotebookListProps) {
         </div>
       ) : filteredNotebooks.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-muted-foreground">No notebooks for selected letter.</p>
+          <p className="text-muted-foreground">No notebooks for selected filter.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -251,7 +300,7 @@ export default function NotebookList({ initialItems = [] }: NotebookListProps) {
       )}
 
       {/* Loading indicator */}
-      {isLoading && notebooks.length === 0 && (
+      {isLoading && allNotebooks.length === 0 && (
         <div className="text-center py-12">
           <p className="text-muted-foreground">Loading notebooks...</p>
         </div>
@@ -260,26 +309,33 @@ export default function NotebookList({ initialItems = [] }: NotebookListProps) {
   );
 }
 
+// Type for virtual notebooks (compatible with NotebookDTO)
+interface VirtualNotebookDTO extends NotebookDTO {
+  id: string;
+  name: string;
+}
+
 interface NotebookTileProps {
-  notebook: NotebookDTO;
+  notebook: NotebookDTO | VirtualNotebookDTO;
   onRename: (id: string, newName: string) => void;
   onDelete: (id: string) => void;
 }
 
 function NotebookTile({ notebook, onRename, onDelete }: NotebookTileProps) {
+  const isVirtual = isVirtualNotebook(notebook.id);
   const [isRenaming, setIsRenaming] = useState(false);
   const [newName, setNewName] = useState(notebook.name);
 
   const handleRename = (e: React.FormEvent) => {
     e.preventDefault();
-    if (newName.trim() && newName !== notebook.name) {
+    if (!isVirtual && newName.trim() && newName !== notebook.name) {
       onRename(notebook.id, newName.trim());
     }
     setIsRenaming(false);
   };
 
   const handleDelete = () => {
-    if (confirm(`Are you sure you want to delete "${notebook.name}"?`)) {
+    if (!isVirtual && confirm(`Are you sure you want to delete "${notebook.name}"?`)) {
       onDelete(notebook.id);
     }
   };
@@ -287,7 +343,7 @@ function NotebookTile({ notebook, onRename, onDelete }: NotebookTileProps) {
   return (
     <div className="bg-card border border-border rounded-lg p-4 hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between mb-2">
-        {isRenaming ? (
+        {isRenaming && !isVirtual ? (
           <form onSubmit={handleRename} className="flex-1 mr-2">
             <input
               type="text"
@@ -309,35 +365,44 @@ function NotebookTile({ notebook, onRename, onDelete }: NotebookTileProps) {
         )}
 
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={() => setIsRenaming(true)} className="p-1 h-auto">
-            <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-              />
-            </svg>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleDelete}
-            className="p-1 h-auto text-destructive hover:text-destructive"
-          >
-            <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-              />
-            </svg>
-          </Button>
+          {isVirtual ? (
+            <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded">Smart List</span>
+          ) : (
+            <>
+              <Button variant="ghost" size="sm" onClick={() => setIsRenaming(true)} className="p-1 h-auto">
+                <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                  />
+                </svg>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleDelete}
+                className="p-1 h-auto text-destructive hover:text-destructive"
+              >
+                <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
-      <p className="text-sm text-muted-foreground">Updated {new Date(notebook.updated_at).toLocaleDateString()}</p>
+      {!isVirtual && (
+        <p className="text-sm text-muted-foreground">Updated {new Date(notebook.updated_at).toLocaleDateString()}</p>
+      )}
+      {isVirtual && <p className="text-sm text-muted-foreground">Cross-notebook view</p>}
     </div>
   );
 }

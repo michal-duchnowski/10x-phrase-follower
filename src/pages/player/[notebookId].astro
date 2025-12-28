@@ -10,9 +10,10 @@ const { notebookId } = Astro.params;
 const startPhraseId = Astro.url.searchParams.get("start_phrase_id");
 const difficulty = Astro.url.searchParams.get("difficulty");
 
-// Validate notebook ID format (UUID)
+// Validate notebook ID format (UUID or virtual notebook ID)
 const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!notebookId || !uuidRegex.test(notebookId)) {
+const virtualNotebookRegex = /^difficulty-(easy|medium|hard)$/;
+if (!notebookId || (!uuidRegex.test(notebookId) && !virtualNotebookRegex.test(notebookId))) {
   return Astro.redirect("/notebooks");
 }
 

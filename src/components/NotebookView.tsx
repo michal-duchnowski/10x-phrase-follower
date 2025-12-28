@@ -16,7 +16,7 @@ import type {
   PhraseDifficulty,
   BulkUpdatePhrasesCommand,
 } from "../types";
-import { parseMarkdownToHtml } from "../lib/utils";
+import { parseMarkdownToHtml, isVirtualNotebook } from "../lib/utils";
 
 interface NotebookViewProps {
   notebookId: string;
@@ -76,15 +76,33 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
       try {
-        // Build phrases URL with difficulty filter
-        let phrasesUrl = `/api/notebooks/${notebookId}/phrases?sort=position&order=asc&limit=100`;
-        if (difficultyFilter !== "all") {
+        const isVirtual = isVirtualNotebook(notebookId);
+
+        // Build phrases URL - for virtual notebooks, use created_at DESC, for regular use position ASC
+        let phrasesUrl = `/api/notebooks/${notebookId}/phrases?sort=${isVirtual ? "created_at" : "position"}&order=${isVirtual ? "desc" : "asc"}&limit=100`;
+        // Don't apply difficulty filter for virtual notebooks (they already filter by difficulty)
+        if (!isVirtual && difficultyFilter !== "all") {
           phrasesUrl += `&difficulty=${difficultyFilter}`;
         }
 
-        // Load notebook and phrases in parallel
+        // Load notebook and phrases
+        // For virtual notebooks, skip notebook fetch (it doesn't exist in DB)
         const [notebookData, phrasesData] = await Promise.all([
-          apiCall<NotebookDTO>(`/api/notebooks/${notebookId}`, { method: "GET" }),
+          isVirtual
+            ? Promise.resolve({
+                id: notebookId,
+                name:
+                  notebookId === "difficulty-easy"
+                    ? "All Easy"
+                    : notebookId === "difficulty-medium"
+                      ? "All Medium"
+                      : "All Hard",
+                current_build_id: null,
+                last_generate_job_id: null,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              } as NotebookDTO)
+            : apiCall<NotebookDTO>(`/api/notebooks/${notebookId}`, { method: "GET" }),
           apiCall<PhraseListResponse>(phrasesUrl, {
             method: "GET",
           }),
@@ -394,20 +412,24 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                     Learn
                   </a>
                 </Button>
-                <GenerateAudioButton
-                  notebookId={notebookId}
-                  onJobCreated={handleJobCreated}
-                  onJobCompleted={handleJobCompleted}
-                  onJobUpdated={handleJobUpdated}
-                  activeJobId={state.activeJob?.id || null}
-                />
-                <ExportZipButton
-                  notebookId={notebookId}
-                  disabled={!state.notebook?.current_build_id}
-                  disabledReason={
-                    !state.notebook?.current_build_id ? "Generate audio first to enable export" : undefined
-                  }
-                />
+                {!isVirtualNotebook(notebookId) && (
+                  <>
+                    <GenerateAudioButton
+                      notebookId={notebookId}
+                      onJobCreated={handleJobCreated}
+                      onJobCompleted={handleJobCompleted}
+                      onJobUpdated={handleJobUpdated}
+                      activeJobId={state.activeJob?.id || null}
+                    />
+                    <ExportZipButton
+                      notebookId={notebookId}
+                      disabled={!state.notebook?.current_build_id}
+                      disabledReason={
+                        !state.notebook?.current_build_id ? "Generate audio first to enable export" : undefined
+                      }
+                    />
+                  </>
+                )}
               </div>
             </div>
 
@@ -431,159 +453,160 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                   </a>
                 </Button>
 
-                <MobileActionMenu triggerLabel="Actions" triggerIcon triggerVariant="outline" triggerSize="icon">
-                  {() => (
-                    <div className="space-y-2">
-                      <GenerateAudioButton
-                        notebookId={notebookId}
-                        onJobCreated={handleJobCreated}
-                        onJobCompleted={handleJobCompleted}
-                        onJobUpdated={handleJobUpdated}
-                        activeJobId={state.activeJob?.id || null}
-                        containerClassName="w-full"
-                        buttonClassName="w-full"
-                      />
-                      <ExportZipButton
-                        notebookId={notebookId}
-                        disabled={!state.notebook?.current_build_id}
-                        disabledReason={
-                          !state.notebook?.current_build_id ? "Generate audio first to enable export" : undefined
-                        }
-                        showLabel
-                        size="default"
-                        variant="default"
-                        className="w-full justify-start"
-                      />
-                    </div>
-                  )}
-                </MobileActionMenu>
+                {!isVirtualNotebook(notebookId) && (
+                  <MobileActionMenu triggerLabel="Actions" triggerIcon triggerVariant="outline" triggerSize="icon">
+                    {() => (
+                      <div className="space-y-2">
+                        <GenerateAudioButton
+                          notebookId={notebookId}
+                          onJobCreated={handleJobCreated}
+                          onJobCompleted={handleJobCompleted}
+                          onJobUpdated={handleJobUpdated}
+                          activeJobId={state.activeJob?.id || null}
+                          containerClassName="w-full"
+                          buttonClassName="w-full"
+                        />
+                        <ExportZipButton
+                          notebookId={notebookId}
+                          disabled={!state.notebook?.current_build_id}
+                          disabledReason={
+                            !state.notebook?.current_build_id ? "Generate audio first to enable export" : undefined
+                          }
+                          showLabel
+                          size="default"
+                          variant="default"
+                          className="w-full justify-start"
+                        />
+                      </div>
+                    )}
+                  </MobileActionMenu>
+                )}
               </div>
             </div>
-            {/* Difficulty filter and bulk actions */}
-            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-              <div className="hidden md:flex items-center gap-2 flex-wrap">
-                <span className="text-sm text-muted-foreground">Filter:</span>
-                <Button
-                  variant={difficultyFilter === "all" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setDifficultyFilter("all")}
-                >
-                  All
-                </Button>
-                <Button
-                  variant={difficultyFilter === "unset" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setDifficultyFilter("unset")}
-                >
-                  Unset
-                </Button>
-                <Button
-                  variant={difficultyFilter === "easy" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setDifficultyFilter("easy")}
-                >
-                  Easy
-                </Button>
-                <Button
-                  variant={difficultyFilter === "medium" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setDifficultyFilter("medium")}
-                >
-                  Medium
-                </Button>
-                <Button
-                  variant={difficultyFilter === "hard" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setDifficultyFilter("hard")}
-                >
-                  Hard
-                </Button>
-              </div>
+            {/* Difficulty filter and bulk actions - only for regular notebooks */}
+            {!isVirtualNotebook(notebookId) && (
+              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                <div className="hidden md:flex items-center gap-2 flex-wrap">
+                  <span className="text-sm text-muted-foreground">Filter:</span>
+                  <Button
+                    variant={difficultyFilter === "all" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setDifficultyFilter("all")}
+                  >
+                    All
+                  </Button>
+                  <Button
+                    variant={difficultyFilter === "unset" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setDifficultyFilter("unset")}
+                  >
+                    Unset
+                  </Button>
+                  <Button
+                    variant={difficultyFilter === "easy" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setDifficultyFilter("easy")}
+                  >
+                    Easy
+                  </Button>
+                  <Button
+                    variant={difficultyFilter === "medium" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setDifficultyFilter("medium")}
+                  >
+                    Medium
+                  </Button>
+                  <Button
+                    variant={difficultyFilter === "hard" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setDifficultyFilter("hard")}
+                  >
+                    Hard
+                  </Button>
+                </div>
 
-              <div className="md:hidden w-full space-y-2">
-                <div className="text-sm text-muted-foreground">Filter</div>
-                <select
-                  value={difficultyFilter}
-                  onChange={(e) => setDifficultyFilter(e.target.value as PhraseDifficultyOrUnset | "all")}
-                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                  aria-label="Difficulty filter"
-                >
-                  <option value="all">All</option>
-                  <option value="unset">Unset</option>
-                  <option value="easy">Easy</option>
-                  <option value="medium">Medium</option>
-                  <option value="hard">Hard</option>
-                </select>
+                <div className="md:hidden w-full space-y-2">
+                  <div className="text-sm text-muted-foreground">Filter</div>
+                  <select
+                    value={difficultyFilter}
+                    onChange={(e) => setDifficultyFilter(e.target.value as PhraseDifficultyOrUnset | "all")}
+                    className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                    aria-label="Difficulty filter"
+                  >
+                    <option value="all">All</option>
+                    <option value="unset">Unset</option>
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                  </select>
+                </div>
               </div>
-              {selectedPhraseIds.size > 0 && (
-                <>
-                  <div className="hidden md:flex items-center gap-2 flex-wrap">
-                    <span className="text-sm text-muted-foreground">{selectedPhraseIds.size} selected:</span>
-                    <Button variant="default" size="sm" onClick={() => handleBulkUpdateDifficulty("easy")}>
-                      Mark Easy
-                    </Button>
-                    <Button variant="default" size="sm" onClick={() => handleBulkUpdateDifficulty("medium")}>
-                      Mark Medium
-                    </Button>
-                    <Button variant="default" size="sm" onClick={() => handleBulkUpdateDifficulty("hard")}>
-                      Mark Hard
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleBulkUpdateDifficulty(null)}>
-                      Clear
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setSelectedPhraseIds(new Set())}>
-                      Deselect All
-                    </Button>
-                  </div>
+            )}
 
-                  <div className="md:hidden w-full space-y-2">
-                    <div className="text-sm text-muted-foreground">{selectedPhraseIds.size} selected</div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        variant="default"
-                        size="sm"
-                        className="w-full"
-                        onClick={() => handleBulkUpdateDifficulty("easy")}
-                      >
-                        Easy
-                      </Button>
-                      <Button
-                        variant="default"
-                        size="sm"
-                        className="w-full"
-                        onClick={() => handleBulkUpdateDifficulty("medium")}
-                      >
-                        Medium
-                      </Button>
-                      <Button
-                        variant="default"
-                        size="sm"
-                        className="w-full"
-                        onClick={() => handleBulkUpdateDifficulty("hard")}
-                      >
-                        Hard
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full"
-                        onClick={() => handleBulkUpdateDifficulty(null)}
-                      >
-                        Clear
-                      </Button>
-                    </div>
+            {/* Bulk actions - only for regular notebooks */}
+            {!isVirtualNotebook(notebookId) && selectedPhraseIds.size > 0 && (
+              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                <div className="hidden md:flex items-center gap-2 flex-wrap">
+                  <span className="text-sm text-muted-foreground">{selectedPhraseIds.size} selected:</span>
+                  <Button variant="default" size="sm" onClick={() => handleBulkUpdateDifficulty("easy")}>
+                    Mark Easy
+                  </Button>
+                  <Button variant="default" size="sm" onClick={() => handleBulkUpdateDifficulty("medium")}>
+                    Mark Medium
+                  </Button>
+                  <Button variant="default" size="sm" onClick={() => handleBulkUpdateDifficulty("hard")}>
+                    Mark Hard
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => handleBulkUpdateDifficulty(null)}>
+                    Clear
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedPhraseIds(new Set())}>
+                    Deselect All
+                  </Button>
+                </div>
+
+                <div className="md:hidden w-full space-y-2">
+                  <div className="text-sm text-muted-foreground">{selectedPhraseIds.size} selected</div>
+                  <div className="grid grid-cols-2 gap-2">
                     <Button
-                      variant="ghost"
+                      variant="default"
                       size="sm"
                       className="w-full"
-                      onClick={() => setSelectedPhraseIds(new Set())}
+                      onClick={() => handleBulkUpdateDifficulty("easy")}
                     >
-                      Deselect All
+                      Easy
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => handleBulkUpdateDifficulty("medium")}
+                    >
+                      Medium
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => handleBulkUpdateDifficulty("hard")}
+                    >
+                      Hard
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => handleBulkUpdateDifficulty(null)}
+                    >
+                      Clear
                     </Button>
                   </div>
-                </>
-              )}
-            </div>
+                  <Button variant="ghost" size="sm" className="w-full" onClick={() => setSelectedPhraseIds(new Set())}>
+                    Deselect All
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -607,6 +630,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
               selectedPhraseIds={selectedPhraseIds}
               onSelectionChange={setSelectedPhraseIds}
               difficultyFilter={difficultyFilter}
+              isVirtual={isVirtualNotebook(notebookId)}
               className="hidden md:block"
             />
             {/* Mobile card view */}
@@ -617,6 +641,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
               selectedPhraseIds={selectedPhraseIds}
               onSelectionChange={setSelectedPhraseIds}
               difficultyFilter={difficultyFilter}
+              isVirtual={isVirtualNotebook(notebookId)}
               className="md:hidden"
             />
           </>
@@ -634,6 +659,7 @@ interface PhraseTableProps {
   selectedPhraseIds: Set<string>;
   onSelectionChange: (ids: Set<string>) => void;
   difficultyFilter: PhraseDifficultyOrUnset | "all";
+  isVirtual?: boolean;
   className?: string;
 }
 
@@ -644,6 +670,7 @@ function PhraseTable({
   selectedPhraseIds,
   onSelectionChange,
   difficultyFilter,
+  isVirtual = false,
   className,
 }: PhraseTableProps) {
   const handleRowClick = (phraseId: string, e: React.MouseEvent | React.KeyboardEvent) => {
@@ -687,6 +714,7 @@ function PhraseTable({
               />
             </th>
             <th className="text-left p-4 font-medium text-muted-foreground w-14">#</th>
+            {isVirtual && <th className="text-left p-4 font-medium text-muted-foreground">Notebook</th>}
             <th className="text-left p-4 font-medium text-muted-foreground">English</th>
             <th className="text-left p-4 font-medium text-muted-foreground">Polish</th>
             <th className="text-left p-4 font-medium text-muted-foreground w-24">Difficulty</th>
@@ -703,6 +731,7 @@ function PhraseTable({
               onRowClick={handleRowClick}
               selectedPhraseIds={selectedPhraseIds}
               onSelectionChange={onSelectionChange}
+              isVirtual={isVirtual}
             />
           ))}
         </tbody>
@@ -719,9 +748,18 @@ interface PhraseRowProps {
   onRowClick: PhraseRowClickHandler;
   selectedPhraseIds: Set<string>;
   onSelectionChange: (ids: Set<string>) => void;
+  isVirtual?: boolean;
 }
 
-function PhraseRow({ phrase, index, onDelete, onRowClick, selectedPhraseIds, onSelectionChange }: PhraseRowProps) {
+function PhraseRow({
+  phrase,
+  index,
+  onDelete,
+  onRowClick,
+  selectedPhraseIds,
+  onSelectionChange,
+  isVirtual = false,
+}: PhraseRowProps) {
   const isSelected = selectedPhraseIds.has(phrase.id);
 
   const handleClick = (e: React.MouseEvent) => {
@@ -777,6 +815,15 @@ function PhraseRow({ phrase, index, onDelete, onRowClick, selectedPhraseIds, onS
       <td className="p-4 w-14">
         <span className="text-xs font-medium text-muted-foreground">{index + 1}</span>
       </td>
+      {isVirtual && (
+        <td className="p-4">
+          {phrase.notebook_name && (
+            <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-primary/10 text-primary rounded">
+              {phrase.notebook_name}
+            </span>
+          )}
+        </td>
+      )}
       <td className="p-4">
         <div
           className="text-sm text-foreground"
@@ -793,15 +840,17 @@ function PhraseRow({ phrase, index, onDelete, onRowClick, selectedPhraseIds, onS
         <DifficultyBadge difficulty={phrase.difficulty} />
       </td>
       <td className="p-4 w-16 text-right">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="p-1 h-auto text-destructive hover:text-destructive"
-          onClick={handleDeleteClick}
-          aria-label="Usuń frazę"
-        >
-          <Trash2 className="size-4" />
-        </Button>
+        {!isVirtual && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="p-1 h-auto text-destructive hover:text-destructive"
+            onClick={handleDeleteClick}
+            aria-label="Usuń frazę"
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        )}
       </td>
     </tr>
   );
@@ -815,6 +864,7 @@ interface PhraseListProps {
   selectedPhraseIds: Set<string>;
   onSelectionChange: (ids: Set<string>) => void;
   difficultyFilter: PhraseDifficultyOrUnset | "all";
+  isVirtual?: boolean;
   className?: string;
 }
 
@@ -827,6 +877,7 @@ function PhraseList({
   selectedPhraseIds,
   onSelectionChange,
   difficultyFilter,
+  isVirtual = false,
   className,
 }: PhraseListProps) {
   const handleRowClick = (phraseId: string, e: React.MouseEvent | React.KeyboardEvent) => {
@@ -852,6 +903,7 @@ function PhraseList({
           onRowClick={handleRowClick}
           selectedPhraseIds={selectedPhraseIds}
           onSelectionChange={onSelectionChange}
+          isVirtual={isVirtual}
         />
       ))}
     </div>
@@ -866,9 +918,18 @@ interface PhraseCardProps {
   onRowClick: PhraseRowClickHandler;
   selectedPhraseIds: Set<string>;
   onSelectionChange: (ids: Set<string>) => void;
+  isVirtual?: boolean;
 }
 
-function PhraseCard({ phrase, index, onDelete, onRowClick, selectedPhraseIds, onSelectionChange }: PhraseCardProps) {
+function PhraseCard({
+  phrase,
+  index,
+  onDelete,
+  onRowClick,
+  selectedPhraseIds,
+  onSelectionChange,
+  isVirtual = false,
+}: PhraseCardProps) {
   const isSelected = selectedPhraseIds.has(phrase.id);
 
   const handleClick = (e: React.MouseEvent) => {
@@ -925,6 +986,13 @@ function PhraseCard({ phrase, index, onDelete, onRowClick, selectedPhraseIds, on
           {index + 1}
         </span>
         <div className="min-w-0 flex-1">
+          {isVirtual && phrase.notebook_name && (
+            <div className="mb-1">
+              <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary rounded">
+                {phrase.notebook_name}
+              </span>
+            </div>
+          )}
           <div className="flex items-center gap-2 mb-1">
             <div
               className="text-[15px] text-foreground truncate font-medium"
@@ -938,17 +1006,19 @@ function PhraseCard({ phrase, index, onDelete, onRowClick, selectedPhraseIds, on
           />
         </div>
       </div>
-      <div className="flex items-center gap-1 shrink-0">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="p-1 h-auto text-destructive hover:text-destructive"
-          onClick={handleDeleteClick}
-          aria-label="Usuń"
-        >
-          <Trash2 className="size-4" />
-        </Button>
-      </div>
+      {!isVirtual && (
+        <div className="flex items-center gap-1 shrink-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="p-1 h-auto text-destructive hover:text-destructive"
+            onClick={handleDeleteClick}
+            aria-label="Usuń"
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
