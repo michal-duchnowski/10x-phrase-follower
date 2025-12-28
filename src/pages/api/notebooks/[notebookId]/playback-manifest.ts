@@ -181,46 +181,89 @@ export async function GET(context: APIContext) {
     const isVirtual = isVirtualNotebook(notebookId);
     const difficulty = isVirtual ? getDifficultyFromVirtualNotebook(notebookId) : null;
 
+    // Check for pinned filter (only for virtual notebooks)
+    const url = new URL(context.request.url);
+    const pinnedParam = url.searchParams.get("pinned");
+    const onlyPinned = pinnedParam === "1";
+
     let phrasesQuery;
     let currentBuildId: string | null = null;
 
     if (isVirtual && difficulty) {
       // Virtual notebook: query all phrases from user's notebooks with matching difficulty
-      // First, get all notebook IDs for this user
+      // First, get notebook IDs (all or pinned only)
       const userId = getUserId(context);
-      const { data: userNotebooks, error: notebooksError } = await supabase
-        .from("notebooks")
-        .select("id")
-        .eq("user_id", userId);
+      let notebookIds: string[];
 
-      if (notebooksError) {
-        // eslint-disable-next-line no-console
-        console.error("Database error fetching user notebooks:", notebooksError);
-        throw ApiErrors.internal("Failed to fetch user notebooks");
+      if (onlyPinned) {
+        // Get only pinned notebook IDs
+        const { data: pinnedNotebooks, error: pinnedError } = await supabase
+          .from("pinned_notebooks")
+          .select("notebook_id")
+          .eq("user_id", userId);
+
+        if (pinnedError) {
+          // eslint-disable-next-line no-console
+          console.error("Database error fetching pinned notebooks:", pinnedError);
+          throw ApiErrors.internal("Failed to fetch pinned notebooks");
+        }
+
+        if (!pinnedNotebooks || pinnedNotebooks.length === 0) {
+          // User has no pinned notebooks, return empty manifest
+          const response: PlaybackManifestDTO = {
+            notebook_id: notebookId,
+            build_id: null,
+            sequence: [],
+            expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+          };
+          return new Response(JSON.stringify(response), {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+              "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+              Pragma: "no-cache",
+              Expires: "0",
+            },
+          });
+        }
+
+        notebookIds = pinnedNotebooks.map((pin) => pin.notebook_id);
+      } else {
+        // Get all notebook IDs for this user
+        const { data: userNotebooks, error: notebooksError } = await supabase
+          .from("notebooks")
+          .select("id")
+          .eq("user_id", userId);
+
+        if (notebooksError) {
+          // eslint-disable-next-line no-console
+          console.error("Database error fetching user notebooks:", notebooksError);
+          throw ApiErrors.internal("Failed to fetch user notebooks");
+        }
+
+        if (!userNotebooks || userNotebooks.length === 0) {
+          // User has no notebooks, return empty manifest
+          const response: PlaybackManifestDTO = {
+            notebook_id: notebookId,
+            build_id: null,
+            sequence: [],
+            expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+          };
+          return new Response(JSON.stringify(response), {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+              "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+              Pragma: "no-cache",
+              Expires: "0",
+            },
+          });
+        }
+
+        notebookIds = userNotebooks.map((nb) => nb.id);
       }
 
-      if (!userNotebooks || userNotebooks.length === 0) {
-        // User has no notebooks, return empty manifest
-        const response: PlaybackManifestDTO = {
-          notebook_id: notebookId,
-          build_id: null,
-          sequence: [],
-          expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-        };
-        return new Response(JSON.stringify(response), {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            Pragma: "no-cache",
-            Expires: "0",
-          },
-        });
-      }
-
-      const notebookIds = userNotebooks.map((nb) => nb.id);
-
-      // Query phrases from user's notebooks with matching difficulty
+      // Query phrases from user's notebooks (or pinned only) with matching difficulty
       phrasesQuery = supabase
         .from("phrases")
         .select("id, position, en_text, pl_text, tokens, difficulty, notebook_id")

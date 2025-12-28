@@ -30,7 +30,8 @@ async function fetchPhrasesForNotebook(
   supabase: Supabase,
   notebookId: string,
   userId: string,
-  difficultyFilter?: string
+  difficultyFilter?: string,
+  onlyPinned?: boolean
 ) {
   const isVirtual = isVirtualNotebook(notebookId);
   const difficulty = isVirtual ? getDifficultyFromVirtualNotebook(notebookId) : null;
@@ -39,23 +40,46 @@ async function fetchPhrasesForNotebook(
 
   if (isVirtual && difficulty) {
     // Virtual notebook: query all phrases from user's notebooks with matching difficulty
-    // First, get all notebook IDs for this user
-    const { data: userNotebooks, error: notebooksError } = await supabase
-      .from("notebooks")
-      .select("id")
-      .eq("user_id", userId);
+    // First, get notebook IDs (all or pinned only)
+    let notebookIds: string[];
 
-    if (notebooksError) {
-      // eslint-disable-next-line no-console
-      console.error("[learn-manifest] Failed to fetch user notebooks:", notebooksError);
-      throw ApiErrors.internal("Failed to fetch user notebooks");
+    if (onlyPinned) {
+      // Get only pinned notebook IDs
+      const { data: pinnedNotebooks, error: pinnedError } = await supabase
+        .from("pinned_notebooks")
+        .select("notebook_id")
+        .eq("user_id", userId);
+
+      if (pinnedError) {
+        // eslint-disable-next-line no-console
+        console.error("[learn-manifest] Failed to fetch pinned notebooks:", pinnedError);
+        throw ApiErrors.internal("Failed to fetch pinned notebooks");
+      }
+
+      if (!pinnedNotebooks || pinnedNotebooks.length === 0) {
+        return [];
+      }
+
+      notebookIds = pinnedNotebooks.map((pin) => pin.notebook_id);
+    } else {
+      // Get all notebook IDs for this user
+      const { data: userNotebooks, error: notebooksError } = await supabase
+        .from("notebooks")
+        .select("id")
+        .eq("user_id", userId);
+
+      if (notebooksError) {
+        // eslint-disable-next-line no-console
+        console.error("[learn-manifest] Failed to fetch user notebooks:", notebooksError);
+        throw ApiErrors.internal("Failed to fetch user notebooks");
+      }
+
+      if (!userNotebooks || userNotebooks.length === 0) {
+        return [];
+      }
+
+      notebookIds = userNotebooks.map((nb) => nb.id);
     }
-
-    if (!userNotebooks || userNotebooks.length === 0) {
-      return [];
-    }
-
-    const notebookIds = userNotebooks.map((nb) => nb.id);
 
     query = supabase
       .from("phrases")
@@ -233,16 +257,19 @@ const getLearnManifest = async (context: APIContext): Promise<Response> => {
     await fetchNotebookForUser(supabase, notebookId, locals.userId);
   }
 
-  // Parse difficulty filter from query params (only for regular notebooks)
+  // Parse difficulty filter and pinned filter from query params
   const url = new URL(context.request.url);
   const difficultyParam = url.searchParams.get("difficulty");
+  const pinnedParam = url.searchParams.get("pinned");
+  const onlyPinned = pinnedParam === "1";
 
   // For virtual notebooks, difficulty is already determined by the notebook ID
   const phrases = await fetchPhrasesForNotebook(
     supabase,
     notebookId,
     locals.userId,
-    isVirtual ? undefined : difficultyParam || undefined
+    isVirtual ? undefined : difficultyParam || undefined,
+    isVirtual && onlyPinned ? true : undefined
   );
 
   if (phrases.length === 0) {

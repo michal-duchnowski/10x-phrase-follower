@@ -38,41 +38,92 @@ const getPhrases = async (context: APIContext): Promise<Response> => {
   const isVirtual = isVirtualNotebook(notebookId);
   const difficulty = isVirtual ? getDifficultyFromVirtualNotebook(notebookId) : null;
 
+  // Check for pinned filter (only for virtual notebooks)
+  const url = new URL(context.request.url);
+  const pinnedParam = url.searchParams.get("pinned");
+  const onlyPinned = pinnedParam === "1";
+
   let query;
   let notebookMap: Map<string, string> | undefined;
 
   if (isVirtual && difficulty) {
     // Virtual notebook: query all phrases from user's notebooks with matching difficulty
-    // First, get all notebook IDs for this user
-    const { data: userNotebooks, error: notebooksError } = await supabase
-      .from("notebooks")
-      .select("id, name")
-      .eq("user_id", locals.userId);
+    // First, get notebook IDs (all or pinned only)
+    let notebookIds: string[];
 
-    if (notebooksError) {
-      // eslint-disable-next-line no-console
-      console.error("Database error fetching user notebooks:", notebooksError);
-      throw ApiErrors.internal("Failed to fetch user notebooks");
+    if (onlyPinned) {
+      // Get only pinned notebook IDs
+      const { data: pinnedNotebooks, error: pinnedError } = await supabase
+        .from("pinned_notebooks")
+        .select("notebook_id")
+        .eq("user_id", locals.userId);
+
+      if (pinnedError) {
+        // eslint-disable-next-line no-console
+        console.error("Database error fetching pinned notebooks:", pinnedError);
+        throw ApiErrors.internal("Failed to fetch pinned notebooks");
+      }
+
+      if (!pinnedNotebooks || pinnedNotebooks.length === 0) {
+        // User has no pinned notebooks, return empty result
+        const response: PhraseListResponse = {
+          items: [],
+          next_cursor: null,
+        };
+        return new Response(JSON.stringify(response), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+      }
+
+      notebookIds = pinnedNotebooks.map((pin) => pin.notebook_id);
+    } else {
+      // Get all notebook IDs for this user
+      const { data: userNotebooks, error: notebooksError } = await supabase
+        .from("notebooks")
+        .select("id, name")
+        .eq("user_id", locals.userId);
+
+      if (notebooksError) {
+        // eslint-disable-next-line no-console
+        console.error("Database error fetching user notebooks:", notebooksError);
+        throw ApiErrors.internal("Failed to fetch user notebooks");
+      }
+
+      if (!userNotebooks || userNotebooks.length === 0) {
+        // User has no notebooks, return empty result
+        const response: PhraseListResponse = {
+          items: [],
+          next_cursor: null,
+        };
+        return new Response(JSON.stringify(response), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+      }
+
+      notebookIds = userNotebooks.map((nb) => nb.id);
+      notebookMap = new Map(userNotebooks.map((nb) => [nb.id, nb.name]));
     }
 
-    if (!userNotebooks || userNotebooks.length === 0) {
-      // User has no notebooks, return empty result
-      const response: PhraseListResponse = {
-        items: [],
-        next_cursor: null,
-      };
-      return new Response(JSON.stringify(response), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
+    // If we only have pinned IDs, we need to fetch notebook names
+    if (onlyPinned && !notebookMap) {
+      const { data: userNotebooks, error: notebooksError } = await supabase
+        .from("notebooks")
+        .select("id, name")
+        .eq("user_id", locals.userId)
+        .in("id", notebookIds);
+
+      if (!notebooksError && userNotebooks) {
+        notebookMap = new Map(userNotebooks.map((nb) => [nb.id, nb.name]));
+      }
     }
 
-    const notebookIds = userNotebooks.map((nb) => nb.id);
-    notebookMap = new Map(userNotebooks.map((nb) => [nb.id, nb.name]));
-
-    // Query phrases from user's notebooks with matching difficulty
+    // Query phrases from user's notebooks (or pinned only) with matching difficulty
     query = supabase
       .from("phrases")
       .select("id, position, en_text, pl_text, tokens, difficulty, created_at, updated_at, notebook_id")

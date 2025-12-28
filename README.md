@@ -204,6 +204,11 @@ For production-like testing, it's recommended to run the application in Docker. 
   - Accessible via "Smart" filter in the notebook list
   - Each phrase shows its source notebook name
   - Works with Player and Learn mode (uses audio from original notebooks)
+  - Filter option: "Only pinned" to limit smart lists to pinned notebooks only
+- **Pinned Notebooks:** Pin frequently used notebooks for quick access
+  - Pinned notebooks appear at the top of the notebook list in a dedicated section
+  - Pin/unpin notebooks using the pin icon on each notebook tile
+  - Use "Only pinned" filter in Smart Lists to focus on phrases from your pinned notebooks
 - **Export ZIP:** Export notebook audio as ZIP file with combined MP3 files (EN1 + 800ms silence + EN2 + 800ms silence + EN3 + 800ms silence + PL per phrase).
 - **Keyboard Shortcuts:** Space/K (play/pause), S (stop), R (restart), ←/→ (seek), Shift+←/→ (seek large), P/N (prev/next phrase)
 - **Touch Gestures:** Swipe navigation, double-tap play/pause, double-tap left/right for seeking

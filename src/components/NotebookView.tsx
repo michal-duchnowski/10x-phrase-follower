@@ -43,8 +43,12 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
   });
   const [difficultyFilter, setDifficultyFilter] = useState<PhraseDifficultyOrUnset | "all">("all");
   const [selectedPhraseIds, setSelectedPhraseIds] = useState<Set<string>>(new Set());
+  const [onlyPinned, setOnlyPinned] = useState(false);
 
-  // Load difficulty filter from localStorage
+  // Check if this is a virtual notebook (Smart List)
+  const isVirtual = isVirtualNotebook(notebookId);
+
+  // Load difficulty filter and pinned filter from localStorage/URL
   useEffect(() => {
     if (typeof window !== "undefined" && typeof localStorage !== "undefined") {
       const savedFilter = localStorage.getItem(`notebook-difficulty-filter-${notebookId}`);
@@ -58,8 +62,17 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
       ) {
         setDifficultyFilter(savedFilter as PhraseDifficultyOrUnset | "all");
       }
+
+      // Load pinned filter for Smart Lists
+      if (isVirtual) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const pinnedParam = urlParams.get("pinned");
+        const savedPinned = localStorage.getItem(`notebook-pinned-filter-${notebookId}`);
+        const shouldBePinned = pinnedParam === "1" || savedPinned === "1";
+        setOnlyPinned(shouldBePinned);
+      }
     }
-  }, [notebookId]);
+  }, [notebookId, isVirtual]);
 
   // Save difficulty filter to localStorage
   useEffect(() => {
@@ -67,6 +80,22 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
       localStorage.setItem(`notebook-difficulty-filter-${notebookId}`, difficultyFilter);
     }
   }, [difficultyFilter, notebookId]);
+
+  // Save pinned filter to localStorage and update URL
+  useEffect(() => {
+    if (typeof window !== "undefined" && typeof localStorage !== "undefined" && isVirtual) {
+      localStorage.setItem(`notebook-pinned-filter-${notebookId}`, onlyPinned ? "1" : "0");
+
+      // Update URL without page reload
+      const url = new URL(window.location.href);
+      if (onlyPinned) {
+        url.searchParams.set("pinned", "1");
+      } else {
+        url.searchParams.delete("pinned");
+      }
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [onlyPinned, notebookId, isVirtual]);
 
   // Load notebook and phrases
   useEffect(() => {
@@ -83,6 +112,10 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
         // Don't apply difficulty filter for virtual notebooks (they already filter by difficulty)
         if (!isVirtual && difficultyFilter !== "all") {
           phrasesUrl += `&difficulty=${difficultyFilter}`;
+        }
+        // Add pinned filter for Smart Lists
+        if (isVirtual && onlyPinned) {
+          phrasesUrl += `&pinned=1`;
         }
 
         // Load notebook and phrases
@@ -160,7 +193,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
     };
 
     loadData();
-  }, [notebookId, isAuthenticated, apiCall, difficultyFilter]);
+  }, [notebookId, isAuthenticated, apiCall, difficultyFilter, onlyPinned, isVirtual]);
 
   // Handle bulk difficulty update
   const handleBulkUpdateDifficulty = async (difficulty: PhraseDifficulty | null) => {
@@ -444,7 +477,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                     Player
                   </a>
                 </Button>
-                <Button asChild size="lg" variant="secondary" className="w-full">
+                <Button asChild size="lg" variant="default" className="w-full">
                   <a
                     href={`/notebooks/${notebookId}/learn${difficultyFilter !== "all" ? `?difficulty=${difficultyFilter}` : ""}`}
                     title="Open Learn Mode"
@@ -483,42 +516,76 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                 )}
               </div>
             </div>
+            {/* Only pinned filter - only for Smart Lists */}
+            {isVirtual && (
+              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                <div className="hidden md:flex items-center gap-2 flex-wrap">
+                  <span className="text-sm text-muted-foreground">Filter:</span>
+                  <Button
+                    variant={onlyPinned ? "default" : "ghost"}
+                    size="sm"
+                    className={!onlyPinned ? "text-primary" : ""}
+                    onClick={() => setOnlyPinned(!onlyPinned)}
+                  >
+                    Only pinned
+                  </Button>
+                </div>
+
+                <div className="md:hidden w-full space-y-2">
+                  <div className="text-sm text-muted-foreground">Filter</div>
+                  <Button
+                    variant={onlyPinned ? "default" : "ghost"}
+                    size="sm"
+                    className={!onlyPinned ? "w-full text-primary" : "w-full"}
+                    onClick={() => setOnlyPinned(!onlyPinned)}
+                  >
+                    Only pinned
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* Difficulty filter and bulk actions - only for regular notebooks */}
             {!isVirtualNotebook(notebookId) && (
               <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
                 <div className="hidden md:flex items-center gap-2 flex-wrap">
                   <span className="text-sm text-muted-foreground">Filter:</span>
                   <Button
-                    variant={difficultyFilter === "all" ? "default" : "outline"}
+                    variant={difficultyFilter === "all" ? "default" : "ghost"}
                     size="sm"
+                    className={difficultyFilter !== "all" ? "text-primary" : ""}
                     onClick={() => setDifficultyFilter("all")}
                   >
                     All
                   </Button>
                   <Button
-                    variant={difficultyFilter === "unset" ? "default" : "outline"}
+                    variant={difficultyFilter === "unset" ? "default" : "ghost"}
                     size="sm"
+                    className={difficultyFilter !== "unset" ? "text-primary" : ""}
                     onClick={() => setDifficultyFilter("unset")}
                   >
                     Unset
                   </Button>
                   <Button
-                    variant={difficultyFilter === "easy" ? "default" : "outline"}
+                    variant={difficultyFilter === "easy" ? "default" : "ghost"}
                     size="sm"
+                    className={difficultyFilter !== "easy" ? "text-primary" : ""}
                     onClick={() => setDifficultyFilter("easy")}
                   >
                     Easy
                   </Button>
                   <Button
-                    variant={difficultyFilter === "medium" ? "default" : "outline"}
+                    variant={difficultyFilter === "medium" ? "default" : "ghost"}
                     size="sm"
+                    className={difficultyFilter !== "medium" ? "text-primary" : ""}
                     onClick={() => setDifficultyFilter("medium")}
                   >
                     Medium
                   </Button>
                   <Button
-                    variant={difficultyFilter === "hard" ? "default" : "outline"}
+                    variant={difficultyFilter === "hard" ? "default" : "ghost"}
                     size="sm"
+                    className={difficultyFilter !== "hard" ? "text-primary" : ""}
                     onClick={() => setDifficultyFilter("hard")}
                   >
                     Hard
