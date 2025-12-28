@@ -218,9 +218,10 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
       });
 
       // Reload phrases to reflect changes
-      const phrasesUrl = `/api/notebooks/${notebookId}/phrases?sort=position&order=asc&limit=100${
-        difficultyFilter !== "all" ? `&difficulty=${difficultyFilter}` : ""
-      }`;
+      const isVirtual = isVirtualNotebook(notebookId);
+      const phrasesUrl = `/api/notebooks/${notebookId}/phrases?sort=${isVirtual ? "created_at" : "position"}&order=${isVirtual ? "desc" : "asc"}&limit=100${
+        !isVirtual && difficultyFilter !== "all" ? `&difficulty=${difficultyFilter}` : ""
+      }${isVirtual && onlyPinned ? `&pinned=1` : ""}`;
       const phrasesData = await apiCall<PhraseListResponse>(phrasesUrl, {
         method: "GET",
       });
@@ -230,6 +231,9 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
         phrases: phrasesData.items,
       }));
 
+      // Save count before clearing selection
+      const updatedCount = selectedPhraseIds.size;
+
       // Clear selection
       setSelectedPhraseIds(new Set());
 
@@ -237,7 +241,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
       addToast({
         type: "success",
         title: "Difficulty updated",
-        description: `Updated ${selectedPhraseIds.size} phrase(s) to ${difficultyLabel}.`,
+        description: `Updated ${updatedCount} phrase(s) to ${difficultyLabel}.`,
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to update phrases";
@@ -610,8 +614,8 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
               </div>
             )}
 
-            {/* Bulk actions - only for regular notebooks */}
-            {!isVirtualNotebook(notebookId) && selectedPhraseIds.size > 0 && (
+            {/* Bulk actions - for both regular and virtual notebooks */}
+            {selectedPhraseIds.size > 0 && (
               <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
                 <div className="hidden md:flex items-center gap-2 flex-wrap">
                   <span className="text-sm text-muted-foreground">{selectedPhraseIds.size} selected:</span>
