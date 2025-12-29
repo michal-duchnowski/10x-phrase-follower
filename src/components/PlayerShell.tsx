@@ -28,12 +28,14 @@ interface PlayerShellProps {
   notebookId: string;
   startPhraseId?: string;
   difficultyFilter?: string;
+  phraseIds?: string[];
 }
 
 export default function PlayerShell({
   notebookId,
   startPhraseId,
   difficultyFilter: initialDifficultyFilter,
+  phraseIds,
 }: PlayerShellProps) {
   // Authentication
   const { isAuthenticated, isLoading: authLoading } = useAuth();
@@ -98,6 +100,9 @@ export default function PlayerShell({
       if (difficultyFilter !== "all") {
         manifestUrl += `&difficulty=${difficultyFilter}`;
       }
+      if (phraseIds && phraseIds.length > 0) {
+        manifestUrl += `&phrase_ids=${phraseIds.join(",")}`;
+      }
       const data = await apiCall<PlaybackManifestDTO>(manifestUrl);
 
       // eslint-disable-next-line no-console
@@ -153,7 +158,7 @@ export default function PlayerShell({
     } finally {
       setLoading(false);
     }
-  }, [notebookId, highlight, speed, difficultyFilter, isAuthenticated, apiCall]);
+  }, [notebookId, highlight, speed, difficultyFilter, isAuthenticated, apiCall, phraseIds]);
 
   // Initial manifest fetch
   useEffect(() => {

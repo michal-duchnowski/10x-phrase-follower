@@ -31,7 +31,8 @@ async function fetchPhrasesForNotebook(
   notebookId: string,
   userId: string,
   difficultyFilter?: string,
-  onlyPinned?: boolean
+  onlyPinned?: boolean,
+  phraseIds?: string[]
 ) {
   const isVirtual = isVirtualNotebook(notebookId);
   const difficulty = isVirtual ? getDifficultyFromVirtualNotebook(notebookId) : null;
@@ -87,6 +88,11 @@ async function fetchPhrasesForNotebook(
       .in("notebook_id", notebookIds)
       .eq("difficulty", difficulty)
       .order("created_at", { ascending: false });
+
+    // Apply phrase_ids filter if provided
+    if (phraseIds && phraseIds.length > 0) {
+      query = query.in("id", phraseIds);
+    }
   } else {
     // Regular notebook
     query = supabase
@@ -94,6 +100,11 @@ async function fetchPhrasesForNotebook(
       .select("id, position, en_text, pl_text, tokens, difficulty")
       .eq("notebook_id", notebookId)
       .order("position");
+
+    // Apply phrase_ids filter if provided
+    if (phraseIds && phraseIds.length > 0) {
+      query = query.in("id", phraseIds);
+    }
 
     // Apply difficulty filter if provided
     if (difficultyFilter) {
@@ -257,11 +268,13 @@ const getLearnManifest = async (context: APIContext): Promise<Response> => {
     await fetchNotebookForUser(supabase, notebookId, locals.userId);
   }
 
-  // Parse difficulty filter and pinned filter from query params
+  // Parse difficulty filter, pinned filter, and phrase_ids from query params
   const url = new URL(context.request.url);
   const difficultyParam = url.searchParams.get("difficulty");
   const pinnedParam = url.searchParams.get("pinned");
   const onlyPinned = pinnedParam === "1";
+  const phraseIdsParam = url.searchParams.get("phrase_ids");
+  const phraseIds = phraseIdsParam ? phraseIdsParam.split(",") : undefined;
 
   // For virtual notebooks, difficulty is already determined by the notebook ID
   const phrases = await fetchPhrasesForNotebook(
@@ -269,7 +282,8 @@ const getLearnManifest = async (context: APIContext): Promise<Response> => {
     notebookId,
     locals.userId,
     isVirtual ? undefined : difficultyParam || undefined,
-    isVirtual && onlyPinned ? true : undefined
+    isVirtual && onlyPinned ? true : undefined,
+    phraseIds
   );
 
   if (phrases.length === 0) {

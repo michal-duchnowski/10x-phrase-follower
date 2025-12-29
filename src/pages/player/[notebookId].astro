@@ -9,6 +9,8 @@ export const prerender = false;
 const { notebookId } = Astro.params;
 const startPhraseId = Astro.url.searchParams.get("start_phrase_id");
 const difficulty = Astro.url.searchParams.get("difficulty");
+const phraseIdsParam = Astro.url.searchParams.get("phrase_ids");
+const phraseIds = phraseIdsParam ? phraseIdsParam.split(",") : undefined;
 
 // Validate notebook ID format (UUID or virtual notebook ID)
 const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -35,6 +37,7 @@ if (startPhraseId && !uuidRegex.test(startPhraseId)) {
         notebookId={notebookId}
         startPhraseId={startPhraseId || undefined}
         difficultyFilter={difficulty || undefined}
+        phraseIds={phraseIds}
         client:load
       />
     </AuthGuard>

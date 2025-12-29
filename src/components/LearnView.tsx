@@ -24,6 +24,7 @@ import DifficultyBadge from "./DifficultyBadge";
 interface LearnViewProps {
   notebookId: string;
   difficultyFilter?: string;
+  phraseIds?: string[];
 }
 
 type SessionPhase = "idle" | "in_progress" | "round_summary";
@@ -115,7 +116,7 @@ function getHasAudio(phrase: LearnPhraseDTO, direction: LearnDirection): boolean
   return direction === "en_to_pl" ? phrase.audio.has_en_audio : phrase.audio.has_pl_audio;
 }
 
-function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilter }: LearnViewProps) {
+function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilter, phraseIds }: LearnViewProps) {
   const { apiCall, isAuthenticated } = useApi();
   const { addToast } = useToast();
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -164,10 +165,17 @@ function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilte
       setManifestError(null);
 
       try {
-        // Build learn-manifest URL with difficulty filter
+        // Build learn-manifest URL with difficulty filter and phrase_ids
         let manifestUrl = `/api/notebooks/${notebookId}/learn-manifest`;
+        const params = new URLSearchParams();
         if (difficultyFilter !== "all") {
-          manifestUrl += `?difficulty=${difficultyFilter}`;
+          params.append("difficulty", difficultyFilter);
+        }
+        if (phraseIds && phraseIds.length > 0) {
+          params.append("phrase_ids", phraseIds.join(","));
+        }
+        if (params.toString()) {
+          manifestUrl += `?${params.toString()}`;
         }
 
         const isVirtual = isVirtualNotebook(notebookId);
@@ -213,7 +221,7 @@ function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilte
     };
 
     loadData();
-  }, [apiCall, notebookId, isAuthenticated, addToast, difficultyFilter]);
+  }, [apiCall, notebookId, isAuthenticated, addToast, difficultyFilter, phraseIds]);
 
   // Fetch playback manifest for audio
   const fetchPlaybackManifest = useCallback(

@@ -753,6 +753,32 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
               <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
                 <div className="hidden md:flex items-center gap-2 flex-wrap">
                   <span className="text-sm text-muted-foreground">{selectedPhraseIds.size} selected:</span>
+                  <Button
+                    asChild
+                    variant="default"
+                    size="sm"
+                    className="bg-primary text-primary-foreground hover:bg-primary/90"
+                  >
+                    <a
+                      href={`/player/${notebookId}?phrase_ids=${Array.from(selectedPhraseIds).join(",")}${difficultyFilter !== "all" ? `&difficulty=${difficultyFilter}` : ""}`}
+                      title="Open Player with selected phrases"
+                    >
+                      Player
+                    </a>
+                  </Button>
+                  <Button
+                    asChild
+                    variant="default"
+                    size="sm"
+                    className="bg-primary text-primary-foreground hover:bg-primary/90"
+                  >
+                    <a
+                      href={`/notebooks/${notebookId}/learn?phrase_ids=${Array.from(selectedPhraseIds).join(",")}${difficultyFilter !== "all" ? `&difficulty=${difficultyFilter}` : ""}`}
+                      title="Open Learn Mode with selected phrases"
+                    >
+                      Learn
+                    </a>
+                  </Button>
                   <Button variant="default" size="sm" onClick={() => handleBulkUpdateDifficulty("easy")}>
                     Mark Easy
                   </Button>
@@ -773,6 +799,32 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                 <div className="md:hidden w-full space-y-2">
                   <div className="text-sm text-muted-foreground">{selectedPhraseIds.size} selected</div>
                   <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      asChild
+                      variant="default"
+                      size="sm"
+                      className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+                    >
+                      <a
+                        href={`/player/${notebookId}?phrase_ids=${Array.from(selectedPhraseIds).join(",")}${difficultyFilter !== "all" ? `&difficulty=${difficultyFilter}` : ""}`}
+                        title="Open Player with selected phrases"
+                      >
+                        Player
+                      </a>
+                    </Button>
+                    <Button
+                      asChild
+                      variant="default"
+                      size="sm"
+                      className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+                    >
+                      <a
+                        href={`/notebooks/${notebookId}/learn?phrase_ids=${Array.from(selectedPhraseIds).join(",")}${difficultyFilter !== "all" ? `&difficulty=${difficultyFilter}` : ""}`}
+                        title="Open Learn Mode with selected phrases"
+                      >
+                        Learn
+                      </a>
+                    </Button>
                     <Button
                       variant="default"
                       size="sm"

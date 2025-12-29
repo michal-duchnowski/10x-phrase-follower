@@ -5,6 +5,8 @@ import LearnView from "../../../components/LearnView";
 
 const { id } = Astro.params;
 const difficulty = Astro.url.searchParams.get("difficulty");
+const phraseIdsParam = Astro.url.searchParams.get("phrase_ids");
+const phraseIds = phraseIdsParam ? phraseIdsParam.split(",") : undefined;
 
 if (!id) {
   return Astro.redirect("/notebooks");
@@ -20,6 +22,6 @@ if (!uuidRegex.test(id) && !virtualNotebookRegex.test(id)) {
 
 <AppLayout title="Learn mode - Phrase Follower" currentPath={`/notebooks/${id}/learn`} fullWidth={true}>
   <AuthGuard client:load>
-    <LearnView notebookId={id} difficultyFilter={difficulty || undefined} client:load />
+    <LearnView notebookId={id} difficultyFilter={difficulty || undefined} phraseIds={phraseIds} client:load />
   </AuthGuard>
 </AppLayout>
