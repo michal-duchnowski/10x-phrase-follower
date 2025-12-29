@@ -38,20 +38,100 @@ const getPhrases = async (context: APIContext): Promise<Response> => {
   const isVirtual = isVirtualNotebook(notebookId);
   const difficulty = isVirtual ? getDifficultyFromVirtualNotebook(notebookId) : null;
 
-  // Check for pinned filter (only for virtual notebooks)
+  // Check for pinned filter and notebook_ids filter (only for virtual notebooks)
   const url = new URL(context.request.url);
   const pinnedParam = url.searchParams.get("pinned");
   const onlyPinned = pinnedParam === "1";
+  const notebookIdsParam = url.searchParams.get("notebook_ids");
+  const selectedNotebookIds = notebookIdsParam ? notebookIdsParam.split(",").filter((id) => id.length > 0) : [];
 
   let query;
   let notebookMap: Map<string, string> | undefined;
 
   if (isVirtual && difficulty) {
     // Virtual notebook: query all phrases from user's notebooks with matching difficulty
-    // First, get notebook IDs (all or pinned only)
+    // First, get notebook IDs (all, pinned only, or selected notebooks)
     let notebookIds: string[];
 
-    if (onlyPinned) {
+    if (selectedNotebookIds.length > 0) {
+      // Filter by selected notebook IDs (validate they belong to user)
+      let candidateNotebookIds = selectedNotebookIds;
+
+      // If "Only pinned" is also active, intersect with pinned notebooks
+      if (onlyPinned) {
+        const { data: pinnedNotebooks, error: pinnedError } = await supabase
+          .from("pinned_notebooks")
+          .select("notebook_id")
+          .eq("user_id", locals.userId);
+
+        if (pinnedError) {
+          // eslint-disable-next-line no-console
+          console.error("Database error fetching pinned notebooks:", pinnedError);
+          throw ApiErrors.internal("Failed to fetch pinned notebooks");
+        }
+
+        if (!pinnedNotebooks || pinnedNotebooks.length === 0) {
+          // No pinned notebooks, return empty result
+          const response: PhraseListResponse = {
+            items: [],
+            next_cursor: null,
+          };
+          return new Response(JSON.stringify(response), {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          });
+        }
+
+        const pinnedIds = new Set(pinnedNotebooks.map((pin) => pin.notebook_id));
+        // Intersect: only selected notebooks that are also pinned
+        candidateNotebookIds = selectedNotebookIds.filter((id) => pinnedIds.has(id));
+
+        if (candidateNotebookIds.length === 0) {
+          // No intersection, return empty result
+          const response: PhraseListResponse = {
+            items: [],
+            next_cursor: null,
+          };
+          return new Response(JSON.stringify(response), {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          });
+        }
+      }
+
+      const { data: userNotebooks, error: notebooksError } = await supabase
+        .from("notebooks")
+        .select("id, name")
+        .eq("user_id", locals.userId)
+        .in("id", candidateNotebookIds);
+
+      if (notebooksError) {
+        // eslint-disable-next-line no-console
+        console.error("Database error fetching selected notebooks:", notebooksError);
+        throw ApiErrors.internal("Failed to fetch selected notebooks");
+      }
+
+      if (!userNotebooks || userNotebooks.length === 0) {
+        // No valid selected notebooks, return empty result
+        const response: PhraseListResponse = {
+          items: [],
+          next_cursor: null,
+        };
+        return new Response(JSON.stringify(response), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+      }
+
+      notebookIds = userNotebooks.map((nb) => nb.id);
+      notebookMap = new Map(userNotebooks.map((nb) => [nb.id, nb.name]));
+    } else if (onlyPinned) {
       // Get only pinned notebook IDs
       const { data: pinnedNotebooks, error: pinnedError } = await supabase
         .from("pinned_notebooks")
@@ -111,7 +191,7 @@ const getPhrases = async (context: APIContext): Promise<Response> => {
     }
 
     // If we only have pinned IDs, we need to fetch notebook names
-    if (onlyPinned && !notebookMap) {
+    if (onlyPinned && !notebookMap && notebookIds.length > 0) {
       const { data: userNotebooks, error: notebooksError } = await supabase
         .from("notebooks")
         .select("id, name")

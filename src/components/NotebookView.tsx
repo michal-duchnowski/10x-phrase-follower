@@ -44,6 +44,8 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
   const [difficultyFilter, setDifficultyFilter] = useState<PhraseDifficultyOrUnset | "all">("all");
   const [selectedPhraseIds, setSelectedPhraseIds] = useState<Set<string>>(new Set());
   const [onlyPinned, setOnlyPinned] = useState(false);
+  const [selectedNotebookIds, setSelectedNotebookIds] = useState<Set<string>>(new Set());
+  const [allNotebooks, setAllNotebooks] = useState<NotebookDTO[]>([]);
 
   // Check if this is a virtual notebook (Smart List)
   const isVirtual = isVirtualNotebook(notebookId);
@@ -70,6 +72,23 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
         const savedPinned = localStorage.getItem(`notebook-pinned-filter-${notebookId}`);
         const shouldBePinned = pinnedParam === "1" || savedPinned === "1";
         setOnlyPinned(shouldBePinned);
+
+        // Load selected notebook IDs from URL or localStorage
+        const notebookIdsParam = urlParams.get("notebooks");
+        const savedNotebookIds = localStorage.getItem(`notebook-selected-notebooks-${notebookId}`);
+        if (notebookIdsParam) {
+          const ids = notebookIdsParam.split(",").filter((id) => id.length > 0);
+          setSelectedNotebookIds(new Set(ids));
+        } else if (savedNotebookIds) {
+          try {
+            const ids = JSON.parse(savedNotebookIds);
+            if (Array.isArray(ids)) {
+              setSelectedNotebookIds(new Set(ids));
+            }
+          } catch {
+            // Ignore parse errors
+          }
+        }
       }
     }
   }, [notebookId, isVirtual]);
@@ -97,6 +116,43 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
     }
   }, [onlyPinned, notebookId, isVirtual]);
 
+  // Save selected notebook IDs to localStorage and update URL
+  useEffect(() => {
+    if (typeof window !== "undefined" && typeof localStorage !== "undefined" && isVirtual) {
+      const idsArray = Array.from(selectedNotebookIds);
+      localStorage.setItem(`notebook-selected-notebooks-${notebookId}`, JSON.stringify(idsArray));
+
+      // Update URL without page reload
+      const url = new URL(window.location.href);
+      if (idsArray.length > 0) {
+        url.searchParams.set("notebooks", idsArray.join(","));
+      } else {
+        url.searchParams.delete("notebooks");
+      }
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [selectedNotebookIds, notebookId, isVirtual]);
+
+  // Load all notebooks for virtual notebook filtering
+  useEffect(() => {
+    if (!isAuthenticated || !isVirtual) return;
+
+    const loadNotebooks = async () => {
+      try {
+        const data = await apiCall<{ items: NotebookDTO[]; next_cursor: string | null }>(`/api/notebooks?limit=100`, {
+          method: "GET",
+        });
+        setAllNotebooks(data.items || []);
+      } catch (err) {
+        // Silently fail - notebooks filter is optional
+        // eslint-disable-next-line no-console
+        console.warn("Failed to load notebooks for filtering:", err);
+      }
+    };
+
+    loadNotebooks();
+  }, [isAuthenticated, isVirtual, apiCall]);
+
   // Load notebook and phrases
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -116,6 +172,10 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
         // Add pinned filter for Smart Lists
         if (isVirtual && onlyPinned) {
           phrasesUrl += `&pinned=1`;
+        }
+        // Add notebook filter for Smart Lists (OR logic - multiple notebooks)
+        if (isVirtual && selectedNotebookIds.size > 0) {
+          phrasesUrl += `&notebook_ids=${Array.from(selectedNotebookIds).join(",")}`;
         }
 
         // Load notebook and phrases
@@ -193,7 +253,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
     };
 
     loadData();
-  }, [notebookId, isAuthenticated, apiCall, difficultyFilter, onlyPinned, isVirtual]);
+  }, [notebookId, isAuthenticated, apiCall, difficultyFilter, onlyPinned, selectedNotebookIds, isVirtual]);
 
   // Handle bulk difficulty update
   const handleBulkUpdateDifficulty = async (difficulty: PhraseDifficulty | null) => {
@@ -221,7 +281,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
       const isVirtual = isVirtualNotebook(notebookId);
       const phrasesUrl = `/api/notebooks/${notebookId}/phrases?sort=${isVirtual ? "created_at" : "position"}&order=${isVirtual ? "desc" : "asc"}&limit=100${
         !isVirtual && difficultyFilter !== "all" ? `&difficulty=${difficultyFilter}` : ""
-      }${isVirtual && onlyPinned ? `&pinned=1` : ""}`;
+      }${isVirtual && onlyPinned ? `&pinned=1` : ""}${isVirtual && selectedNotebookIds.size > 0 ? `&notebook_ids=${Array.from(selectedNotebookIds).join(",")}` : ""}`;
       const phrasesData = await apiCall<PhraseListResponse>(phrasesUrl, {
         method: "GET",
       });
@@ -520,32 +580,106 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                 )}
               </div>
             </div>
-            {/* Only pinned filter - only for Smart Lists */}
+            {/* Only pinned filter and notebook filters - only for Smart Lists */}
             {isVirtual && (
-              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-                <div className="hidden md:flex items-center gap-2 flex-wrap">
-                  <span className="text-sm text-muted-foreground">Filter:</span>
-                  <Button
-                    variant={onlyPinned ? "default" : "ghost"}
-                    size="sm"
-                    className={!onlyPinned ? "text-primary" : ""}
-                    onClick={() => setOnlyPinned(!onlyPinned)}
-                  >
-                    Only pinned
-                  </Button>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                  <div className="hidden md:flex items-center gap-2 flex-wrap">
+                    <span className="text-sm text-muted-foreground">Filter:</span>
+                    <Button
+                      variant={onlyPinned ? "default" : "ghost"}
+                      size="sm"
+                      className={!onlyPinned ? "text-primary" : ""}
+                      onClick={() => setOnlyPinned(!onlyPinned)}
+                    >
+                      Only pinned
+                    </Button>
+                  </div>
+
+                  <div className="md:hidden w-full space-y-2">
+                    <div className="text-sm text-muted-foreground">Filter</div>
+                    <Button
+                      variant={onlyPinned ? "default" : "ghost"}
+                      size="sm"
+                      className={!onlyPinned ? "w-full text-primary" : "w-full"}
+                      onClick={() => setOnlyPinned(!onlyPinned)}
+                    >
+                      Only pinned
+                    </Button>
+                  </div>
                 </div>
 
-                <div className="md:hidden w-full space-y-2">
-                  <div className="text-sm text-muted-foreground">Filter</div>
-                  <Button
-                    variant={onlyPinned ? "default" : "ghost"}
-                    size="sm"
-                    className={!onlyPinned ? "w-full text-primary" : "w-full"}
-                    onClick={() => setOnlyPinned(!onlyPinned)}
-                  >
-                    Only pinned
-                  </Button>
-                </div>
+                {/* Notebook filters */}
+                {allNotebooks.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    <div className="text-sm text-muted-foreground">Notebooks:</div>
+                    <div className="hidden md:flex items-center gap-2 flex-wrap">
+                      {allNotebooks.map((notebook) => {
+                        const isSelected = selectedNotebookIds.has(notebook.id);
+                        return (
+                          <Button
+                            key={notebook.id}
+                            variant={isSelected ? "default" : "ghost"}
+                            size="sm"
+                            className={!isSelected ? "text-primary" : ""}
+                            onClick={() => {
+                              const newSelection = new Set(selectedNotebookIds);
+                              if (isSelected) {
+                                newSelection.delete(notebook.id);
+                              } else {
+                                newSelection.add(notebook.id);
+                              }
+                              setSelectedNotebookIds(newSelection);
+                            }}
+                          >
+                            {notebook.name || "Unnamed"}
+                          </Button>
+                        );
+                      })}
+                      {selectedNotebookIds.size > 0 && (
+                        <Button variant="outline" size="sm" onClick={() => setSelectedNotebookIds(new Set())}>
+                          Clear
+                        </Button>
+                      )}
+                    </div>
+                    <div className="md:hidden space-y-2">
+                      <div className="flex flex-wrap gap-2">
+                        {allNotebooks.map((notebook) => {
+                          const isSelected = selectedNotebookIds.has(notebook.id);
+                          return (
+                            <Button
+                              key={notebook.id}
+                              variant={isSelected ? "default" : "ghost"}
+                              size="sm"
+                              className={!isSelected ? "text-primary" : ""}
+                              onClick={() => {
+                                const newSelection = new Set(selectedNotebookIds);
+                                if (isSelected) {
+                                  newSelection.delete(notebook.id);
+                                } else {
+                                  newSelection.add(notebook.id);
+                                }
+                                setSelectedNotebookIds(newSelection);
+                              }}
+                            >
+                              {notebook.name || "Unnamed"}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                      {selectedNotebookIds.size > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          onClick={() => setSelectedNotebookIds(new Set())}
+                        >
+                          Clear
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -833,7 +967,7 @@ function PhraseRow({
 }: PhraseRowProps) {
   const isSelected = selectedPhraseIds.has(phrase.id);
 
-  const handleClick = (e: React.MouseEvent) => {
+  const handleCellClick = (e: React.MouseEvent) => {
     // Don't trigger row click if clicking on buttons or checkbox
     if ((e.target as HTMLElement).closest("button, a, input[type='checkbox']")) {
       return;
@@ -841,16 +975,16 @@ function PhraseRow({
     onRowClick(phrase.id, e);
   };
 
-  const handleDeleteClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onDelete(phrase.id);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleCellKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       onRowClick(phrase.id, e);
     }
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDelete(phrase.id);
   };
 
   const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -866,11 +1000,7 @@ function PhraseRow({
 
   return (
     <tr
-      className={`group cursor-pointer hover:bg-muted/50 transition-colors ${isSelected ? "bg-muted/30" : ""}`}
-      onClick={handleClick}
-      role="button"
-      tabIndex={0}
-      onKeyDown={handleKeyDown}
+      className={`group hover:bg-muted/50 transition-colors ${isSelected ? "bg-muted/30" : ""}`}
       aria-label={`Phrase ${index + 1}: ${phrase.en_text}`}
     >
       <td className="p-4 w-12">
@@ -895,13 +1025,25 @@ function PhraseRow({
           )}
         </td>
       )}
-      <td className="p-4">
+      <td
+        className="p-4 cursor-pointer"
+        onClick={handleCellClick}
+        onKeyDown={handleCellKeyDown}
+        role="button"
+        tabIndex={0}
+      >
         <div
           className="text-sm text-foreground"
           dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(phrase.en_text) }}
         />
       </td>
-      <td className="p-4">
+      <td
+        className="p-4 cursor-pointer"
+        onClick={handleCellClick}
+        onKeyDown={handleCellKeyDown}
+        role="button"
+        tabIndex={0}
+      >
         <div
           className="text-sm text-muted-foreground"
           dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(phrase.pl_text) }}
@@ -1003,23 +1145,23 @@ function PhraseCard({
 }: PhraseCardProps) {
   const isSelected = selectedPhraseIds.has(phrase.id);
 
-  const handleClick = (e: React.MouseEvent) => {
+  const handleTextClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest("button, a, input[type='checkbox']")) {
       return;
     }
     onRowClick(phrase.id, e);
   };
 
-  const handleDeleteClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onDelete(phrase.id);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleTextKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       onRowClick(phrase.id, e);
     }
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDelete(phrase.id);
   };
 
   const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1035,13 +1177,9 @@ function PhraseCard({
 
   return (
     <div
-      className={`flex items-center justify-between px-4 py-3 border-b border-border cursor-pointer hover:bg-muted/50 transition-colors ${
+      className={`flex items-center justify-between px-4 py-3 border-b border-border hover:bg-muted/50 transition-colors ${
         isSelected ? "bg-muted/30" : ""
       }`}
-      onClick={handleClick}
-      role="button"
-      tabIndex={0}
-      onKeyDown={handleKeyDown}
       aria-label={`Phrase ${index + 1}: ${phrase.en_text}`}
     >
       <div className="flex items-start gap-3 min-w-0 flex-1">
@@ -1066,13 +1204,21 @@ function PhraseCard({
           )}
           <div className="flex items-center gap-2 mb-1">
             <div
-              className="text-[15px] text-foreground truncate font-medium"
+              className="text-[15px] text-foreground truncate font-medium cursor-pointer"
+              onClick={handleTextClick}
+              onKeyDown={handleTextKeyDown}
+              role="button"
+              tabIndex={0}
               dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(phrase.en_text) }}
             />
             <DifficultyBadge difficulty={phrase.difficulty} />
           </div>
           <div
-            className="text-xs text-muted-foreground truncate"
+            className="text-xs text-muted-foreground truncate cursor-pointer"
+            onClick={handleTextClick}
+            onKeyDown={handleTextKeyDown}
+            role="button"
+            tabIndex={0}
             dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(phrase.pl_text) }}
           />
         </div>
