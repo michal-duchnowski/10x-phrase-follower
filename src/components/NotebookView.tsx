@@ -16,7 +16,7 @@ import type {
   PhraseDifficulty,
   BulkUpdatePhrasesCommand,
 } from "../types";
-import { parseMarkdownToHtml, isVirtualNotebook } from "../lib/utils";
+import { parseMarkdownToHtml, isVirtualNotebook, getDifficultyFromVirtualNotebook } from "../lib/utils";
 
 interface NotebookViewProps {
   notebookId: string;
@@ -133,15 +133,25 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
     }
   }, [selectedNotebookIds, notebookId, isVirtual]);
 
-  // Load all notebooks for virtual notebook filtering
+  // Load all notebooks for virtual notebook filtering (only those with phrases for this difficulty)
   useEffect(() => {
     if (!isAuthenticated || !isVirtual) return;
 
     const loadNotebooks = async () => {
       try {
-        const data = await apiCall<{ items: NotebookDTO[]; next_cursor: string | null }>(`/api/notebooks?limit=100`, {
-          method: "GET",
-        });
+        // Get difficulty from virtual notebook ID
+        const difficulty = getDifficultyFromVirtualNotebook(notebookId);
+        if (!difficulty) {
+          return;
+        }
+
+        // Only load notebooks that have phrases with this difficulty
+        const data = await apiCall<{ items: NotebookDTO[]; next_cursor: string | null }>(
+          `/api/notebooks?limit=100&difficulty=${difficulty}`,
+          {
+            method: "GET",
+          }
+        );
         setAllNotebooks(data.items || []);
       } catch (err) {
         // Silently fail - notebooks filter is optional
@@ -151,7 +161,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
     };
 
     loadNotebooks();
-  }, [isAuthenticated, isVirtual, apiCall]);
+  }, [isAuthenticated, isVirtual, notebookId, apiCall]);
 
   // Load notebook and phrases
   useEffect(() => {

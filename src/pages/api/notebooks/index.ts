@@ -28,6 +28,12 @@ const getNotebooks = async (context: APIContext): Promise<Response> => {
   const { limit, cursor } = validatePaginationParams(url);
   const { sort, order } = validateSortParams(url, ["updated_at", "created_at", "name"], "updated_at");
   const q = validateSearchQuery(url);
+  const difficultyParam = url.searchParams.get("difficulty");
+
+  // Validate difficulty parameter if provided
+  if (difficultyParam && difficultyParam !== "easy" && difficultyParam !== "medium" && difficultyParam !== "hard") {
+    throw ApiErrors.validationError("Invalid difficulty filter. Must be 'easy', 'medium', or 'hard'");
+  }
 
   // Build query
   let query = supabase
@@ -40,6 +46,72 @@ const getNotebooks = async (context: APIContext): Promise<Response> => {
   // Apply search filter
   if (q) {
     query = query.ilike("name", `%${q}%`);
+  }
+
+  // Apply difficulty filter - only return notebooks that have phrases with this difficulty
+  if (difficultyParam) {
+    // First, get all user's notebook IDs
+    const { data: userNotebooks, error: notebooksError } = await supabase
+      .from("notebooks")
+      .select("id")
+      .eq("user_id", userId);
+
+    if (notebooksError) {
+      // eslint-disable-next-line no-console
+      console.error("Database error fetching user notebooks:", notebooksError);
+      throw ApiErrors.internal("Failed to fetch user notebooks");
+    }
+
+    if (!userNotebooks || userNotebooks.length === 0) {
+      // User has no notebooks, return empty result
+      const response: NotebookListResponse = {
+        items: [],
+        next_cursor: null,
+      };
+      return new Response(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+    }
+
+    const userNotebookIds = userNotebooks.map((nb) => nb.id);
+
+    // Get unique notebook IDs that have phrases with this difficulty
+    const { data: phrasesData, error: phrasesError } = await supabase
+      .from("phrases")
+      .select("notebook_id")
+      .eq("difficulty", difficultyParam)
+      .in("notebook_id", userNotebookIds);
+
+    if (phrasesError) {
+      // eslint-disable-next-line no-console
+      console.error("Database error fetching notebooks with difficulty:", phrasesError);
+      throw ApiErrors.internal("Failed to fetch notebooks with difficulty");
+    }
+
+    // Extract unique notebook IDs
+    const notebookIdsWithDifficulty = new Set(
+      (phrasesData || []).map((p) => p.notebook_id).filter((id): id is string => id !== null)
+    );
+
+    if (notebookIdsWithDifficulty.size === 0) {
+      // No notebooks have phrases with this difficulty, return empty result
+      const response: NotebookListResponse = {
+        items: [],
+        next_cursor: null,
+      };
+      return new Response(JSON.stringify(response), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+    }
+
+    // Filter notebooks to only those with phrases of this difficulty
+    query = query.in("id", Array.from(notebookIdsWithDifficulty));
   }
 
   // Apply cursor pagination
