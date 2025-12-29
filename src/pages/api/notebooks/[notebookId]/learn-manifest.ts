@@ -301,8 +301,8 @@ const getLearnManifest = async (context: APIContext): Promise<Response> => {
     });
   }
 
-  const phraseIds = phrases.map((p) => p.id);
-  const availability = await fetchAudioAvailability(supabase, notebookId, phraseIds, phrases);
+  const phraseIdsForAudio = phrases.map((p) => p.id);
+  const availability = await fetchAudioAvailability(supabase, notebookId, phraseIdsForAudio, phrases);
 
   const response: LearnManifestDTO = {
     notebook_id: notebookId,
