@@ -75,58 +75,61 @@ export function useAuth(): AuthState {
           return;
         }
 
-        // PRIORITIZE DEV MODE: Check for DEV_JWT first (development mode)
-        const storedToken = localStorage.getItem("dev_jwt_token");
-        const storedUserId = localStorage.getItem("dev_user_id");
-        const storedExpiry = localStorage.getItem("dev_jwt_expiry");
+        // DEV_JWT flow is development-only; never probe dev endpoints in production.
+        if (import.meta.env.NODE_ENV === "development") {
+          // PRIORITIZE DEV MODE: Check for DEV_JWT first
+          const storedToken = localStorage.getItem("dev_jwt_token");
+          const storedUserId = localStorage.getItem("dev_user_id");
+          const storedExpiry = localStorage.getItem("dev_jwt_expiry");
 
-        // Check if stored DEV_JWT token is still valid (not expired)
-        if (storedToken && storedUserId && storedExpiry) {
-          const now = Date.now();
-          const expiry = parseInt(storedExpiry, 10);
+          // Check if stored DEV_JWT token is still valid (not expired)
+          if (storedToken && storedUserId && storedExpiry) {
+            const now = Date.now();
+            const expiry = parseInt(storedExpiry, 10);
 
-          if (now < expiry) {
-            // Token is still valid
-            if (isMountedRef.current) {
-              setIsAuthenticated(true);
-              setIsLoading(false);
-              setToken(storedToken);
-              setUserId(storedUserId);
+            if (now < expiry) {
+              // Token is still valid
+              if (isMountedRef.current) {
+                setIsAuthenticated(true);
+                setIsLoading(false);
+                setToken(storedToken);
+                setUserId(storedUserId);
+              }
+              return;
+            } else {
+              // Token expired, clear storage
+              localStorage.removeItem("dev_jwt_token");
+              localStorage.removeItem("dev_user_id");
+              localStorage.removeItem("dev_jwt_expiry");
             }
-            return;
-          } else {
-            // Token expired, clear storage
-            localStorage.removeItem("dev_jwt_token");
-            localStorage.removeItem("dev_user_id");
-            localStorage.removeItem("dev_jwt_expiry");
           }
-        }
 
-        // Try to get new DEV_JWT from API (development mode)
-        try {
-          const devResponse = await fetch("/api/dev/jwt", {
-            headers: { Accept: "application/json" },
-          });
+          // Try to get new DEV_JWT from API
+          try {
+            const devResponse = await fetch("/api/dev/jwt", {
+              headers: { Accept: "application/json" },
+            });
 
-          if (devResponse.ok) {
-            const data: DevJwtResponse = await devResponse.json();
+            if (devResponse.ok) {
+              const data: DevJwtResponse = await devResponse.json();
 
-            // Store token in localStorage with expiry
-            const expiry = Date.now() + data.expires_in * 1000;
-            localStorage.setItem("dev_jwt_token", data.token);
-            localStorage.setItem("dev_user_id", data.user_id);
-            localStorage.setItem("dev_jwt_expiry", expiry.toString());
+              // Store token in localStorage with expiry
+              const expiry = Date.now() + data.expires_in * 1000;
+              localStorage.setItem("dev_jwt_token", data.token);
+              localStorage.setItem("dev_user_id", data.user_id);
+              localStorage.setItem("dev_jwt_expiry", expiry.toString());
 
-            if (isMountedRef.current) {
-              setIsAuthenticated(true);
-              setIsLoading(false);
-              setToken(data.token);
-              setUserId(data.user_id);
+              if (isMountedRef.current) {
+                setIsAuthenticated(true);
+                setIsLoading(false);
+                setToken(data.token);
+                setUserId(data.user_id);
+              }
+              return;
             }
-            return;
+          } catch {
+            // Continue to check Supabase session as fallback
           }
-        } catch {
-          // Continue to check Supabase session as fallback
         }
 
         // DEV_JWT not available - use Supabase Auth session (production mode)

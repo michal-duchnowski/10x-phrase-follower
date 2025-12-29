@@ -1,5 +1,5 @@
 import { useAuth } from "./useAuth";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabaseClient } from "../../db/supabase.client";
 
 interface ApiOptions extends RequestInit {
@@ -12,6 +12,8 @@ interface ApiOptions extends RequestInit {
  */
 export function useApi() {
   const { token, isAuthenticated, userId } = useAuth();
+  const [supabaseAccessToken, setSupabaseAccessToken] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
 
   // Fallback: try to get DEV_JWT from localStorage if useAuth doesn't have it yet
   const getTokenFromStorage = () => {
@@ -38,8 +40,51 @@ export function useApi() {
     return null;
   };
 
-  // Use token from useAuth or fallback to localStorage
-  const effectiveToken = token || getTokenFromStorage();
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    if (typeof window === "undefined") {
+      return () => {
+        isMountedRef.current = false;
+      };
+    }
+
+    // In development, DEV_JWT is the primary flow, so don't couple API auth to Supabase session.
+    if (import.meta.env.NODE_ENV === "development") {
+      return () => {
+        isMountedRef.current = false;
+      };
+    }
+
+    const init = async () => {
+      const { data, error } = await supabaseClient.auth.getSession();
+      if (!isMountedRef.current) return;
+      if (!error && data.session?.access_token) {
+        setSupabaseAccessToken(data.session.access_token);
+      } else {
+        setSupabaseAccessToken(null);
+      }
+    };
+
+    init().catch(() => {
+      // Ignore – will be handled as unauthenticated
+    });
+
+    const {
+      data: { subscription },
+    } = supabaseClient.auth.onAuthStateChange((_event, session) => {
+      if (!isMountedRef.current) return;
+      setSupabaseAccessToken(session?.access_token ?? null);
+    });
+
+    return () => {
+      isMountedRef.current = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // Use token from useAuth, or Supabase persisted session, or (dev-only) localStorage fallback
+  const effectiveToken = token || supabaseAccessToken || getTokenFromStorage();
   const effectiveIsAuthenticated = isAuthenticated || !!effectiveToken;
 
   const apiCall = useCallback(

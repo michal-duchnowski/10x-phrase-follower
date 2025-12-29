@@ -49,27 +49,28 @@ export default function AuthCard() {
     setIsLoading(true);
 
     try {
-      // Try development mode first - check if DEV_JWT endpoint is available
-      const devResponse = await fetch("/api/dev/jwt", {
-        headers: { Accept: "application/json" },
-      });
+      // DEV_JWT is development-only; never call dev endpoints in production.
+      if (import.meta.env.NODE_ENV === "development") {
+        const devResponse = await fetch("/api/dev/jwt", {
+          headers: { Accept: "application/json" },
+        });
 
-      if (devResponse.ok) {
-        // DEV_JWT endpoint is available - we're in development mode
-        const data = await devResponse.json();
+        if (devResponse.ok) {
+          const data = await devResponse.json();
 
-        // Store token in localStorage with expiry
-        const expiry = Date.now() + data.expires_in * 1000;
-        localStorage.setItem("dev_jwt_token", data.token);
-        localStorage.setItem("dev_user_id", data.user_id);
-        localStorage.setItem("dev_jwt_expiry", expiry.toString());
+          // Store token in localStorage with expiry
+          const expiry = Date.now() + data.expires_in * 1000;
+          localStorage.setItem("dev_jwt_token", data.token);
+          localStorage.setItem("dev_user_id", data.user_id);
+          localStorage.setItem("dev_jwt_expiry", expiry.toString());
 
-        // Redirect to notebooks
-        window.location.href = "/notebooks";
-        return;
+          // Redirect to notebooks
+          window.location.href = "/notebooks";
+          return;
+        }
       }
 
-      // DEV_JWT endpoint not available (>= 400) - fallback to Supabase Auth
+      // Supabase Auth (production + fallback)
       if (!supabaseClient) {
         setError("Konfiguracja autentykacji nie jest dostępna. Skontaktuj się z administratorem.");
         setIsLoading(false);
