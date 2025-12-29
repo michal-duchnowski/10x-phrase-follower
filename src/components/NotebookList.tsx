@@ -233,14 +233,20 @@ export default function NotebookList({ initialItems = [] }: NotebookListProps) {
     }
   };
 
-  // Load notebooks and pins on mount
+  // Load notebooks and pins once authentication becomes available.
+  // In production, Supabase session restoration can happen after first render,
+  // so we must not "fire and forget" while unauthenticated.
   useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    fetchPinnedNotebooks();
     if (initialItems.length === 0) {
       fetchNotebooks();
     }
-    fetchPinnedNotebooks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isAuthenticated]);
 
   // Handle search
   const handleSearch = (e: React.FormEvent) => {
