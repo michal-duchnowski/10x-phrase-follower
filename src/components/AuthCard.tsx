@@ -108,15 +108,6 @@ export default function AuthCard() {
         return;
       }
 
-      // Store Supabase session tokens
-      const { session, user } = authData;
-      const expiresAt = session.expires_at ? session.expires_at * 1000 : Date.now() + 3600000;
-
-      localStorage.setItem("sb_access_token", session.access_token);
-      localStorage.setItem("sb_refresh_token", session.refresh_token);
-      localStorage.setItem("sb_expires_at", expiresAt.toString());
-      localStorage.setItem("sb_user_id", user.id);
-
       // Redirect to notebooks
       window.location.href = "/notebooks";
     } catch (err) {

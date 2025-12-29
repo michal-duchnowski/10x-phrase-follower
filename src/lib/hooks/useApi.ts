@@ -1,5 +1,6 @@
 import { useAuth } from "./useAuth";
 import { useCallback, useMemo } from "react";
+import { supabaseClient } from "../../db/supabase.client";
 
 interface ApiOptions extends RequestInit {
   requireAuth?: boolean;
@@ -12,28 +13,9 @@ interface ApiOptions extends RequestInit {
 export function useApi() {
   const { token, isAuthenticated, userId } = useAuth();
 
-  // Fallback: try to get token from localStorage if useAuth doesn't have it
+  // Fallback: try to get DEV_JWT from localStorage if useAuth doesn't have it yet
   const getTokenFromStorage = () => {
     if (typeof window === "undefined") return null;
-
-    // Check for Supabase token first (production)
-    const sbAccessToken = localStorage.getItem("sb_access_token");
-    const sbExpiresAt = localStorage.getItem("sb_expires_at");
-
-    if (sbAccessToken && sbExpiresAt) {
-      const now = Date.now();
-      const expiresAt = parseInt(sbExpiresAt, 10);
-
-      if (now < expiresAt) {
-        return sbAccessToken;
-      } else {
-        // Token expired, clear storage
-        localStorage.removeItem("sb_access_token");
-        localStorage.removeItem("sb_refresh_token");
-        localStorage.removeItem("sb_expires_at");
-        localStorage.removeItem("sb_user_id");
-      }
-    }
 
     // Check for DEV_JWT token (development)
     const storedToken = localStorage.getItem("dev_jwt_token");
@@ -66,7 +48,11 @@ export function useApi() {
 
       // Check authentication requirement
       if (requireAuth && !effectiveIsAuthenticated) {
-        throw new Error("Authentication required");
+        // One more chance: ask Supabase for the persisted session (auto-refresh capable).
+        const { data, error } = await supabaseClient.auth.getSession();
+        if (error || !data.session) {
+          throw new Error("Authentication required");
+        }
       }
 
       // Prepare headers
@@ -78,9 +64,12 @@ export function useApi() {
 
       // Add authorization header if token is available
       if (effectiveToken) {
-        // DEV_JWT tokens already have "dev_" prefix, Supabase tokens don't
-        // The middleware expects DEV_JWT tokens to have the prefix
         requestHeaders["Authorization"] = `Bearer ${effectiveToken}`;
+      } else if (requireAuth) {
+        const { data, error } = await supabaseClient.auth.getSession();
+        if (!error && data.session?.access_token) {
+          requestHeaders["Authorization"] = `Bearer ${data.session.access_token}`;
+        }
       }
 
       // Make the request

@@ -33,7 +33,7 @@ export function useAuth(): AuthState {
     localStorage.removeItem("dev_user_id");
     localStorage.removeItem("dev_jwt_expiry");
 
-    // Clear Supabase session from localStorage
+    // Clear legacy Supabase session keys (older app versions)
     localStorage.removeItem("sb_access_token");
     localStorage.removeItem("sb_refresh_token");
     localStorage.removeItem("sb_expires_at");
@@ -129,68 +129,46 @@ export function useAuth(): AuthState {
           // Continue to check Supabase session as fallback
         }
 
-        // DEV_JWT not available - check for Supabase session (production mode)
-        // Only check Supabase if DEV_JWT failed (we're in production)
-        const sbAccessToken = localStorage.getItem("sb_access_token");
-        const sbRefreshToken = localStorage.getItem("sb_refresh_token");
-        const sbExpiresAt = localStorage.getItem("sb_expires_at");
-        const sbUserId = localStorage.getItem("sb_user_id");
+        // DEV_JWT not available - use Supabase Auth session (production mode)
+        // Prefer Supabase-managed persistence + auto refresh.
+        // Also migrate legacy `sb_*` localStorage keys once (from older app versions).
+        if (supabaseClient) {
+          const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
 
-        if (sbAccessToken && sbRefreshToken && sbExpiresAt && sbUserId) {
-          const now = Date.now();
-          const expiresAt = parseInt(sbExpiresAt, 10);
-
-          // Check if token is still valid (with 5 minute buffer for refresh)
-          if (now < expiresAt - 300000) {
-            // Token is still valid
+          if (!sessionError && sessionData.session) {
             if (isMountedRef.current) {
               setIsAuthenticated(true);
               setIsLoading(false);
-              setToken(sbAccessToken);
-              setUserId(sbUserId);
+              setToken(sessionData.session.access_token);
+              setUserId(sessionData.session.user.id);
             }
             return;
-          } else if (now < expiresAt) {
-            // Token is close to expiry, try to refresh
-            try {
-              const { data: refreshData, error: refreshError } = await supabaseClient.auth.refreshSession({
-                refresh_token: sbRefreshToken,
-              });
+          }
 
-              if (!refreshError && refreshData.session) {
-                const newExpiresAt = refreshData.session.expires_at
-                  ? refreshData.session.expires_at * 1000
-                  : Date.now() + 3600000;
+          const legacyAccessToken = localStorage.getItem("sb_access_token");
+          const legacyRefreshToken = localStorage.getItem("sb_refresh_token");
 
-                localStorage.setItem("sb_access_token", refreshData.session.access_token);
-                localStorage.setItem("sb_refresh_token", refreshData.session.refresh_token);
-                localStorage.setItem("sb_expires_at", newExpiresAt.toString());
+          if (legacyAccessToken && legacyRefreshToken) {
+            const { data: setData, error: setError } = await supabaseClient.auth.setSession({
+              access_token: legacyAccessToken,
+              refresh_token: legacyRefreshToken,
+            });
 
-                if (isMountedRef.current) {
-                  setIsAuthenticated(true);
-                  setIsLoading(false);
-                  setToken(refreshData.session.access_token);
-                  setUserId(refreshData.session.user.id);
-                }
-                return;
+            if (!setError && setData.session) {
+              // Legacy keys are no longer needed once Supabase storage is seeded.
+              localStorage.removeItem("sb_access_token");
+              localStorage.removeItem("sb_refresh_token");
+              localStorage.removeItem("sb_expires_at");
+              localStorage.removeItem("sb_user_id");
+
+              if (isMountedRef.current) {
+                setIsAuthenticated(true);
+                setIsLoading(false);
+                setToken(setData.session.access_token);
+                setUserId(setData.session.user.id);
               }
-            } catch (refreshErr) {
-              // eslint-disable-next-line no-console
-              console.warn("Failed to refresh Supabase session:", refreshErr);
-              // Fall through to clear session
+              return;
             }
-
-            // Refresh failed, clear Supabase session
-            localStorage.removeItem("sb_access_token");
-            localStorage.removeItem("sb_refresh_token");
-            localStorage.removeItem("sb_expires_at");
-            localStorage.removeItem("sb_user_id");
-          } else {
-            // Token expired, clear Supabase session
-            localStorage.removeItem("sb_access_token");
-            localStorage.removeItem("sb_refresh_token");
-            localStorage.removeItem("sb_expires_at");
-            localStorage.removeItem("sb_user_id");
           }
         }
 
@@ -217,6 +195,45 @@ export function useAuth(): AuthState {
 
     return () => {
       isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    // DEV_JWT mode is handled above; avoid fighting it in development.
+    if (import.meta.env.NODE_ENV === "development") return;
+
+    // If a valid DEV_JWT is present (e.g. some environments), do not subscribe.
+    const storedToken = localStorage.getItem("dev_jwt_token");
+    const storedExpiry = localStorage.getItem("dev_jwt_expiry");
+    if (storedToken && storedExpiry) {
+      const now = Date.now();
+      const expiry = parseInt(storedExpiry, 10);
+      if (Number.isFinite(expiry) && now < expiry) return;
+    }
+
+    const {
+      data: { subscription },
+    } = supabaseClient.auth.onAuthStateChange((_event, session) => {
+      if (!isMountedRef.current) return;
+
+      if (session) {
+        setIsAuthenticated(true);
+        setIsLoading(false);
+        setToken(session.access_token);
+        setUserId(session.user.id);
+        return;
+      }
+
+      setIsAuthenticated(false);
+      setIsLoading(false);
+      setToken(null);
+      setUserId(null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
     };
   }, []);
 
