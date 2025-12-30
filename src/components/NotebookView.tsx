@@ -513,7 +513,18 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                 </Button>
                 <Button asChild size="sm" variant="default" className="shrink-0">
                   <a
-                    href={`/notebooks/${notebookId}/learn${difficultyFilter !== "all" ? `?difficulty=${difficultyFilter}` : ""}`}
+                    href={
+                      isVirtual
+                        ? `/notebooks/${notebookId}/learn${(() => {
+                            const qs = new URLSearchParams();
+                            if (onlyPinned) qs.set("pinned", "1");
+                            if (selectedNotebookIds.size > 0) {
+                              qs.set("notebook_ids", Array.from(selectedNotebookIds).join(","));
+                            }
+                            return qs.size > 0 ? `?${qs.toString()}` : "";
+                          })()}`
+                        : `/notebooks/${notebookId}/learn${difficultyFilter !== "all" ? `?difficulty=${difficultyFilter}` : ""}`
+                    }
                     title="Open Learn Mode"
                   >
                     Learn
@@ -566,7 +577,18 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                 </Button>
                 <Button asChild size="lg" variant="default" className="w-full">
                   <a
-                    href={`/notebooks/${notebookId}/learn${difficultyFilter !== "all" ? `?difficulty=${difficultyFilter}` : ""}`}
+                    href={
+                      isVirtual
+                        ? `/notebooks/${notebookId}/learn${(() => {
+                            const qs = new URLSearchParams();
+                            if (onlyPinned) qs.set("pinned", "1");
+                            if (selectedNotebookIds.size > 0) {
+                              qs.set("notebook_ids", Array.from(selectedNotebookIds).join(","));
+                            }
+                            return qs.size > 0 ? `?${qs.toString()}` : "";
+                          })()}`
+                        : `/notebooks/${notebookId}/learn${difficultyFilter !== "all" ? `?difficulty=${difficultyFilter}` : ""}`
+                    }
                     title="Open Learn Mode"
                   >
                     Learn

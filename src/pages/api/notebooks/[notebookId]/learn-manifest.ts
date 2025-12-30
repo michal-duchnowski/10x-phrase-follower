@@ -32,7 +32,8 @@ async function fetchPhrasesForNotebook(
   userId: string,
   difficultyFilter?: string,
   onlyPinned?: boolean,
-  phraseIds?: string[]
+  phraseIds?: string[],
+  selectedNotebookIds?: string[]
 ) {
   const isVirtual = isVirtualNotebook(notebookId);
   const difficulty = isVirtual ? getDifficultyFromVirtualNotebook(notebookId) : null;
@@ -41,10 +42,56 @@ async function fetchPhrasesForNotebook(
 
   if (isVirtual && difficulty) {
     // Virtual notebook: query all phrases from user's notebooks with matching difficulty
-    // First, get notebook IDs (all or pinned only)
+    // First, get notebook IDs (all, pinned only, or selected notebooks)
     let notebookIds: string[];
 
-    if (onlyPinned) {
+    if (selectedNotebookIds && selectedNotebookIds.length > 0) {
+      // Filter by selected notebook IDs (validate they belong to user)
+      let candidateNotebookIds = selectedNotebookIds;
+
+      // If "Only pinned" is also active, intersect with pinned notebooks
+      if (onlyPinned) {
+        const { data: pinnedNotebooks, error: pinnedError } = await supabase
+          .from("pinned_notebooks")
+          .select("notebook_id")
+          .eq("user_id", userId);
+
+        if (pinnedError) {
+          // eslint-disable-next-line no-console
+          console.error("[learn-manifest] Failed to fetch pinned notebooks:", pinnedError);
+          throw ApiErrors.internal("Failed to fetch pinned notebooks");
+        }
+
+        if (!pinnedNotebooks || pinnedNotebooks.length === 0) {
+          return [];
+        }
+
+        const pinnedIds = new Set(pinnedNotebooks.map((pin) => pin.notebook_id));
+        candidateNotebookIds = selectedNotebookIds.filter((id) => pinnedIds.has(id));
+
+        if (candidateNotebookIds.length === 0) {
+          return [];
+        }
+      }
+
+      const { data: userNotebooks, error: notebooksError } = await supabase
+        .from("notebooks")
+        .select("id")
+        .eq("user_id", userId)
+        .in("id", candidateNotebookIds);
+
+      if (notebooksError) {
+        // eslint-disable-next-line no-console
+        console.error("[learn-manifest] Failed to fetch selected notebooks:", notebooksError);
+        throw ApiErrors.internal("Failed to fetch selected notebooks");
+      }
+
+      if (!userNotebooks || userNotebooks.length === 0) {
+        return [];
+      }
+
+      notebookIds = userNotebooks.map((nb) => nb.id);
+    } else if (onlyPinned) {
       // Get only pinned notebook IDs
       const { data: pinnedNotebooks, error: pinnedError } = await supabase
         .from("pinned_notebooks")
@@ -268,11 +315,13 @@ const getLearnManifest = async (context: APIContext): Promise<Response> => {
     await fetchNotebookForUser(supabase, notebookId, locals.userId);
   }
 
-  // Parse difficulty filter, pinned filter, and phrase_ids from query params
+  // Parse difficulty filter, pinned filter, notebook_ids filter, and phrase_ids from query params
   const url = new URL(context.request.url);
   const difficultyParam = url.searchParams.get("difficulty");
   const pinnedParam = url.searchParams.get("pinned");
   const onlyPinned = pinnedParam === "1";
+  const notebookIdsParam = url.searchParams.get("notebook_ids");
+  const selectedNotebookIds = notebookIdsParam ? notebookIdsParam.split(",").filter((id) => id.length > 0) : undefined;
   const phraseIdsParam = url.searchParams.get("phrase_ids");
   const phraseIds = phraseIdsParam ? phraseIdsParam.split(",") : undefined;
 
@@ -283,7 +332,8 @@ const getLearnManifest = async (context: APIContext): Promise<Response> => {
     locals.userId,
     isVirtual ? undefined : difficultyParam || undefined,
     isVirtual && onlyPinned ? true : undefined,
-    phraseIds
+    phraseIds,
+    isVirtual ? selectedNotebookIds : undefined
   );
 
   if (phrases.length === 0) {

@@ -25,6 +25,8 @@ interface LearnViewProps {
   notebookId: string;
   difficultyFilter?: string;
   phraseIds?: string[];
+  onlyPinned?: boolean;
+  notebookIds?: string[];
 }
 
 type SessionPhase = "idle" | "in_progress" | "round_summary";
@@ -116,7 +118,13 @@ function getHasAudio(phrase: LearnPhraseDTO, direction: LearnDirection): boolean
   return direction === "en_to_pl" ? phrase.audio.has_en_audio : phrase.audio.has_pl_audio;
 }
 
-function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilter, phraseIds }: LearnViewProps) {
+function LearnViewContent({
+  notebookId,
+  difficultyFilter: initialDifficultyFilter,
+  phraseIds,
+  onlyPinned,
+  notebookIds,
+}: LearnViewProps) {
   const { apiCall, isAuthenticated } = useApi();
   const { addToast } = useToast();
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -167,6 +175,7 @@ function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilte
       try {
         // Build learn-manifest URL with difficulty filter and phrase_ids
         let manifestUrl = `/api/notebooks/${notebookId}/learn-manifest`;
+        const isVirtual = isVirtualNotebook(notebookId);
         const params = new URLSearchParams();
         if (difficultyFilter !== "all") {
           params.append("difficulty", difficultyFilter);
@@ -174,11 +183,18 @@ function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilte
         if (phraseIds && phraseIds.length > 0) {
           params.append("phrase_ids", phraseIds.join(","));
         }
+        // For Smart Lists, include the same filters as the NotebookView (what the user currently sees)
+        if (isVirtual) {
+          if (onlyPinned) {
+            params.append("pinned", "1");
+          }
+          if (notebookIds && notebookIds.length > 0) {
+            params.append("notebook_ids", notebookIds.join(","));
+          }
+        }
         if (params.toString()) {
           manifestUrl += `?${params.toString()}`;
         }
-
-        const isVirtual = isVirtualNotebook(notebookId);
 
         // Load notebook name and manifest
         // For virtual notebooks, skip notebook name fetch (it doesn't exist in DB)
@@ -221,7 +237,7 @@ function LearnViewContent({ notebookId, difficultyFilter: initialDifficultyFilte
     };
 
     loadData();
-  }, [apiCall, notebookId, isAuthenticated, addToast, difficultyFilter, phraseIds]);
+  }, [apiCall, notebookId, isAuthenticated, addToast, difficultyFilter, phraseIds, onlyPinned, notebookIds]);
 
   // Fetch playback manifest for audio
   const fetchPlaybackManifest = useCallback(
