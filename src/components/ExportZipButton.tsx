@@ -16,6 +16,7 @@ interface ExportZipButtonProps {
   variant?: ButtonVariant;
   size?: ButtonSize;
   className?: string;
+  query?: Record<string, string | number | boolean | null | undefined>;
 }
 
 export default function ExportZipButton({
@@ -27,6 +28,7 @@ export default function ExportZipButton({
   variant = "default",
   size = "sm",
   className,
+  query,
 }: ExportZipButtonProps) {
   const { addToast } = useToast();
   const { token, isAuthenticated } = useApi();
@@ -42,7 +44,20 @@ export default function ExportZipButton({
         throw new Error("Authentication required");
       }
 
-      const response = await fetch(`/api/notebooks/${notebookId}/export-zip`, {
+      const qs = new URLSearchParams();
+      if (query) {
+        for (const [key, value] of Object.entries(query)) {
+          if (value === undefined || value === null) continue;
+          if (typeof value === "boolean") {
+            qs.set(key, value ? "1" : "0");
+            continue;
+          }
+          qs.set(key, String(value));
+        }
+      }
+      const url = `/api/notebooks/${notebookId}/export-zip${qs.size > 0 ? `?${qs.toString()}` : ""}`;
+
+      const response = await fetch(url, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,

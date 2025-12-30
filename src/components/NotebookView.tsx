@@ -520,23 +520,36 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                   </a>
                 </Button>
                 {!isVirtualNotebook(notebookId) && (
-                  <>
-                    <GenerateAudioButton
-                      notebookId={notebookId}
-                      onJobCreated={handleJobCreated}
-                      onJobCompleted={handleJobCompleted}
-                      onJobUpdated={handleJobUpdated}
-                      activeJobId={state.activeJob?.id || null}
-                    />
-                    <ExportZipButton
-                      notebookId={notebookId}
-                      disabled={!state.notebook?.current_build_id}
-                      disabledReason={
-                        !state.notebook?.current_build_id ? "Generate audio first to enable export" : undefined
-                      }
-                    />
-                  </>
+                  <GenerateAudioButton
+                    notebookId={notebookId}
+                    onJobCreated={handleJobCreated}
+                    onJobCompleted={handleJobCompleted}
+                    onJobUpdated={handleJobUpdated}
+                    activeJobId={state.activeJob?.id || null}
+                  />
                 )}
+                <ExportZipButton
+                  notebookId={notebookId}
+                  disabled={!isVirtualNotebook(notebookId) && !state.notebook?.current_build_id}
+                  disabledReason={
+                    !isVirtualNotebook(notebookId) && !state.notebook?.current_build_id
+                      ? "Generate audio first to enable export"
+                      : undefined
+                  }
+                  query={
+                    isVirtualNotebook(notebookId)
+                      ? {
+                          pinned: onlyPinned ? 1 : undefined,
+                          notebook_ids:
+                            selectedNotebookIds.size > 0 ? Array.from(selectedNotebookIds).join(",") : undefined,
+                          sort: "created_at",
+                          order: "desc",
+                        }
+                      : difficultyFilter !== "all"
+                        ? { difficulty: difficultyFilter }
+                        : undefined
+                  }
+                />
               </div>
             </div>
 
@@ -583,6 +596,29 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                           size="default"
                           variant="default"
                           className="w-full justify-start"
+                          query={difficultyFilter !== "all" ? { difficulty: difficultyFilter } : undefined}
+                        />
+                      </div>
+                    )}
+                  </MobileActionMenu>
+                )}
+                {isVirtualNotebook(notebookId) && (
+                  <MobileActionMenu triggerLabel="Actions" triggerIcon triggerVariant="outline" triggerSize="icon">
+                    {() => (
+                      <div className="space-y-2">
+                        <ExportZipButton
+                          notebookId={notebookId}
+                          showLabel
+                          size="default"
+                          variant="default"
+                          className="w-full justify-start"
+                          query={{
+                            pinned: onlyPinned ? 1 : undefined,
+                            notebook_ids:
+                              selectedNotebookIds.size > 0 ? Array.from(selectedNotebookIds).join(",") : undefined,
+                            sort: "created_at",
+                            order: "desc",
+                          }}
                         />
                       </div>
                     )}

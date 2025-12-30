@@ -1,8 +1,14 @@
+/* eslint-disable no-console */
 import type { APIContext } from "astro";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "../../../../db/database.types";
 import { ApiErrors, withErrorHandling } from "../../../../lib/errors";
-import { getSupabaseClient, ensureUserExists } from "../../../../lib/utils";
+import {
+  getSupabaseClient,
+  ensureUserExists,
+  isVirtualNotebook,
+  getDifficultyFromVirtualNotebook,
+} from "../../../../lib/utils";
 import { canExport, markExport } from "../../../../lib/export-zip-rate-limit";
 import { buildPhraseFilename, sanitizeNotebookName } from "../../../../lib/export-zip.utils";
 import archiver from "archiver";
@@ -35,12 +41,18 @@ interface PhraseRow {
   pl_text: string;
 }
 
+interface PhraseRowWithNotebookId extends PhraseRow {
+  notebook_id: string;
+  created_at?: string;
+}
+
 interface AudioSegmentRow {
   phrase_id: string;
   voice_slot: string;
   path: string;
   size_bytes: number | null;
   status: string;
+  build_id?: string;
 }
 
 interface ExportablePhrase {
@@ -66,6 +78,14 @@ function validateNotebookId(notebookId: string): void {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(notebookId)) {
     throw ApiErrors.validationError("Invalid notebook ID format");
   }
+}
+
+function getVirtualNotebookName(notebookId: string): string {
+  const difficulty = getDifficultyFromVirtualNotebook(notebookId);
+  if (difficulty === "easy") return "All Easy";
+  if (difficulty === "medium") return "All Medium";
+  if (difficulty === "hard") return "All Hard";
+  return "Smart List";
 }
 
 /**
@@ -121,14 +141,30 @@ async function fetchNotebook(supabase: Supabase, notebookId: string, userId: str
 }
 
 /**
- * Fetches phrases for the notebook, ordered by position
+ * Fetches phrases for the notebook, ordered by position (optionally filtered by difficulty)
  */
-async function fetchPhrases(supabase: Supabase, notebookId: string): Promise<PhraseRow[]> {
-  const { data: phrases, error } = await supabase
+async function fetchPhrasesForNotebookWithDifficultyFilter(
+  supabase: Supabase,
+  notebookId: string,
+  difficultyParam: string | null
+): Promise<PhraseRow[]> {
+  let query = supabase
     .from("phrases")
     .select("id, position, en_text, pl_text")
     .eq("notebook_id", notebookId)
     .order("position", { ascending: true });
+
+  if (difficultyParam) {
+    if (difficultyParam === "unset") {
+      query = query.is("difficulty", null);
+    } else if (difficultyParam === "easy" || difficultyParam === "medium" || difficultyParam === "hard") {
+      query = query.eq("difficulty", difficultyParam);
+    } else {
+      throw ApiErrors.validationError("Invalid difficulty filter. Must be 'easy', 'medium', 'hard', or 'unset'");
+    }
+  }
+
+  const { data: phrases, error } = await query;
 
   if (error) {
     console.error("[export-zip] Database error fetching phrases:", error);
@@ -136,6 +172,132 @@ async function fetchPhrases(supabase: Supabase, notebookId: string): Promise<Phr
   }
 
   return (phrases || []) as PhraseRow[];
+}
+
+const MAX_VIRTUAL_EXPORT_PHRASES = 1000;
+
+async function fetchVirtualNotebookIdsForExport(
+  supabase: Supabase,
+  userId: string,
+  onlyPinned: boolean,
+  selectedNotebookIds: string[]
+): Promise<string[]> {
+  if (selectedNotebookIds.length > 0) {
+    let candidateNotebookIds = selectedNotebookIds;
+
+    if (onlyPinned) {
+      const { data: pinnedNotebooks, error: pinnedError } = await supabase
+        .from("pinned_notebooks")
+        .select("notebook_id")
+        .eq("user_id", userId);
+
+      if (pinnedError) {
+        console.error("[export-zip] Database error fetching pinned notebooks:", pinnedError);
+        throw ApiErrors.internal("Failed to fetch pinned notebooks");
+      }
+
+      if (!pinnedNotebooks || pinnedNotebooks.length === 0) {
+        return [];
+      }
+
+      const pinnedIds = new Set(pinnedNotebooks.map((pin) => pin.notebook_id));
+      candidateNotebookIds = selectedNotebookIds.filter((id) => pinnedIds.has(id));
+      if (candidateNotebookIds.length === 0) {
+        return [];
+      }
+    }
+
+    const { data: userNotebooks, error: notebooksError } = await supabase
+      .from("notebooks")
+      .select("id")
+      .eq("user_id", userId)
+      .in("id", candidateNotebookIds);
+
+    if (notebooksError) {
+      console.error("[export-zip] Database error fetching selected notebooks:", notebooksError);
+      throw ApiErrors.internal("Failed to fetch selected notebooks");
+    }
+
+    if (!userNotebooks || userNotebooks.length === 0) {
+      return [];
+    }
+
+    return userNotebooks.map((nb) => nb.id);
+  }
+
+  if (onlyPinned) {
+    const { data: pinnedNotebooks, error: pinnedError } = await supabase
+      .from("pinned_notebooks")
+      .select("notebook_id")
+      .eq("user_id", userId);
+
+    if (pinnedError) {
+      console.error("[export-zip] Database error fetching pinned notebooks:", pinnedError);
+      throw ApiErrors.internal("Failed to fetch pinned notebooks");
+    }
+
+    if (!pinnedNotebooks || pinnedNotebooks.length === 0) {
+      return [];
+    }
+
+    return pinnedNotebooks.map((pin) => pin.notebook_id);
+  }
+
+  const { data: userNotebooks, error: notebooksError } = await supabase
+    .from("notebooks")
+    .select("id")
+    .eq("user_id", userId);
+
+  if (notebooksError) {
+    console.error("[export-zip] Database error fetching user notebooks:", notebooksError);
+    throw ApiErrors.internal("Failed to fetch user notebooks");
+  }
+
+  return (userNotebooks || []).map((nb) => nb.id);
+}
+
+async function fetchPhrasesForVirtualNotebook(
+  supabase: Supabase,
+  userId: string,
+  notebookId: string,
+  onlyPinned: boolean,
+  selectedNotebookIds: string[],
+  sortParam: string | null,
+  orderParam: string | null
+): Promise<PhraseRowWithNotebookId[]> {
+  const difficulty = getDifficultyFromVirtualNotebook(notebookId);
+  if (!difficulty) {
+    throw ApiErrors.validationError("Invalid smart list ID");
+  }
+
+  const notebookIds = await fetchVirtualNotebookIdsForExport(supabase, userId, onlyPinned, selectedNotebookIds);
+  if (notebookIds.length === 0) {
+    return [];
+  }
+
+  const sort = sortParam === "position" || sortParam === "created_at" ? sortParam : "created_at";
+  const order = orderParam === "asc" || orderParam === "desc" ? orderParam : "desc";
+
+  const { data: phrases, error } = await supabase
+    .from("phrases")
+    .select("id, position, en_text, pl_text, notebook_id, created_at")
+    .in("notebook_id", notebookIds)
+    .eq("difficulty", difficulty)
+    .order(sort, { ascending: order === "asc" })
+    .limit(MAX_VIRTUAL_EXPORT_PHRASES + 1);
+
+  if (error) {
+    console.error("[export-zip] Database error fetching virtual phrases:", error);
+    throw ApiErrors.internal("Failed to fetch phrases");
+  }
+
+  if (phrases && phrases.length > MAX_VIRTUAL_EXPORT_PHRASES) {
+    throw ApiErrors.limitExceeded(
+      `Smart list export exceeds ${MAX_VIRTUAL_EXPORT_PHRASES} phrases. Narrow filters before exporting.`
+    );
+  }
+
+  return (phrases || []) as unknown as PhraseRowWithNotebookId[];
 }
 
 /**
@@ -163,6 +325,37 @@ async function fetchAudioSegments(
   }
 
   return (segments || []) as AudioSegmentRow[];
+}
+
+async function fetchAudioSegmentsForBuilds(
+  supabase: Supabase,
+  buildIds: string[],
+  phraseIds: string[]
+): Promise<AudioSegmentRow[]> {
+  if (buildIds.length === 0 || phraseIds.length === 0) {
+    return [];
+  }
+
+  const { data: segments, error } = await supabase
+    .from("audio_segments")
+    .select("build_id, phrase_id, voice_slot, path, size_bytes, status")
+    .in("build_id", buildIds)
+    .eq("status", "complete")
+    .in("phrase_id", phraseIds);
+
+  if (error) {
+    console.error("[export-zip] Database error fetching audio segments:", error);
+    throw ApiErrors.internal("Failed to fetch audio segments");
+  }
+
+  return (segments || []) as AudioSegmentRow[];
+}
+
+function buildPhrasesMarkdown(phrases: PhraseRow[]): string {
+  // Format identical to import: one phrase per line: EN ::: PL
+  // Keep original text (do not normalize) to avoid unexpected diffs.
+  const lines = phrases.map((p) => `${p.en_text} ::: ${p.pl_text}`);
+  return lines.join("\n") + (lines.length > 0 ? "\n" : "");
 }
 
 /**
@@ -304,7 +497,10 @@ async function handleExport(context: APIContext): Promise<Response> {
     throw ApiErrors.validationError("Notebook ID is required");
   }
 
-  validateNotebookId(notebookId);
+  const isVirtual = isVirtualNotebook(notebookId);
+  if (!isVirtual) {
+    validateNotebookId(notebookId);
+  }
 
   // Check rate limit
   if (!canExport(userId, notebookId)) {
@@ -314,48 +510,75 @@ async function handleExport(context: APIContext): Promise<Response> {
   const supabase = getSupabaseClient(context);
   await ensureUserExists(supabase, userId);
 
-  // Fetch notebook
-  const notebook = await fetchNotebook(supabase, notebookId, userId);
-  const buildId = notebook.current_build_id;
-  if (!buildId) {
-    throw ApiErrors.validationError("Brak gotowego buildu audio dla tego notatnika. Wygeneruj audio przed eksportem.");
+  // Parse filters from query params
+  const url = new URL(context.request.url);
+  const difficultyParam = url.searchParams.get("difficulty");
+  const pinnedParam = url.searchParams.get("pinned");
+  const onlyPinned = pinnedParam === "1";
+  const notebookIdsParam = url.searchParams.get("notebook_ids");
+  const selectedNotebookIds = notebookIdsParam ? notebookIdsParam.split(",").filter((id) => id.length > 0) : [];
+  const sortParam = url.searchParams.get("sort");
+  const orderParam = url.searchParams.get("order");
+
+  let notebookNameForZip = "notebook";
+  let phrases: PhraseRow[] = [];
+  let segments: AudioSegmentRow[] = [];
+
+  if (!isVirtual) {
+    // Fetch notebook
+    const notebook = await fetchNotebook(supabase, notebookId, userId);
+    notebookNameForZip = notebook.name;
+    const buildId = notebook.current_build_id;
+    if (!buildId) {
+      throw ApiErrors.validationError(
+        "Brak gotowego buildu audio dla tego notatnika. Wygeneruj audio przed eksportem."
+      );
+    }
+
+    // Fetch phrases (optionally filtered by difficulty to match UI)
+    phrases = await fetchPhrasesForNotebookWithDifficultyFilter(supabase, notebookId, difficultyParam);
+
+    // Fetch audio segments
+    const phraseIds = phrases.map((p) => p.id);
+    segments = await fetchAudioSegments(supabase, buildId, phraseIds);
+  } else {
+    notebookNameForZip = getVirtualNotebookName(notebookId);
+
+    const phrasesVirtual = await fetchPhrasesForVirtualNotebook(
+      supabase,
+      userId,
+      notebookId,
+      onlyPinned,
+      selectedNotebookIds,
+      sortParam,
+      orderParam
+    );
+    phrases = phrasesVirtual;
+
+    // Resolve build IDs for notebooks involved (skip those without builds)
+    const notebookIdsInPhrases = Array.from(new Set(phrasesVirtual.map((p) => p.notebook_id)));
+    if (notebookIdsInPhrases.length > 0) {
+      const { data: notebooks, error: notebooksError } = await supabase
+        .from("notebooks")
+        .select("id, current_build_id")
+        .eq("user_id", userId)
+        .in("id", notebookIdsInPhrases);
+
+      if (notebooksError) {
+        console.error("[export-zip] Database error fetching notebooks for virtual export:", notebooksError);
+        throw ApiErrors.internal("Failed to fetch notebooks");
+      }
+
+      const buildIds = Array.from(
+        new Set((notebooks || []).map((nb) => nb.current_build_id).filter((id): id is string => Boolean(id)))
+      );
+
+      const phraseIds = phrasesVirtual.map((p) => p.id);
+      segments = await fetchAudioSegmentsForBuilds(supabase, buildIds, phraseIds);
+    } else {
+      segments = [];
+    }
   }
-
-  // Fetch phrases
-  const phrases = await fetchPhrases(supabase, notebookId);
-
-  if (phrases.length === 0) {
-    // Return empty ZIP
-    const archive = archiver("zip", { zlib: { level: 9 } });
-    archive.finalize();
-
-    // Convert archiver stream to Web ReadableStream
-    const stream = new ReadableStream({
-      start(controller) {
-        archive.on("data", (chunk: Buffer) => {
-          controller.enqueue(chunk);
-        });
-        archive.on("end", () => {
-          controller.close();
-        });
-        archive.on("error", (err) => {
-          controller.error(err);
-        });
-      },
-    });
-
-    return new Response(stream, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="${sanitizeNotebookName(notebook.name)}.zip"`,
-      },
-    });
-  }
-
-  // Fetch audio segments
-  const phraseIds = phrases.map((p) => p.id);
-  const segments = await fetchAudioSegments(supabase, buildId, phraseIds);
 
   // Filter exportable phrases
   const exportablePhrases = selectExportablePhrases(phrases, segments);
@@ -381,6 +604,11 @@ async function handleExport(context: APIContext): Promise<Response> {
   // Create ZIP archive
   const archive = archiver("zip", { zlib: { level: 9 } });
   const exportDate = new Date();
+
+  // Add phrases markdown (import-compatible format)
+  const phrasesMd = buildPhrasesMarkdown(phrases);
+  const phrasesMdFilename = `phrases-${sanitizeNotebookName(notebookNameForZip)}.md`;
+  archive.append(phrasesMd, { name: phrasesMdFilename });
 
   // Process each exportable phrase
   let successCount = 0;
@@ -442,7 +670,7 @@ async function handleExport(context: APIContext): Promise<Response> {
   });
 
   // Return streaming response
-  const notebookNameSanitized = sanitizeNotebookName(notebook.name);
+  const notebookNameSanitized = sanitizeNotebookName(notebookNameForZip);
 
   return new Response(stream, {
     status: 200,
