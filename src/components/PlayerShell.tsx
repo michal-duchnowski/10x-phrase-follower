@@ -19,6 +19,7 @@ import { Button } from "./ui/button";
 import { usePlaybackEngine } from "../lib/hooks/usePlaybackEngine";
 import { useSignedUrlGuard } from "../lib/hooks/useSignedUrlGuard";
 import { useClickToSeek } from "../lib/hooks/useClickToSeek";
+import { useMediaSession } from "../lib/hooks/useMediaSession";
 import { useAuth } from "../lib/hooks/useAuth";
 import { useApi } from "../lib/hooks/useApi";
 import MobileActionMenu from "./MobileActionMenu";
@@ -382,6 +383,20 @@ export default function PlayerShell({
     onNextPhrase: onAdvanceNext,
     onMarkDifficulty: handleMarkDifficulty,
   };
+
+  // Lock-screen / headset controls (iOS/Safari): map "seek ±10s" and track controls to phrase navigation.
+  useMediaSession({
+    enabled: Boolean(manifest && currentPhrase),
+    title: currentPhrase?.phrase.en_text ? currentPhrase.phrase.en_text : "Phrase Follower",
+    artist: currentPhrase?.phrase.pl_text || `Phrase ${phraseIndex + 1}/${manifest?.sequence.length ?? 0}`,
+    album: "Phrase Follower",
+    playing,
+    onPlay: handlePlay,
+    onPause: handlePause,
+    onStop: handleStop,
+    onPrevPhrase: onAdvancePrev,
+    onNextPhrase: onAdvanceNext,
+  });
 
   if (authLoading) {
     return (
