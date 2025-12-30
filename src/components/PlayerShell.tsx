@@ -194,6 +194,61 @@ export default function PlayerShell({
     setPhraseIndex,
   });
 
+  // "Smart previous" like music players:
+  // - If we're in EN2/EN3/PL => restart current phrase (start from EN1)
+  // - If we're in EN1 and currentTime > 3s => restart current phrase
+  // - If we're in EN1 and currentTime <= 3s => go to previous phrase (if possible)
+  // Note: Phrase is conceptually 3xEN + PL; the "3s" rule applies only for EN1.
+  const handlePrevPhraseSmart = useCallback(() => {
+    if (!manifest || !currentPhrase) return;
+
+    const en1Segment = currentSegments.find((s) => s.slot === "EN1" && s.url);
+    if (!en1Segment?.url) {
+      // No EN1 to restart from; fall back to previous phrase navigation.
+      onAdvancePrev();
+      return;
+    }
+
+    // If we haven't started playback for this phrase (no active slot), behave like "previous phrase".
+    if (!currentSlot) {
+      onAdvancePrev();
+      return;
+    }
+
+    // If we're already past the first segment, always restart the phrase.
+    if (currentSlot !== "EN1") {
+      stopPlayback(); // if playing=true, this will re-trigger EN1 via the existing effect
+      return;
+    }
+
+    // We're in EN1: apply the 3s threshold.
+    const audio = getAudioElement();
+    const t = audio?.currentTime ?? 0;
+    const RESTART_THRESHOLD_S = 3;
+
+    if (t > RESTART_THRESHOLD_S) {
+      stopPlayback();
+      return;
+    }
+
+    // <= 3s: go to previous phrase if possible; otherwise restart the current phrase.
+    if (phraseIndex <= 0) {
+      stopPlayback();
+      return;
+    }
+
+    onAdvancePrev();
+  }, [
+    manifest,
+    currentPhrase,
+    currentSegments,
+    currentSlot,
+    getAudioElement,
+    onAdvancePrev,
+    phraseIndex,
+    stopPlayback,
+  ]);
+
   // Handle playing state - start audio playback when playing becomes true
   useEffect(() => {
     if (playing && currentSegments.length > 0 && !currentSlot) {
@@ -379,7 +434,7 @@ export default function PlayerShell({
     onRestart: handleRestartPhrase,
     onSeekSmall: seekSmall,
     onSeekLarge: seekLarge,
-    onPrevPhrase: onAdvancePrev,
+    onPrevPhrase: handlePrevPhraseSmart,
     onNextPhrase: onAdvanceNext,
     onMarkDifficulty: handleMarkDifficulty,
   };
@@ -394,7 +449,7 @@ export default function PlayerShell({
     onPlay: handlePlay,
     onPause: handlePause,
     onStop: handleStop,
-    onPrevPhrase: onAdvancePrev,
+    onPrevPhrase: handlePrevPhraseSmart,
     onNextPhrase: onAdvanceNext,
   });
 
@@ -588,7 +643,7 @@ export default function PlayerShell({
         onRestart={handleRestartPhrase}
         onSpeedChange={handleSpeedChange}
         onToggleHighlight={handleToggleHighlight}
-        onPrevPhrase={onAdvancePrev}
+        onPrevPhrase={handlePrevPhraseSmart}
         onNextPhrase={onAdvanceNext}
       />
 
