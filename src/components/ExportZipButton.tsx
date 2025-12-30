@@ -55,9 +55,9 @@ export default function ExportZipButton({
           qs.set(key, String(value));
         }
       }
-      const url = `/api/notebooks/${notebookId}/export-zip${qs.size > 0 ? `?${qs.toString()}` : ""}`;
+      const requestUrl = `/api/notebooks/${notebookId}/export-zip${qs.size > 0 ? `?${qs.toString()}` : ""}`;
 
-      const response = await fetch(url, {
+      const response = await fetch(requestUrl, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -93,7 +93,7 @@ export default function ExportZipButton({
 
       // Get the blob and trigger download
       const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
+      const blobUrl = URL.createObjectURL(blob);
 
       // Get filename from Content-Disposition header
       const contentDisposition = response.headers.get("content-disposition");
@@ -107,14 +107,14 @@ export default function ExportZipButton({
 
       // Create temporary link and trigger download
       const link = document.createElement("a");
-      link.href = url;
+      link.href = blobUrl;
       link.download = filename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
 
       // Clean up
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(blobUrl);
 
       addToast({
         type: "success",
