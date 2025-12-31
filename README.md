@@ -67,6 +67,24 @@ See the Product Requirements Document for full details: [docs/prd.md](./docs/prd
 
 ![Import Interface](./docs/screenshots/import-interface.png)
 
+### Learning Mode
+
+#### Learning Mode - Settings
+
+![Learning Mode Settings](./docs/screenshots/learning-mode-settings.png)
+
+#### Learning Mode - Input
+
+![Learning Mode Input](./docs/screenshots/learning-mode-input.png)
+
+#### Learning Mode - Words Bank
+
+![Learning Mode Words Bank](./docs/screenshots/learning-mode-words-bank.png)
+
+### Smart List
+
+![Smart List](./docs/screenshots/smart-list.png)
+
 ## 4. Tech stack
 
 - Astro 5 (Node adapter)
