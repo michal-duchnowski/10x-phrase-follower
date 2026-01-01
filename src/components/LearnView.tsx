@@ -175,6 +175,138 @@ function LearnViewContent({
   // Get effective input mode for current phrase (handles hybrid mode)
   const effectiveInputMode = getEffectiveInputMode(session.answerInputMode, currentPhrase, session.direction);
 
+  // Define handleUserAnswerChange before it's used in handleVoiceResult
+  const handleUserAnswerChange = useCallback(
+    (value: string) => {
+      if (!currentPhrase) return;
+
+      // Don't allow changes after check
+      const isChecked = session.answers[currentPhrase.id]?.isChecked ?? false;
+      if (isChecked) {
+        return;
+      }
+
+      setSession((prev) => {
+        const prevState = prev.answers[currentPhrase.id];
+        return {
+          ...prev,
+          answers: {
+            ...prev.answers,
+            [currentPhrase.id]: {
+              isChecked: prevState ? prevState.isChecked : false,
+              isCorrect: prevState ? prevState.isCorrect : null,
+              backendResult: prevState ? prevState.backendResult : null,
+              correctAnswer: prevState ? prevState.correctAnswer : getCorrectAnswer(currentPhrase, prev.direction),
+              userAnswer: value,
+              selectedTokens: prevState?.selectedTokens,
+            },
+          },
+        };
+      });
+    },
+    [currentPhrase, session.answers]
+  );
+
+  // Define handleCheckAnswer before it's used in handleVoiceResult
+  const handleCheckAnswer = useCallback(async () => {
+    if (!currentPhrase) return;
+
+    const correctAnswer = getCorrectAnswer(currentPhrase, session.direction);
+    let localComparison: {
+      isCorrect: boolean;
+      normalizedUser: string;
+      normalizedCorrect: string;
+    };
+
+    // Use word bank comparison if in word bank mode (or hybrid with 3+ tokens)
+    const effectiveMode = getEffectiveInputMode(session.answerInputMode, currentPhrase, session.direction);
+    if (effectiveMode === "word_bank") {
+      const selectedTokens = currentCardResult?.selectedTokens || [];
+      localComparison = compareWordBankAnswer(selectedTokens, correctAnswer);
+    } else {
+      const userAnswer = currentCardResult?.userAnswer ?? "";
+      localComparison = compareAnswers(userAnswer, correctAnswer, session.useContainsMode);
+    }
+
+    const result: CheckAnswerResultDTO = {
+      is_correct: localComparison.isCorrect,
+      normalized_user: localComparison.normalizedUser,
+      normalized_correct: localComparison.normalizedCorrect,
+    };
+
+    // Update UI immediately with local comparison
+    setSession((prev) => {
+      const wasAnsweredBefore = prev.answers[currentPhrase.id]?.isChecked ?? false;
+      const previousCorrect = prev.answers[currentPhrase.id]?.isCorrect;
+
+      let correctCount = prev.correctCount;
+      let incorrectCount = prev.incorrectCount;
+
+      // Adjust stats only if this is the first check for this card in this round
+      if (!wasAnsweredBefore) {
+        if (result.is_correct) {
+          correctCount += 1;
+        } else {
+          incorrectCount += 1;
+        }
+      } else if (previousCorrect !== null && previousCorrect !== result.is_correct) {
+        // Rare case: user changed answer and rechecked before moving on
+        if (previousCorrect) {
+          correctCount -= 1;
+          incorrectCount += 1;
+        } else {
+          incorrectCount -= 1;
+          correctCount += 1;
+        }
+      }
+
+      const effectiveMode = getEffectiveInputMode(session.answerInputMode, currentPhrase, session.direction);
+      const userAnswer =
+        effectiveMode === "word_bank"
+          ? (currentCardResult?.selectedTokens || []).join(" ")
+          : (currentCardResult?.userAnswer ?? "");
+
+      const newAnswers: Record<string, CardResultState> = {
+        ...prev.answers,
+        [currentPhrase.id]: {
+          isChecked: true,
+          isCorrect: result.is_correct,
+          backendResult: result,
+          userAnswer,
+          correctAnswer,
+          selectedTokens: currentCardResult?.selectedTokens,
+        },
+      };
+
+      const incorrectPhrasesMap: Record<string, LearnPhraseDTO> = {};
+      const incorrectPhrases: LearnPhraseDTO[] = [];
+
+      prev.currentRound.forEach((p) => {
+        const answer = newAnswers[p.id];
+        if (answer && answer.isChecked && answer.isCorrect === false) {
+          incorrectPhrasesMap[p.id] = p;
+        }
+      });
+
+      Object.values(incorrectPhrasesMap).forEach((p) => incorrectPhrases.push(p));
+
+      return {
+        ...prev,
+        answers: newAnswers,
+        correctCount,
+        incorrectCount,
+        incorrectPhrases,
+      };
+    });
+  }, [
+    currentCardResult?.userAnswer,
+    currentCardResult?.selectedTokens,
+    currentPhrase,
+    session.direction,
+    session.useContainsMode,
+    session.answerInputMode,
+  ]);
+
   // Speech recognition setup
   const speechLanguage = getSpeechRecognitionLanguage(session.direction);
   const isVoiceModeActive = session.voiceMode && session.phase === "in_progress" && !currentCardResult?.isChecked;
@@ -306,8 +438,14 @@ function LearnViewContent({
     [addToast]
   );
 
+  // Only initialize speech recognition if we're in browser (client-side)
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => {
+    setIsClient(typeof window !== "undefined");
+  }, []);
+
   const { isSupported: isSpeechSupported, isListening: isVoiceListening } = useSpeechRecognition({
-    enabled: isVoiceModeActive,
+    enabled: isClient && isVoiceModeActive,
     language: speechLanguage,
     onResult: handleVoiceResult,
     onError: handleVoiceError,
@@ -634,34 +772,6 @@ function LearnViewContent({
     startRound(manifest.phrases);
   };
 
-  const handleUserAnswerChange = (value: string) => {
-    if (!currentPhrase) return;
-
-    // Don't allow changes after check
-    const isChecked = session.answers[currentPhrase.id]?.isChecked ?? false;
-    if (isChecked) {
-      return;
-    }
-
-    setSession((prev) => {
-      const prevState = prev.answers[currentPhrase.id];
-      return {
-        ...prev,
-        answers: {
-          ...prev.answers,
-          [currentPhrase.id]: {
-            isChecked: prevState ? prevState.isChecked : false,
-            isCorrect: prevState ? prevState.isCorrect : null,
-            backendResult: prevState ? prevState.backendResult : null,
-            correctAnswer: prevState ? prevState.correctAnswer : getCorrectAnswer(currentPhrase, prev.direction),
-            userAnswer: value,
-            selectedTokens: prevState?.selectedTokens,
-          },
-        },
-      };
-    });
-  };
-
   const handleWordBankTokenSelect = useCallback(
     (token: string) => {
       if (!currentPhrase) return;
@@ -729,105 +839,6 @@ function LearnViewContent({
     },
     [currentPhrase]
   );
-
-  const handleCheckAnswer = useCallback(async () => {
-    if (!currentPhrase) return;
-
-    const correctAnswer = getCorrectAnswer(currentPhrase, session.direction);
-    let localComparison: {
-      isCorrect: boolean;
-      normalizedUser: string;
-      normalizedCorrect: string;
-    };
-
-    // Use word bank comparison if in word bank mode (or hybrid with 3+ tokens)
-    const effectiveMode = getEffectiveInputMode(session.answerInputMode, currentPhrase, session.direction);
-    if (effectiveMode === "word_bank") {
-      const selectedTokens = currentCardResult?.selectedTokens || [];
-      localComparison = compareWordBankAnswer(selectedTokens, correctAnswer);
-    } else {
-      const userAnswer = currentCardResult?.userAnswer ?? "";
-      localComparison = compareAnswers(userAnswer, correctAnswer, session.useContainsMode);
-    }
-
-    const result: CheckAnswerResultDTO = {
-      is_correct: localComparison.isCorrect,
-      normalized_user: localComparison.normalizedUser,
-      normalized_correct: localComparison.normalizedCorrect,
-    };
-
-    // Update UI immediately with local comparison
-    setSession((prev) => {
-      const wasAnsweredBefore = prev.answers[currentPhrase.id]?.isChecked ?? false;
-      const previousCorrect = prev.answers[currentPhrase.id]?.isCorrect;
-
-      let correctCount = prev.correctCount;
-      let incorrectCount = prev.incorrectCount;
-
-      // Adjust stats only if this is the first check for this card in this round
-      if (!wasAnsweredBefore) {
-        if (result.is_correct) {
-          correctCount += 1;
-        } else {
-          incorrectCount += 1;
-        }
-      } else if (previousCorrect !== null && previousCorrect !== result.is_correct) {
-        // Rare case: user changed answer and rechecked before moving on
-        if (previousCorrect) {
-          correctCount -= 1;
-          incorrectCount += 1;
-        } else {
-          incorrectCount -= 1;
-          correctCount += 1;
-        }
-      }
-
-      const effectiveMode = getEffectiveInputMode(session.answerInputMode, currentPhrase, session.direction);
-      const userAnswer =
-        effectiveMode === "word_bank"
-          ? (currentCardResult?.selectedTokens || []).join(" ")
-          : (currentCardResult?.userAnswer ?? "");
-
-      const newAnswers: Record<string, CardResultState> = {
-        ...prev.answers,
-        [currentPhrase.id]: {
-          isChecked: true,
-          isCorrect: result.is_correct,
-          backendResult: result,
-          userAnswer,
-          correctAnswer,
-          selectedTokens: currentCardResult?.selectedTokens,
-        },
-      };
-
-      const incorrectPhrasesMap: Record<string, LearnPhraseDTO> = {};
-      const incorrectPhrases: LearnPhraseDTO[] = [];
-
-      prev.currentRound.forEach((p) => {
-        const answer = newAnswers[p.id];
-        if (answer && answer.isChecked && answer.isCorrect === false) {
-          incorrectPhrasesMap[p.id] = p;
-        }
-      });
-
-      Object.values(incorrectPhrasesMap).forEach((p) => incorrectPhrases.push(p));
-
-      return {
-        ...prev,
-        answers: newAnswers,
-        correctCount,
-        incorrectCount,
-        incorrectPhrases,
-      };
-    });
-  }, [
-    currentCardResult?.userAnswer,
-    currentCardResult?.selectedTokens,
-    currentPhrase,
-    session.direction,
-    session.useContainsMode,
-    session.answerInputMode,
-  ]);
 
   const goToNextCard = useCallback(() => {
     // Reset audio tracking when moving to next card

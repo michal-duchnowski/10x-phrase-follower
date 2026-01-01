@@ -77,16 +77,26 @@ export function useSpeechRecognition({
       setIsSupported(false);
       return;
     }
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    setIsSupported(!!SpeechRecognition);
+    try {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      setIsSupported(!!SpeechRecognition);
+    } catch {
+      setIsSupported(false);
+    }
   }, []);
 
   // Initialize recognition
   useEffect(() => {
-    if (!isSupported) return;
     if (typeof window === "undefined") return;
+    if (!isSupported) return;
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let SpeechRecognition: (new () => SpeechRecognition) | undefined;
+    try {
+      SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    } catch {
+      return;
+    }
+
     if (!SpeechRecognition) return;
 
     const recognition = new SpeechRecognition();
