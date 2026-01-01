@@ -73,6 +73,10 @@ export function useSpeechRecognition({
 
   // Check if Speech Recognition is supported
   useEffect(() => {
+    if (typeof window === "undefined") {
+      setIsSupported(false);
+      return;
+    }
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     setIsSupported(!!SpeechRecognition);
   }, []);
@@ -80,8 +84,11 @@ export function useSpeechRecognition({
   // Initialize recognition
   useEffect(() => {
     if (!isSupported) return;
+    if (typeof window === "undefined") return;
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
     const recognition = new SpeechRecognition();
 
     recognition.continuous = continuous;
@@ -145,6 +152,7 @@ export function useSpeechRecognition({
 
   // Start/stop based on enabled prop
   useEffect(() => {
+    if (typeof window === "undefined") return;
     if (!isSupported || !recognitionRef.current) return;
 
     if (enabled && !isListening) {
@@ -168,6 +176,7 @@ export function useSpeechRecognition({
   }, [enabled, isListening, isSupported]);
 
   const start = useCallback(() => {
+    if (typeof window === "undefined") return;
     if (!isSupported || !recognitionRef.current) return;
     try {
       recognitionRef.current.start();
@@ -180,6 +189,7 @@ export function useSpeechRecognition({
   }, [isSupported]);
 
   const stop = useCallback(() => {
+    if (typeof window === "undefined") return;
     if (!isSupported || !recognitionRef.current) return;
     try {
       recognitionRef.current.stop();
