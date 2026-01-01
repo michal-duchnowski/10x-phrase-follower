@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState, useRef } from "react";
 import { Button } from "./ui/button";
 import { ToastProvider, useToast } from "./ui/toast";
 import { useApi } from "../lib/hooks/useApi";
+import { useSpeechRecognition } from "../lib/hooks/useSpeechRecognition";
+import { Mic, MicOff, CheckCircle2 } from "lucide-react";
 import type {
   CheckAnswerResultDTO,
   LearnDirection,
@@ -14,7 +16,7 @@ import type {
 } from "../types";
 import { parseMarkdownToHtml, isVirtualNotebook } from "../lib/utils";
 import { compareAnswers } from "../lib/learn.service";
-import { compareWordBankAnswer, tokenizePhrase } from "../lib/word-bank.service";
+import { compareWordBankAnswer, tokenizePhrase, generateWordPool } from "../lib/word-bank.service";
 import AnswerDiffView from "./learn/AnswerDiffView";
 import PhraseTokenPills from "./learn/PhraseTokenPills";
 import WordBank from "./learn/WordBank";
@@ -48,6 +50,8 @@ interface LearnSessionState {
   shuffle: boolean;
   useContainsMode: boolean; // If true, accept answer if it matches any word in correct answer
   answerInputMode: AnswerInputMode; // "text" or "word_bank"
+  voiceMode: boolean; // If true, voice input is active
+  voiceAutoCheck: boolean; // If true, automatically check answer after voice recognition
   currentRound: LearnPhraseDTO[];
   currentIndex: number;
   roundNumber: number;
@@ -66,6 +70,8 @@ function createInitialSessionState(): LearnSessionState {
     shuffle: true,
     useContainsMode: false,
     answerInputMode: "text",
+    voiceMode: false,
+    voiceAutoCheck: false,
     currentRound: [],
     currentIndex: 0,
     roundNumber: 1,
@@ -95,6 +101,13 @@ function getCorrectAnswer(phrase: LearnPhraseDTO, direction: LearnDirection): st
 
 function getAnswerLanguageLabel(direction: LearnDirection): string {
   return direction === "en_to_pl" ? "Polish" : "English";
+}
+
+/**
+ * Gets the language code for speech recognition based on direction.
+ */
+function getSpeechRecognitionLanguage(direction: LearnDirection): string {
+  return direction === "en_to_pl" ? "pl-PL" : "en-US";
 }
 
 /**
@@ -161,6 +174,145 @@ function LearnViewContent({
 
   // Get effective input mode for current phrase (handles hybrid mode)
   const effectiveInputMode = getEffectiveInputMode(session.answerInputMode, currentPhrase, session.direction);
+
+  // Speech recognition setup
+  const speechLanguage = getSpeechRecognitionLanguage(session.direction);
+  const isVoiceModeActive = session.voiceMode && session.phase === "in_progress" && !currentCardResult?.isChecked;
+
+  // Handle voice recognition result
+  const handleVoiceResult = useCallback(
+    (text: string) => {
+      if (!currentPhrase || currentCardResult?.isChecked) return;
+
+      if (effectiveInputMode === "text") {
+        // For text mode: append or replace text in textarea
+        handleUserAnswerChange(text);
+      } else if (effectiveInputMode === "word_bank" && manifest) {
+        // For word bank: match recognized words to available tokens
+        const correctAnswer = getCorrectAnswer(currentPhrase, session.direction);
+        const recognizedWords = tokenizePhrase(text.toLowerCase());
+
+        // Generate word pool (same logic as WordBank component)
+        const wordPool = generateWordPool(correctAnswer, manifest.phrases, currentPhrase.id, session.direction);
+
+        // Match recognized words to tokens in pool
+        const selectedTokens: string[] = [];
+        const usedPoolIndices = new Set<number>();
+
+        for (const word of recognizedWords) {
+          const wordLower = word.toLowerCase();
+          // Try to find exact match in pool
+          for (let i = 0; i < wordPool.length; i++) {
+            if (!usedPoolIndices.has(i) && wordPool[i].toLowerCase() === wordLower) {
+              selectedTokens.push(wordPool[i]);
+              usedPoolIndices.add(i);
+              break;
+            }
+          }
+        }
+
+        // Update selected tokens - add recognized tokens to current selection
+        if (selectedTokens.length > 0) {
+          setSession((prev) => {
+            const isChecked = prev.answers[currentPhrase.id]?.isChecked ?? false;
+            if (isChecked) {
+              return prev;
+            }
+
+            const prevState = prev.answers[currentPhrase.id];
+            const currentTokens = prevState?.selectedTokens || [];
+
+            // Count how many times each token appears in current selection
+            const currentCounts = new Map<string, number>();
+            for (const token of currentTokens) {
+              currentCounts.set(token, (currentCounts.get(token) || 0) + 1);
+            }
+
+            // Count how many times each token appears in word pool
+            const poolCounts = new Map<string, number>();
+            for (const token of wordPool) {
+              poolCounts.set(token, (poolCounts.get(token) || 0) + 1);
+            }
+
+            // Add new tokens that can be added (respecting pool limits)
+            const newTokens = [...currentTokens];
+            for (const token of selectedTokens) {
+              const currentCount = currentCounts.get(token) || 0;
+              const poolCount = poolCounts.get(token) || 0;
+              if (currentCount < poolCount) {
+                newTokens.push(token);
+                currentCounts.set(token, currentCount + 1);
+              }
+            }
+
+            const userAnswer = newTokens.join(" ");
+
+            return {
+              ...prev,
+              answers: {
+                ...prev.answers,
+                [currentPhrase.id]: {
+                  isChecked: prevState ? prevState.isChecked : false,
+                  isCorrect: prevState ? prevState.isCorrect : null,
+                  backendResult: prevState ? prevState.backendResult : null,
+                  correctAnswer: prevState ? prevState.correctAnswer : getCorrectAnswer(currentPhrase, prev.direction),
+                  userAnswer,
+                  selectedTokens: newTokens,
+                },
+              },
+            };
+          });
+        }
+      }
+
+      // Auto-check if enabled
+      if (session.voiceAutoCheck) {
+        // Small delay to ensure state updates
+        setTimeout(() => {
+          void handleCheckAnswer();
+        }, 200);
+      }
+    },
+    [
+      currentPhrase,
+      currentCardResult,
+      effectiveInputMode,
+      session.direction,
+      session.voiceAutoCheck,
+      manifest,
+      handleUserAnswerChange,
+      handleCheckAnswer,
+    ]
+  );
+
+  const handleVoiceError = useCallback(
+    (error: string) => {
+      if (error === "not-allowed") {
+        addToast({
+          type: "error",
+          title: "Microphone permission denied",
+          description: "Please allow microphone access to use voice input.",
+        });
+      } else if (error === "no-speech") {
+        // Silent - this is normal when user stops speaking
+      } else {
+        addToast({
+          type: "error",
+          title: "Voice recognition error",
+          description: `Error: ${error}`,
+        });
+      }
+    },
+    [addToast]
+  );
+
+  const { isSupported: isSpeechSupported, isListening: isVoiceListening } = useSpeechRecognition({
+    enabled: isVoiceModeActive,
+    language: speechLanguage,
+    onResult: handleVoiceResult,
+    onError: handleVoiceError,
+    continuous: true, // Keep listening while voice mode is active
+  });
 
   // Load notebook name and learn manifest when authenticated
   useEffect(() => {
@@ -424,6 +576,20 @@ function LearnViewContent({
     setSession((prev) => ({
       ...prev,
       answerInputMode: mode,
+    }));
+  };
+
+  const handleToggleVoiceMode = () => {
+    setSession((prev) => ({
+      ...prev,
+      voiceMode: !prev.voiceMode,
+    }));
+  };
+
+  const handleToggleVoiceAutoCheck = () => {
+    setSession((prev) => ({
+      ...prev,
+      voiceAutoCheck: !prev.voiceAutoCheck,
     }));
   };
 
@@ -699,6 +865,8 @@ function LearnViewContent({
         shuffle: prev.shuffle,
         useContainsMode: prev.useContainsMode,
         answerInputMode: prev.answerInputMode,
+        voiceMode: prev.voiceMode,
+        voiceAutoCheck: prev.voiceAutoCheck,
       }));
       return;
     }
@@ -724,6 +892,8 @@ function LearnViewContent({
         shuffle: prev.shuffle,
         useContainsMode: prev.useContainsMode,
         answerInputMode: prev.answerInputMode,
+        voiceMode: prev.voiceMode,
+        voiceAutoCheck: prev.voiceAutoCheck,
       }));
       return;
     }
@@ -1098,6 +1268,60 @@ function LearnViewContent({
                   )}
                 </div>
               )}
+
+              {/* Voice input settings */}
+              <div>
+                <div className="text-xs font-medium text-muted-foreground mb-1.5">Voice input</div>
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={handleToggleVoiceMode}
+                    className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground hover:bg-muted/60 transition-colors w-full sm:w-auto"
+                  >
+                    {session.voiceMode ? (
+                      <Mic className="size-4 text-primary" />
+                    ) : (
+                      <MicOff className="size-4 text-muted-foreground" />
+                    )}
+                    <div
+                      className={`size-4 rounded border ${
+                        session.voiceMode ? "bg-primary border-primary" : "border-muted-foreground/40"
+                      }`}
+                      aria-hidden="true"
+                    />
+                    <span>{session.voiceMode ? "Voice input enabled" : "Voice input disabled"}</span>
+                  </button>
+                  {session.voiceMode && (
+                    <button
+                      type="button"
+                      onClick={handleToggleVoiceAutoCheck}
+                      className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground hover:bg-muted/60 transition-colors w-full sm:w-auto"
+                    >
+                      {session.voiceAutoCheck ? (
+                        <CheckCircle2 className="size-4 text-primary" />
+                      ) : (
+                        <CheckCircle2 className="size-4 text-muted-foreground" />
+                      )}
+                      <div
+                        className={`size-4 rounded border ${
+                          session.voiceAutoCheck ? "bg-primary border-primary" : "border-muted-foreground/40"
+                        }`}
+                        aria-hidden="true"
+                      />
+                      <span>
+                        {session.voiceAutoCheck
+                          ? "Auto-check enabled (checks after voice input)"
+                          : "Auto-check disabled (manual check required)"}
+                      </span>
+                    </button>
+                  )}
+                  {!isSpeechSupported && (
+                    <p className="text-xs text-muted-foreground">
+                      Voice input is not supported in your browser. Please use Chrome, Edge, or Safari.
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1298,33 +1522,116 @@ function LearnViewContent({
           {!isChecked && (
             <div className="space-y-3">
               {effectiveInputMode === "word_bank" ? (
-                <WordBank
-                  correctAnswer={correctAnswer}
-                  selectedTokens={currentCardResult?.selectedTokens || []}
-                  onTokenSelect={handleWordBankTokenSelect}
-                  onTokenRemove={handleWordBankTokenRemove}
-                  allPhrases={manifest?.phrases || []}
-                  currentPhraseId={currentPhrase.id}
-                  direction={session.direction}
-                  isChecked={false}
-                  onAutoCheck={handleCheckAnswer}
-                />
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="text-xs font-medium text-muted-foreground">Your answer</div>
+                    {isSpeechSupported && (
+                      <button
+                        type="button"
+                        onClick={handleToggleVoiceMode}
+                        className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
+                          session.voiceMode
+                            ? "bg-primary/10 text-primary border border-primary/30"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                        }`}
+                        title={session.voiceMode ? "Voice input enabled" : "Enable voice input"}
+                      >
+                        {isVoiceListening ? (
+                          <>
+                            <Mic className="size-3.5 animate-pulse" />
+                            <span>Listening...</span>
+                          </>
+                        ) : session.voiceMode ? (
+                          <>
+                            <Mic className="size-3.5" />
+                            <span>Voice ON</span>
+                          </>
+                        ) : (
+                          <>
+                            <MicOff className="size-3.5" />
+                            <span>Voice OFF</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                  <WordBank
+                    correctAnswer={correctAnswer}
+                    selectedTokens={currentCardResult?.selectedTokens || []}
+                    onTokenSelect={handleWordBankTokenSelect}
+                    onTokenRemove={handleWordBankTokenRemove}
+                    allPhrases={manifest?.phrases || []}
+                    currentPhraseId={currentPhrase.id}
+                    direction={session.direction}
+                    isChecked={false}
+                    onAutoCheck={handleCheckAnswer}
+                  />
+                  {session.voiceMode && session.voiceAutoCheck && (
+                    <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+                      <CheckCircle2 className="size-3" />
+                      <span>Auto-check enabled</span>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                    Your answer ({getAnswerLanguageLabel(session.direction)})
-                  </label>
-                  <textarea
-                    ref={textareaRef}
-                    className="w-full min-h-[72px] rounded-md border border-border bg-card px-3 py-2 text-base min-[480px]:text-lg sm:text-xl text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    placeholder={
-                      session.direction === "en_to_pl"
-                        ? "Type the Polish translation…"
-                        : "Type the English translation…"
-                    }
-                    value={userAnswer}
-                    onChange={(e) => handleUserAnswerChange(e.target.value)}
-                  />
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Your answer ({getAnswerLanguageLabel(session.direction)})
+                    </label>
+                    {isSpeechSupported && (
+                      <button
+                        type="button"
+                        onClick={handleToggleVoiceMode}
+                        className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
+                          session.voiceMode
+                            ? "bg-primary/10 text-primary border border-primary/30"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                        }`}
+                        title={session.voiceMode ? "Voice input enabled" : "Enable voice input"}
+                      >
+                        {isVoiceListening ? (
+                          <>
+                            <Mic className="size-3.5 animate-pulse" />
+                            <span>Listening...</span>
+                          </>
+                        ) : session.voiceMode ? (
+                          <>
+                            <Mic className="size-3.5" />
+                            <span>Voice ON</span>
+                          </>
+                        ) : (
+                          <>
+                            <MicOff className="size-3.5" />
+                            <span>Voice OFF</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <textarea
+                      ref={textareaRef}
+                      className="w-full min-h-[72px] rounded-md border border-border bg-card px-3 py-2 text-base min-[480px]:text-lg sm:text-xl text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      placeholder={
+                        session.direction === "en_to_pl"
+                          ? session.voiceMode
+                            ? "Speak or type the Polish translation…"
+                            : "Type the Polish translation…"
+                          : session.voiceMode
+                            ? "Speak or type the English translation…"
+                            : "Type the English translation…"
+                      }
+                      value={userAnswer}
+                      onChange={(e) => handleUserAnswerChange(e.target.value)}
+                    />
+                    {session.voiceMode && session.voiceAutoCheck && (
+                      <div className="absolute top-2 right-2 flex items-center gap-1 text-xs text-muted-foreground">
+                        <CheckCircle2 className="size-3" />
+                        <span className="hidden sm:inline">Auto-check</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
