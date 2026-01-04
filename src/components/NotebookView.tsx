@@ -5,7 +5,7 @@ import { ToastProvider, useToast } from "./ui/toast";
 import GenerateAudioButton from "./GenerateAudioButton";
 import ExportZipButton from "./ExportZipButton";
 import MobileActionMenu from "./MobileActionMenu";
-import { Trash2 } from "lucide-react";
+import { Trash2, Minimize2 } from "lucide-react";
 import DifficultyBadge from "./DifficultyBadge";
 import type {
   PhraseDTO,
@@ -15,8 +15,11 @@ import type {
   PhraseDifficultyOrUnset,
   PhraseDifficulty,
   BulkUpdatePhrasesCommand,
+  CreateSnapshotCommand,
+  CreateSnapshotResultDTO,
 } from "../types";
 import { parseMarkdownToHtml, isVirtualNotebook, getDifficultyFromVirtualNotebook } from "../lib/utils";
+import { tokenizePhrase } from "../lib/word-bank.service";
 
 interface NotebookViewProps {
   notebookId: string;
@@ -46,6 +49,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
   const [onlyPinned, setOnlyPinned] = useState(false);
   const [selectedNotebookIds, setSelectedNotebookIds] = useState<Set<string>>(new Set());
   const [allNotebooks, setAllNotebooks] = useState<NotebookDTO[]>([]);
+  const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
 
   // Check if this is a virtual notebook (Smart List)
   const isVirtual = isVirtualNotebook(notebookId);
@@ -265,6 +269,47 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
     loadData();
   }, [notebookId, isAuthenticated, apiCall, difficultyFilter, onlyPinned, selectedNotebookIds, isVirtual]);
 
+  // Handle snapshot creation
+  const handleCreateSnapshot = async () => {
+    if (selectedPhraseIds.size === 0) {
+      addToast({
+        type: "error",
+        title: "No phrases selected",
+        description: "Please select at least one phrase to create a snapshot.",
+      });
+      return;
+    }
+
+    setIsCreatingSnapshot(true);
+
+    try {
+      // Preserve order from the view (state.phrases) - filter selected phrases in display order
+      const orderedPhraseIds = state.phrases.filter((p) => selectedPhraseIds.has(p.id)).map((p) => p.id);
+
+      const command: CreateSnapshotCommand = {
+        source_notebook_id: notebookId,
+        phrase_ids: orderedPhraseIds,
+      };
+
+      const result = await apiCall<CreateSnapshotResultDTO>("/api/notebooks/snapshots", {
+        method: "POST",
+        body: JSON.stringify(command),
+      });
+
+      // Navigate to the new notebook
+      window.location.href = `/notebooks/${result.id}`;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to create snapshot";
+      addToast({
+        type: "error",
+        title: "Snapshot failed",
+        description: errorMessage,
+      });
+    } finally {
+      setIsCreatingSnapshot(false);
+    }
+  };
+
   // Handle bulk difficulty update
   const handleBulkUpdateDifficulty = async (difficulty: PhraseDifficulty | null) => {
     if (selectedPhraseIds.size === 0) {
@@ -346,6 +391,66 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to delete phrase";
+
+      setState((prev) => ({
+        ...prev,
+        error: errorMessage,
+      }));
+
+      // Show error toast
+      addToast({
+        type: "error",
+        title: "Delete failed",
+        description: errorMessage,
+      });
+    }
+  };
+
+  // Handle bulk phrase deletion
+  const handleBulkDeletePhrases = async () => {
+    if (selectedPhraseIds.size === 0) {
+      addToast({
+        type: "error",
+        title: "No phrases selected",
+        description: "Please select at least one phrase to delete.",
+      });
+      return;
+    }
+
+    const count = selectedPhraseIds.size;
+    if (!confirm(`Are you sure you want to delete ${count} phrase(s)? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const phraseIdsArray = Array.from(selectedPhraseIds);
+
+      // Delete all phrases in parallel
+      const deletePromises = phraseIdsArray.map((phraseId) =>
+        apiCall(`/api/phrases/${phraseId}`, {
+          method: "DELETE",
+        })
+      );
+
+      await Promise.all(deletePromises);
+
+      // Remove deleted phrases from local state
+      setState((prev) => ({
+        ...prev,
+        phrases: prev.phrases.filter((p) => !selectedPhraseIds.has(p.id)),
+      }));
+
+      // Clear selection
+      setSelectedPhraseIds(new Set());
+
+      // Show success toast
+      addToast({
+        type: "success",
+        title: "Phrases deleted",
+        description: `Successfully deleted ${count} phrase(s).`,
+      });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to delete phrases";
 
       setState((prev) => ({
         ...prev,
@@ -705,7 +810,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                         );
                       })}
                       {selectedNotebookIds.size > 0 && (
-                        <Button variant="outline" size="sm" onClick={() => setSelectedNotebookIds(new Set())}>
+                        <Button variant="ghost" size="sm" onClick={() => setSelectedNotebookIds(new Set())}>
                           Clear
                         </Button>
                       )}
@@ -737,7 +842,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                       </div>
                       {selectedNotebookIds.size > 0 && (
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
                           className="w-full"
                           onClick={() => setSelectedNotebookIds(new Set())}
@@ -816,6 +921,29 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
               </div>
             )}
 
+            {/* Quick selection helpers - for both regular and virtual notebooks */}
+            {selectedPhraseIds.size === 0 && state.phrases.length > 0 && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Quick select:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const shortPhraseIds = state.phrases
+                      .filter((p) => {
+                        const tokens = tokenizePhrase(p.en_text);
+                        return tokens.length <= 2;
+                      })
+                      .map((p) => p.id);
+                    setSelectedPhraseIds(new Set(shortPhraseIds));
+                  }}
+                  className="text-primary hover:text-primary/80 transition-colors inline-flex items-center gap-1"
+                  title="Select phrases with max 2 words"
+                >
+                  <Minimize2 className="size-4" />
+                </button>
+              </div>
+            )}
+
             {/* Bulk actions - for both regular and virtual notebooks */}
             {selectedPhraseIds.size > 0 && (
               <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
@@ -856,9 +984,22 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                   <Button variant="default" size="sm" onClick={() => handleBulkUpdateDifficulty("hard")}>
                     Mark Hard
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => handleBulkUpdateDifficulty(null)}>
+                  <Button variant="default" size="sm" onClick={() => handleBulkUpdateDifficulty(null)}>
                     Clear
                   </Button>
+                  <Button variant="default" size="sm" onClick={handleCreateSnapshot} disabled={isCreatingSnapshot}>
+                    {isCreatingSnapshot ? "Creating..." : "Snapshot selected"}
+                  </Button>
+                  {!isVirtualNotebook(notebookId) && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      onClick={handleBulkDeletePhrases}
+                    >
+                      Usuń zaznaczone
+                    </Button>
+                  )}
                   <Button variant="ghost" size="sm" onClick={() => setSelectedPhraseIds(new Set())}>
                     Deselect All
                   </Button>
@@ -918,13 +1059,32 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                       Hard
                     </Button>
                     <Button
-                      variant="outline"
+                      variant="default"
                       size="sm"
                       className="w-full"
                       onClick={() => handleBulkUpdateDifficulty(null)}
                     >
                       Clear
                     </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="w-full"
+                      onClick={handleCreateSnapshot}
+                      disabled={isCreatingSnapshot}
+                    >
+                      {isCreatingSnapshot ? "Creating..." : "Snapshot selected"}
+                    </Button>
+                    {!isVirtualNotebook(notebookId) && (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="w-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        onClick={handleBulkDeletePhrases}
+                      >
+                        Usuń zaznaczone
+                      </Button>
+                    )}
                   </div>
                   <Button variant="ghost" size="sm" className="w-full" onClick={() => setSelectedPhraseIds(new Set())}>
                     Deselect All
@@ -1018,6 +1178,16 @@ function PhraseTable({
     }
   };
 
+  const handleSelectShortPhrases = () => {
+    const shortPhraseIds = phrases
+      .filter((p) => {
+        const tokens = tokenizePhrase(p.en_text);
+        return tokens.length <= 2;
+      })
+      .map((p) => p.id);
+    onSelectionChange(new Set(shortPhraseIds));
+  };
+
   const allSelected = phrases.length > 0 && phrases.every((p) => selectedPhraseIds.has(p.id));
   const someSelected = phrases.some((p) => selectedPhraseIds.has(p.id));
 
@@ -1027,16 +1197,26 @@ function PhraseTable({
         <thead>
           <tr className="border-b border-border">
             <th className="text-left p-4 font-medium text-muted-foreground w-12">
-              <input
-                type="checkbox"
-                checked={allSelected}
-                ref={(input) => {
-                  if (input) input.indeterminate = someSelected && !allSelected;
-                }}
-                onChange={handleSelectAll}
-                className="cursor-pointer"
-                aria-label="Select all phrases"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  ref={(input) => {
+                    if (input) input.indeterminate = someSelected && !allSelected;
+                  }}
+                  onChange={handleSelectAll}
+                  className="cursor-pointer"
+                  aria-label="Select all phrases"
+                />
+                <button
+                  type="button"
+                  onClick={handleSelectShortPhrases}
+                  className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                  title="Select phrases with max 2 words"
+                >
+                  <Minimize2 className="size-4" />
+                </button>
+              </div>
             </th>
             <th className="text-left p-4 font-medium text-muted-foreground w-14">#</th>
             {isVirtual && <th className="text-left p-4 font-medium text-muted-foreground">Notebook</th>}

@@ -173,6 +173,21 @@ export interface ImportNotebookResultDTO {
 export type ImportLogsListResponse = Paginated<ImportLogDTO>;
 
 // ------------------------------------
+// Snapshots
+// ------------------------------------
+export interface CreateSnapshotCommand {
+  source_notebook_id: string; // UUID for regular notebook, or "difficulty-easy|medium|hard" for smart lists
+  phrase_ids: UUID[];
+}
+
+export interface CreateSnapshotResultDTO {
+  id: UUID;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ------------------------------------
 // User Voices (TTS selection)
 // ------------------------------------
 export type UserVoiceDTO = Pick<Tables<"user_voices">, "id" | "slot" | "language" | "voice_id" | "created_at">;
