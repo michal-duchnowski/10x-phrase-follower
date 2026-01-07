@@ -51,6 +51,8 @@ interface LearnSessionState {
   useContainsMode: boolean; // If true, accept answer if it matches any word in correct answer
   answerInputMode: AnswerInputMode; // "text" or "word_bank"
   voiceAutoCheck: boolean; // If true, automatically check answer after tap-to-talk recognition
+  voiceAutoStart: boolean; // If true, automatically start microphone when entering a card
+  autoAdvanceAfterCheck: boolean; // If true, automatically advance to next card (2s for correct, 5s for incorrect)
   currentRound: LearnPhraseDTO[];
   currentIndex: number;
   roundNumber: number;
@@ -62,14 +64,51 @@ interface LearnSessionState {
   incorrectPhrases: LearnPhraseDTO[];
 }
 
+interface LearnSettings {
+  direction: LearnDirection;
+  shuffle: boolean;
+  useContainsMode: boolean;
+  answerInputMode: AnswerInputMode;
+  voiceAutoCheck: boolean;
+  voiceAutoStart: boolean;
+  autoAdvanceAfterCheck: boolean;
+}
+
+const LEARN_SETTINGS_STORAGE_KEY = "learn-settings";
+
+function loadLearnSettings(): Partial<LearnSettings> {
+  if (typeof window === "undefined") return {};
+  try {
+    const stored = localStorage.getItem(LEARN_SETTINGS_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored) as Partial<LearnSettings>;
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return {};
+}
+
+function saveLearnSettings(settings: Partial<LearnSettings>): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(LEARN_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 function createInitialSessionState(): LearnSessionState {
+  const saved = loadLearnSettings();
   return {
     phase: "idle",
-    direction: "en_to_pl",
-    shuffle: true,
-    useContainsMode: false,
-    answerInputMode: "text",
-    voiceAutoCheck: false,
+    direction: saved.direction ?? "en_to_pl",
+    shuffle: saved.shuffle ?? true,
+    useContainsMode: saved.useContainsMode ?? false,
+    answerInputMode: saved.answerInputMode ?? "text",
+    voiceAutoCheck: saved.voiceAutoCheck ?? false,
+    voiceAutoStart: saved.voiceAutoStart ?? false,
+    autoAdvanceAfterCheck: saved.autoAdvanceAfterCheck ?? false,
     currentRound: [],
     currentIndex: 0,
     roundNumber: 1,
@@ -139,9 +178,15 @@ function LearnViewContent({
   const { apiCall, isAuthenticated } = useApi();
   const { addToast } = useToast();
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playPromptEnglishAudioRef = useRef<
+    ((phraseId: string, opts?: { allowVoiceAutoStart?: boolean }) => void) | null
+  >(null);
+  const playAfterCheckEnglishAudioRef = useRef<((phraseId: string) => void) | null>(null);
   const playbackManifestRef = useRef<PlaybackManifestDTO | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [isPromptAudioPlaying, setIsPromptAudioPlaying] = useState(false);
+  const suppressNextAutoPlayForPhraseIdRef = useRef<string | null>(null);
+  const suppressNextAfterCheckAutoPlayForPhraseIdRef = useRef<string | null>(null);
 
   const [manifest, setManifest] = useState<LearnManifestDTO | null>(null);
   const [manifestLoading, setManifestLoading] = useState<boolean>(true);
@@ -296,6 +341,12 @@ function LearnViewContent({
         incorrectPhrases,
       };
     });
+
+    // PL→EN: trigger after-check English audio in the same user gesture to avoid autoplay restrictions.
+    if (session.direction === "pl_to_en" && currentPhrase.audio.has_en_audio) {
+      suppressNextAfterCheckAutoPlayForPhraseIdRef.current = currentPhrase.id;
+      playAfterCheckEnglishAudioRef.current?.(currentPhrase.id);
+    }
   }, [
     currentCardResult?.userAnswer,
     currentCardResult?.selectedTokens,
@@ -370,11 +421,98 @@ function LearnViewContent({
         }
       }
 
-      // Auto-check if enabled
+      // Auto-check if enabled - use updater function to get latest state
       if (session.voiceAutoCheck) {
-        // Small delay to ensure state updates
+        // Small delay to ensure state updates, then check using updater function
         setTimeout(() => {
-          void handleCheckAnswer();
+          setSession((prev) => {
+            const phrase = prev.currentRound[prev.currentIndex];
+            if (!phrase) return prev;
+
+            const cardResult = prev.answers[phrase.id];
+            if (!cardResult || cardResult.isChecked) return prev;
+
+            const correctAnswer = getCorrectAnswer(phrase, prev.direction);
+            const effectiveMode = getEffectiveInputMode(prev.answerInputMode, phrase, prev.direction);
+            let localComparison: {
+              isCorrect: boolean;
+              normalizedUser: string;
+              normalizedCorrect: string;
+            };
+
+            if (effectiveMode === "word_bank") {
+              const selectedTokens = cardResult.selectedTokens || [];
+              localComparison = compareWordBankAnswer(selectedTokens, correctAnswer);
+            } else {
+              const userAnswer = cardResult.userAnswer ?? "";
+              localComparison = compareAnswers(userAnswer, correctAnswer, prev.useContainsMode);
+            }
+
+            const result: CheckAnswerResultDTO = {
+              is_correct: localComparison.isCorrect,
+              normalized_user: localComparison.normalizedUser,
+              normalized_correct: localComparison.normalizedCorrect,
+            };
+
+            const wasAnsweredBefore = cardResult.isChecked;
+            const previousCorrect = cardResult.isCorrect;
+
+            let correctCount = prev.correctCount;
+            let incorrectCount = prev.incorrectCount;
+
+            if (!wasAnsweredBefore) {
+              if (result.is_correct) {
+                correctCount += 1;
+              } else {
+                incorrectCount += 1;
+              }
+            } else if (previousCorrect !== null && previousCorrect !== result.is_correct) {
+              if (previousCorrect) {
+                correctCount -= 1;
+                incorrectCount += 1;
+              } else {
+                incorrectCount -= 1;
+                correctCount += 1;
+              }
+            }
+
+            const userAnswer =
+              effectiveMode === "word_bank"
+                ? (cardResult.selectedTokens || []).join(" ")
+                : (cardResult.userAnswer ?? "");
+
+            const newAnswers: Record<string, CardResultState> = {
+              ...prev.answers,
+              [phrase.id]: {
+                isChecked: true,
+                isCorrect: result.is_correct,
+                backendResult: result,
+                userAnswer,
+                correctAnswer,
+                selectedTokens: cardResult.selectedTokens,
+              },
+            };
+
+            const incorrectPhrasesMap: Record<string, LearnPhraseDTO> = {};
+            const incorrectPhrases: LearnPhraseDTO[] = [];
+
+            prev.currentRound.forEach((p) => {
+              const answer = newAnswers[p.id];
+              if (answer && answer.isChecked && answer.isCorrect === false) {
+                incorrectPhrasesMap[p.id] = p;
+              }
+            });
+
+            Object.values(incorrectPhrasesMap).forEach((p) => incorrectPhrases.push(p));
+
+            return {
+              ...prev,
+              answers: newAnswers,
+              correctCount,
+              incorrectCount,
+              incorrectPhrases,
+            };
+          });
         }, 200);
       }
     },
@@ -384,9 +522,10 @@ function LearnViewContent({
       effectiveInputMode,
       session.direction,
       session.voiceAutoCheck,
+      session.answerInputMode,
+      session.useContainsMode,
       manifest,
       handleUserAnswerChange,
-      handleCheckAnswer,
     ]
   );
 
@@ -415,6 +554,74 @@ function LearnViewContent({
       };
     });
   }, [currentCardResult?.isChecked, currentPhrase]);
+
+  const handleTryAgain = useCallback(() => {
+    if (!currentPhrase) return;
+    if (!currentCardResult?.isChecked) return;
+
+    // Stop any currently playing audio (after-check audio can still be playing)
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
+      setIsPromptAudioPlaying(false);
+    }
+
+    // Cancel auto-advance timer if active
+    if (autoAdvanceTimerRef.current) {
+      clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = null;
+    }
+
+    // Reset audio tracking so audio can play again
+    lastAutoPlayedPhraseIdRef.current = null;
+    // PL→EN: allow after-check English audio to replay after re-check
+    lastEnglishAudioPlayedRef.current = null;
+    // Prevent the follow-up useEffect auto-play from double-starting audio on the same phrase
+    suppressNextAutoPlayForPhraseIdRef.current = currentPhrase.id;
+
+    // IMPORTANT: play audio directly in the click handler (gesture context),
+    // otherwise browsers may block `.play()` when it's triggered from `useEffect`.
+    if (session.direction === "en_to_pl") {
+      playPromptEnglishAudioRef.current?.(currentPhrase.id, { allowVoiceAutoStart: true });
+    }
+
+    setSession((prev) => {
+      const prevState = prev.answers[currentPhrase.id];
+      if (!prevState || !prevState.isChecked) return prev;
+
+      // Adjust stats: remove this answer from counts
+      let correctCount = prev.correctCount;
+      let incorrectCount = prev.incorrectCount;
+
+      if (prevState.isCorrect === true) {
+        correctCount = Math.max(0, correctCount - 1);
+      } else if (prevState.isCorrect === false) {
+        incorrectCount = Math.max(0, incorrectCount - 1);
+      }
+
+      // Remove from incorrect phrases list if it was there
+      const incorrectPhrases = prev.incorrectPhrases.filter((p) => p.id !== currentPhrase.id);
+
+      return {
+        ...prev,
+        correctCount,
+        incorrectCount,
+        incorrectPhrases,
+        answers: {
+          ...prev.answers,
+          [currentPhrase.id]: {
+            isChecked: false,
+            isCorrect: null,
+            backendResult: null,
+            correctAnswer: prevState.correctAnswer,
+            userAnswer: "",
+            selectedTokens: [],
+          },
+        },
+      };
+    });
+  }, [currentPhrase, currentCardResult?.isChecked, session.direction]);
 
   const handleVoiceError = useCallback(
     (error: string) => {
@@ -467,6 +674,65 @@ function LearnViewContent({
 
     startVoiceListening();
   }, [isVoiceListening, isVoiceModeActive, startVoiceListening, stopVoiceListening]);
+
+  // Auto-start microphone if voiceAutoStart is enabled
+  // But wait for audio to finish playing first
+  useEffect(() => {
+    if (
+      isClient &&
+      isSpeechSupported &&
+      session.voiceAutoStart &&
+      isVoiceModeActive &&
+      !isVoiceListening &&
+      !isPromptAudioPlaying && // Don't start while audio is playing
+      currentPhrase &&
+      !currentCardResult?.isChecked
+    ) {
+      // Small delay to ensure everything is ready
+      const timer = setTimeout(() => {
+        startVoiceListening();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [
+    isClient,
+    isSpeechSupported,
+    session.voiceAutoStart,
+    isVoiceModeActive,
+    isVoiceListening,
+    isPromptAudioPlaying, // Wait for audio to finish
+    currentPhrase?.id,
+    currentCardResult?.isChecked,
+    startVoiceListening,
+  ]);
+
+  // Auto-advance after check if autoAdvanceAfterCheck is enabled
+  const autoAdvanceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const goToNextCardRef = useRef<(() => void) | null>(null);
+
+  // Save settings to localStorage when they change
+  useEffect(() => {
+    if (session.phase === "idle") {
+      saveLearnSettings({
+        direction: session.direction,
+        shuffle: session.shuffle,
+        useContainsMode: session.useContainsMode,
+        answerInputMode: session.answerInputMode,
+        voiceAutoCheck: session.voiceAutoCheck,
+        voiceAutoStart: session.voiceAutoStart,
+        autoAdvanceAfterCheck: session.autoAdvanceAfterCheck,
+      });
+    }
+  }, [
+    session.phase,
+    session.direction,
+    session.shuffle,
+    session.useContainsMode,
+    session.answerInputMode,
+    session.voiceAutoCheck,
+    session.voiceAutoStart,
+    session.autoAdvanceAfterCheck,
+  ]);
 
   // Safety: if voice mode becomes inactive while we are listening, stop.
   useEffect(() => {
@@ -587,6 +853,139 @@ function LearnViewContent({
   const lastAutoPlayedPhraseIdRef = useRef<string | null>(null);
   const lastEnglishAudioPlayedRef = useRef<string | null>(null);
 
+  const stopCurrentAudio = useCallback(() => {
+    if (!audioRef.current) return;
+    audioRef.current.pause();
+    audioRef.current.currentTime = 0;
+    audioRef.current = null;
+    setIsPromptAudioPlaying(false);
+  }, []);
+
+  const getEnglishSegmentUrlForPhraseId = useCallback((phraseId: string): string | null => {
+    if (!playbackManifestRef.current) return null;
+    const manifestItem = playbackManifestRef.current.sequence.find((item) => item.phrase.id === phraseId);
+    if (!manifestItem) return null;
+    const targetSegment =
+      manifestItem.segments.find((s) => s.slot === "EN1") ||
+      manifestItem.segments.find((s) => s.slot === "EN2") ||
+      manifestItem.segments.find((s) => s.slot === "EN3");
+    return targetSegment?.url ?? null;
+  }, []);
+
+  const playPromptEnglishAudio = useCallback(
+    (phraseId: string, opts?: { allowVoiceAutoStart?: boolean }) => {
+      const url = getEnglishSegmentUrlForPhraseId(phraseId);
+      if (!url) return;
+
+      stopCurrentAudio();
+
+      const audio = new Audio(url);
+      audio.playbackRate = 1.0;
+      audioRef.current = audio;
+      setIsPromptAudioPlaying(true);
+
+      audio
+        .play()
+        .then(() => {
+          lastAutoPlayedPhraseIdRef.current = phraseId;
+        })
+        .catch((err) => {
+          // Silently fail - audio auto-play may be blocked by browser
+          // eslint-disable-next-line no-console
+          console.error("[LearnView] Failed to play prompt audio:", err);
+          if (audioRef.current === audio) {
+            audioRef.current = null;
+          }
+          setIsPromptAudioPlaying(false);
+        });
+
+      audio.addEventListener("ended", () => {
+        if (audioRef.current === audio) {
+          audioRef.current = null;
+        }
+        setIsPromptAudioPlaying(false);
+
+        if (
+          opts?.allowVoiceAutoStart &&
+          session.voiceAutoStart &&
+          isClient &&
+          isSpeechSupported &&
+          isVoiceModeActive &&
+          !isVoiceListening
+        ) {
+          setTimeout(() => {
+            startVoiceListening();
+          }, 200);
+        }
+      });
+
+      audio.addEventListener("pause", () => {
+        setIsPromptAudioPlaying(false);
+      });
+    },
+    [
+      getEnglishSegmentUrlForPhraseId,
+      isClient,
+      isSpeechSupported,
+      isVoiceListening,
+      isVoiceModeActive,
+      session.voiceAutoStart,
+      startVoiceListening,
+      stopCurrentAudio,
+    ]
+  );
+
+  useEffect(() => {
+    playPromptEnglishAudioRef.current = playPromptEnglishAudio;
+  }, [playPromptEnglishAudio]);
+
+  const playAfterCheckEnglishAudio = useCallback(
+    (phraseId: string) => {
+      const audioKey = `${phraseId}-after-check`;
+      if (lastEnglishAudioPlayedRef.current === audioKey) return;
+
+      const url = getEnglishSegmentUrlForPhraseId(phraseId);
+      if (!url) return;
+
+      stopCurrentAudio();
+
+      const audio = new Audio(url);
+      audio.playbackRate = 1.0;
+      audioRef.current = audio;
+      setIsPromptAudioPlaying(true);
+
+      audio
+        .play()
+        .then(() => {
+          lastEnglishAudioPlayedRef.current = audioKey;
+        })
+        .catch((err) => {
+          // eslint-disable-next-line no-console
+          console.error("[LearnView] Failed to play after-check English audio:", err);
+          if (audioRef.current === audio) {
+            audioRef.current = null;
+          }
+          setIsPromptAudioPlaying(false);
+        });
+
+      audio.addEventListener("ended", () => {
+        if (audioRef.current === audio) {
+          audioRef.current = null;
+        }
+        setIsPromptAudioPlaying(false);
+      });
+
+      audio.addEventListener("pause", () => {
+        setIsPromptAudioPlaying(false);
+      });
+    },
+    [getEnglishSegmentUrlForPhraseId, stopCurrentAudio]
+  );
+
+  useEffect(() => {
+    playAfterCheckEnglishAudioRef.current = playAfterCheckEnglishAudio;
+  }, [playAfterCheckEnglishAudio]);
+
   // Auto-play English audio when entering a card (EN→PL) or after checking answer (PL→EN)
   useEffect(() => {
     if (!currentPhrase || session.phase !== "in_progress") {
@@ -601,105 +1000,47 @@ function LearnViewContent({
         return; // Don't auto-play in After check state
       }
 
+      // If Try Again already started playback in the click handler, skip this effect once
+      if (suppressNextAutoPlayForPhraseIdRef.current === currentPhrase.id) {
+        suppressNextAutoPlayForPhraseIdRef.current = null;
+        return;
+      }
+
+      const hasAudio = getHasAudio(currentPhrase, session.direction);
+      if (!hasAudio) {
+        return;
+      }
+
       // Only auto-play once per phrase
       if (lastAutoPlayedPhraseIdRef.current === currentPhrase.id) {
         return;
       }
 
-      const hasAudio = getHasAudio(currentPhrase, session.direction);
-      if (!hasAudio || !playbackManifestRef.current) {
-        return;
-      }
-
-      // Find the phrase in playback manifest
-      const manifestItem = playbackManifestRef.current.sequence.find((item) => item.phrase.id === currentPhrase.id);
-
-      if (!manifestItem) {
-        return;
-      }
-
-      // Prefer EN1, fallback to EN2 or EN3
-      const targetSegment =
-        manifestItem.segments.find((s) => s.slot === "EN1") ||
-        manifestItem.segments.find((s) => s.slot === "EN2") ||
-        manifestItem.segments.find((s) => s.slot === "EN3");
-
-      if (targetSegment && targetSegment.url) {
-        // Auto-play audio only once
-        lastAutoPlayedPhraseIdRef.current = currentPhrase.id;
-        const audio = new Audio(targetSegment.url);
-        audio.playbackRate = 1.0;
-        setIsPromptAudioPlaying(true);
-        audio.play().catch((err) => {
-          // Silently fail - audio auto-play may be blocked by browser
-          // eslint-disable-next-line no-console
-          console.error("[LearnView] Failed to auto-play audio:", err);
-          setIsPromptAudioPlaying(false);
-        });
-        audioRef.current = audio;
-
-        // Clean up when audio ends
-        audio.addEventListener("ended", () => {
-          audioRef.current = null;
-          setIsPromptAudioPlaying(false);
-        });
-
-        audio.addEventListener("pause", () => {
-          setIsPromptAudioPlaying(false);
-        });
-      }
+      playPromptEnglishAudio(currentPhrase.id, { allowVoiceAutoStart: true });
     }
     // For PL→EN: play English audio after checking answer
     else if (session.direction === "pl_to_en" && isChecked) {
-      // Only auto-play once per phrase after check
-      const audioKey = `${currentPhrase.id}-after-check`;
-      if (lastEnglishAudioPlayedRef.current === audioKey) {
+      // If the check handler already started playback, skip this effect once
+      if (suppressNextAfterCheckAutoPlayForPhraseIdRef.current === currentPhrase.id) {
+        suppressNextAfterCheckAutoPlayForPhraseIdRef.current = null;
         return;
       }
 
-      if (!playbackManifestRef.current) {
-        return;
-      }
-
-      // Find the phrase in playback manifest
-      const manifestItem = playbackManifestRef.current.sequence.find((item) => item.phrase.id === currentPhrase.id);
-
-      if (!manifestItem) {
-        return;
-      }
-
-      // Play English audio (EN1, EN2, or EN3)
-      const targetSegment =
-        manifestItem.segments.find((s) => s.slot === "EN1") ||
-        manifestItem.segments.find((s) => s.slot === "EN2") ||
-        manifestItem.segments.find((s) => s.slot === "EN3");
-
-      if (targetSegment && targetSegment.url) {
-        // Mark as played
-        lastEnglishAudioPlayedRef.current = audioKey;
-        const audio = new Audio(targetSegment.url);
-        audio.playbackRate = 1.0;
-        setIsPromptAudioPlaying(true);
-        audio.play().catch((err) => {
-          // Silently fail - audio auto-play may be blocked by browser
-          // eslint-disable-next-line no-console
-          console.error("[LearnView] Failed to auto-play English audio:", err);
-          setIsPromptAudioPlaying(false);
-        });
-        audioRef.current = audio;
-
-        // Clean up when audio ends
-        audio.addEventListener("ended", () => {
-          audioRef.current = null;
-          setIsPromptAudioPlaying(false);
-        });
-
-        audio.addEventListener("pause", () => {
-          setIsPromptAudioPlaying(false);
-        });
-      }
+      playAfterCheckEnglishAudio(currentPhrase.id);
     }
-  }, [currentPhrase, session.direction, session.phase, currentCardResult]);
+  }, [
+    currentPhrase,
+    session.direction,
+    session.phase,
+    currentCardResult,
+    isClient,
+    isSpeechSupported,
+    isVoiceModeActive,
+    isVoiceListening,
+    startVoiceListening,
+    playPromptEnglishAudio,
+    playAfterCheckEnglishAudio,
+  ]);
 
   // Cleanup audio on unmount
   useEffect(() => {
@@ -744,6 +1085,20 @@ function LearnViewContent({
     setSession((prev) => ({
       ...prev,
       voiceAutoCheck: !prev.voiceAutoCheck,
+    }));
+  };
+
+  const handleToggleVoiceAutoStart = () => {
+    setSession((prev) => ({
+      ...prev,
+      voiceAutoStart: !prev.voiceAutoStart,
+    }));
+  };
+
+  const handleToggleAutoAdvanceAfterCheck = () => {
+    setSession((prev) => ({
+      ...prev,
+      autoAdvanceAfterCheck: !prev.autoAdvanceAfterCheck,
     }));
   };
 
@@ -878,6 +1233,48 @@ function LearnViewContent({
     });
   }, []);
 
+  // Update ref when goToNextCard changes
+  useEffect(() => {
+    goToNextCardRef.current = goToNextCard;
+  }, [goToNextCard]);
+
+  // Auto-advance after check if autoAdvanceAfterCheck is enabled
+  // 2 seconds for correct answers, 5 seconds for incorrect answers
+  useEffect(() => {
+    if (autoAdvanceTimerRef.current) {
+      clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = null;
+    }
+
+    if (
+      session.autoAdvanceAfterCheck &&
+      session.phase === "in_progress" &&
+      currentPhrase &&
+      currentCardResult?.isChecked
+    ) {
+      // Use different delay based on whether answer is correct or not
+      const delay = currentCardResult.isCorrect ? 2000 : 5000;
+      autoAdvanceTimerRef.current = setTimeout(() => {
+        if (goToNextCardRef.current) {
+          goToNextCardRef.current();
+        }
+      }, delay);
+    }
+
+    return () => {
+      if (autoAdvanceTimerRef.current) {
+        clearTimeout(autoAdvanceTimerRef.current);
+        autoAdvanceTimerRef.current = null;
+      }
+    };
+  }, [
+    session.autoAdvanceAfterCheck,
+    session.phase,
+    currentPhrase?.id,
+    currentCardResult?.isChecked,
+    currentCardResult?.isCorrect,
+  ]);
+
   const handleSkip = useCallback(() => {
     // Skip: move to next card without changing stats or incorrect list
     goToNextCard();
@@ -893,6 +1290,8 @@ function LearnViewContent({
         useContainsMode: prev.useContainsMode,
         answerInputMode: prev.answerInputMode,
         voiceAutoCheck: prev.voiceAutoCheck,
+        voiceAutoStart: prev.voiceAutoStart,
+        autoAdvanceAfterCheck: prev.autoAdvanceAfterCheck,
       }));
       return;
     }
@@ -919,6 +1318,8 @@ function LearnViewContent({
         useContainsMode: prev.useContainsMode,
         answerInputMode: prev.answerInputMode,
         voiceAutoCheck: prev.voiceAutoCheck,
+        voiceAutoStart: prev.voiceAutoStart,
+        autoAdvanceAfterCheck: prev.autoAdvanceAfterCheck,
       }));
       return;
     }
@@ -1320,11 +1721,60 @@ function LearnViewContent({
                       {session.voiceAutoCheck ? "Auto-check after tap-to-talk" : "Manual check after tap-to-talk"}
                     </span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={handleToggleVoiceAutoStart}
+                    className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground hover:bg-muted/60 transition-colors w-full sm:w-auto"
+                    disabled={!isSpeechSupported}
+                    title={isSpeechSupported ? "Auto-start microphone" : "Voice input not supported"}
+                  >
+                    {session.voiceAutoStart ? (
+                      <Mic className="size-4 text-primary" />
+                    ) : (
+                      <Mic className="size-4 text-muted-foreground" />
+                    )}
+                    <div
+                      className={`size-4 rounded border ${
+                        session.voiceAutoStart ? "bg-primary border-primary" : "border-muted-foreground/40"
+                      }`}
+                      aria-hidden="true"
+                    />
+                    <span>
+                      {session.voiceAutoStart ? "Auto-start microphone enabled" : "Auto-start microphone disabled"}
+                    </span>
+                  </button>
                   {!isSpeechSupported && (
                     <p className="text-xs text-muted-foreground">
                       Voice input is not supported in your browser. Please use Chrome, Edge, or Safari.
                     </p>
                   )}
+                </div>
+              </div>
+
+              {/* Auto-advance settings */}
+              <div>
+                <div className="text-xs font-medium text-muted-foreground mb-1.5">Auto-advance</div>
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={handleToggleAutoAdvanceAfterCheck}
+                    className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground hover:bg-muted/60 transition-colors w-full sm:w-auto"
+                  >
+                    {session.autoAdvanceAfterCheck ? (
+                      <CheckCircle2 className="size-4 text-primary" />
+                    ) : (
+                      <CheckCircle2 className="size-4 text-muted-foreground" />
+                    )}
+                    <div
+                      className={`size-4 rounded border ${
+                        session.autoAdvanceAfterCheck ? "bg-primary border-primary" : "border-muted-foreground/40"
+                      }`}
+                      aria-hidden="true"
+                    />
+                    <span>
+                      {session.autoAdvanceAfterCheck ? "Auto-advance after check" : "Manual advance after check"}
+                    </span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -1744,7 +2194,12 @@ function LearnViewContent({
               </div>
 
               {/* Controls - After check */}
-              <div className="hidden sm:flex justify-end pt-2">
+              <div className="hidden sm:flex justify-end gap-2 pt-2">
+                {isCorrect === false && (
+                  <Button type="button" size="sm" variant="default" onClick={handleTryAgain}>
+                    Try again
+                  </Button>
+                )}
                 <Button type="button" size="sm" onClick={goToNextCard}>
                   {session.currentIndex >= session.currentRound.length - 1 ? "Finish round" : "Next card"}
                 </Button>
@@ -1795,72 +2250,85 @@ function LearnViewContent({
               </>
             ) : (
               <>
-                <MobileActionMenu
-                  triggerLabel="Difficulty"
-                  triggerIcon
-                  triggerVariant="default"
-                  triggerSize="lg"
-                  triggerClassName="w-[9.5rem] justify-center"
-                  side="top"
-                >
-                  {({ close }) => (
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-2 gap-2">
-                        <Button
-                          type="button"
-                          variant="default"
-                          size="sm"
-                          className="w-full"
-                          onClick={() => {
-                            handleMarkDifficulty("easy");
-                            close();
-                          }}
-                        >
-                          Easy
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="default"
-                          size="sm"
-                          className="w-full"
-                          onClick={() => {
-                            handleMarkDifficulty("medium");
-                            close();
-                          }}
-                        >
-                          Medium
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="default"
-                          size="sm"
-                          className="w-full"
-                          onClick={() => {
-                            handleMarkDifficulty("hard");
-                            close();
-                          }}
-                        >
-                          Hard
-                        </Button>
-                        <Button
-                          type="button"
-                          variant={!currentPhrase.difficulty ? "default" : "outline"}
-                          size="sm"
-                          className="w-full"
-                          onClick={() => {
-                            handleMarkDifficulty(null);
-                            close();
-                          }}
-                        >
-                          Clear
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </MobileActionMenu>
-                <Button type="button" className="flex-1" onClick={goToNextCard}>
-                  {session.currentIndex >= session.currentRound.length - 1 ? "Finish round" : "Next card"}
-                </Button>
+                {currentCardResult?.isCorrect === false ? (
+                  <>
+                    <Button type="button" variant="default" onClick={handleTryAgain}>
+                      Try again
+                    </Button>
+                    <Button type="button" className="flex-1" onClick={goToNextCard}>
+                      {session.currentIndex >= session.currentRound.length - 1 ? "Finish round" : "Next card"}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <MobileActionMenu
+                      triggerLabel="Difficulty"
+                      triggerIcon
+                      triggerVariant="default"
+                      triggerSize="lg"
+                      triggerClassName="w-[9.5rem] justify-center"
+                      side="top"
+                    >
+                      {({ close }) => (
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-2 gap-2">
+                            <Button
+                              type="button"
+                              variant="default"
+                              size="sm"
+                              className="w-full"
+                              onClick={() => {
+                                handleMarkDifficulty("easy");
+                                close();
+                              }}
+                            >
+                              Easy
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="default"
+                              size="sm"
+                              className="w-full"
+                              onClick={() => {
+                                handleMarkDifficulty("medium");
+                                close();
+                              }}
+                            >
+                              Medium
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="default"
+                              size="sm"
+                              className="w-full"
+                              onClick={() => {
+                                handleMarkDifficulty("hard");
+                                close();
+                              }}
+                            >
+                              Hard
+                            </Button>
+                            <Button
+                              type="button"
+                              variant={!currentPhrase.difficulty ? "default" : "outline"}
+                              size="sm"
+                              className="w-full"
+                              onClick={() => {
+                                handleMarkDifficulty(null);
+                                close();
+                              }}
+                            >
+                              Clear
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </MobileActionMenu>
+                    <Button type="button" className="flex-1" onClick={goToNextCard}>
+                      {session.currentIndex >= session.currentRound.length - 1 ? "Finish round" : "Next card"}
+                    </Button>
+                  </>
+                )}
               </>
             )}
           </div>
