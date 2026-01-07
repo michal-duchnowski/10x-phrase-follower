@@ -3,7 +3,7 @@ import { Button } from "./ui/button";
 import { ToastProvider, useToast } from "./ui/toast";
 import { useApi } from "../lib/hooks/useApi";
 import { useSpeechRecognition } from "../lib/hooks/useSpeechRecognition";
-import { Mic, MicOff, CheckCircle2 } from "lucide-react";
+import { Mic, CheckCircle2 } from "lucide-react";
 import type {
   CheckAnswerResultDTO,
   LearnDirection,
@@ -50,8 +50,7 @@ interface LearnSessionState {
   shuffle: boolean;
   useContainsMode: boolean; // If true, accept answer if it matches any word in correct answer
   answerInputMode: AnswerInputMode; // "text" or "word_bank"
-  voiceMode: boolean; // If true, voice input is active
-  voiceAutoCheck: boolean; // If true, automatically check answer after voice recognition
+  voiceAutoCheck: boolean; // If true, automatically check answer after tap-to-talk recognition
   currentRound: LearnPhraseDTO[];
   currentIndex: number;
   roundNumber: number;
@@ -70,7 +69,6 @@ function createInitialSessionState(): LearnSessionState {
     shuffle: true,
     useContainsMode: false,
     answerInputMode: "text",
-    voiceMode: false,
     voiceAutoCheck: false,
     currentRound: [],
     currentIndex: 0,
@@ -309,7 +307,7 @@ function LearnViewContent({
 
   // Speech recognition setup
   const speechLanguage = getSpeechRecognitionLanguage(session.direction);
-  const isVoiceModeActive = session.voiceMode && session.phase === "in_progress" && !currentCardResult?.isChecked;
+  const isVoiceModeActive = session.phase === "in_progress" && !currentCardResult?.isChecked;
 
   // Handle voice recognition result
   const handleVoiceResult = useCallback(
@@ -317,7 +315,7 @@ function LearnViewContent({
       if (!currentPhrase || currentCardResult?.isChecked) return;
 
       if (effectiveInputMode === "text") {
-        // For text mode: append or replace text in textarea
+        // For text mode: replace text in textarea
         handleUserAnswerChange(text);
       } else if (effectiveInputMode === "word_bank" && manifest) {
         // For word bank: match recognized words to available tokens
@@ -343,7 +341,7 @@ function LearnViewContent({
           }
         }
 
-        // Update selected tokens - add recognized tokens to current selection
+        // Update selected tokens - overwrite current selection (tap-to-talk should replace)
         if (selectedTokens.length > 0) {
           setSession((prev) => {
             const isChecked = prev.answers[currentPhrase.id]?.isChecked ?? false;
@@ -352,32 +350,7 @@ function LearnViewContent({
             }
 
             const prevState = prev.answers[currentPhrase.id];
-            const currentTokens = prevState?.selectedTokens || [];
-
-            // Count how many times each token appears in current selection
-            const currentCounts = new Map<string, number>();
-            for (const token of currentTokens) {
-              currentCounts.set(token, (currentCounts.get(token) || 0) + 1);
-            }
-
-            // Count how many times each token appears in word pool
-            const poolCounts = new Map<string, number>();
-            for (const token of wordPool) {
-              poolCounts.set(token, (poolCounts.get(token) || 0) + 1);
-            }
-
-            // Add new tokens that can be added (respecting pool limits)
-            const newTokens = [...currentTokens];
-            for (const token of selectedTokens) {
-              const currentCount = currentCounts.get(token) || 0;
-              const poolCount = poolCounts.get(token) || 0;
-              if (currentCount < poolCount) {
-                newTokens.push(token);
-                currentCounts.set(token, currentCount + 1);
-              }
-            }
-
-            const userAnswer = newTokens.join(" ");
+            const userAnswer = selectedTokens.join(" ");
 
             return {
               ...prev,
@@ -389,7 +362,7 @@ function LearnViewContent({
                   backendResult: prevState ? prevState.backendResult : null,
                   correctAnswer: prevState ? prevState.correctAnswer : getCorrectAnswer(currentPhrase, prev.direction),
                   userAnswer,
-                  selectedTokens: newTokens,
+                  selectedTokens,
                 },
               },
             };
@@ -416,6 +389,32 @@ function LearnViewContent({
       handleCheckAnswer,
     ]
   );
+
+  const handleClearCurrentAnswer = useCallback(() => {
+    if (!currentPhrase) return;
+    if (currentCardResult?.isChecked) return;
+
+    setSession((prev) => {
+      const prevState = prev.answers[currentPhrase.id];
+      const isChecked = prevState?.isChecked ?? false;
+      if (isChecked) return prev;
+
+      return {
+        ...prev,
+        answers: {
+          ...prev.answers,
+          [currentPhrase.id]: {
+            isChecked: false,
+            isCorrect: null,
+            backendResult: null,
+            correctAnswer: prevState?.correctAnswer ?? getCorrectAnswer(currentPhrase, prev.direction),
+            userAnswer: "",
+            selectedTokens: [],
+          },
+        },
+      };
+    });
+  }, [currentCardResult?.isChecked, currentPhrase]);
 
   const handleVoiceError = useCallback(
     (error: string) => {
@@ -444,13 +443,37 @@ function LearnViewContent({
     setIsClient(typeof window !== "undefined");
   }, []);
 
-  const { isSupported: isSpeechSupported, isListening: isVoiceListening } = useSpeechRecognition({
+  const {
+    isSupported: isSpeechSupported,
+    isListening: isVoiceListening,
+    start: startVoiceListening,
+    stop: stopVoiceListening,
+  } = useSpeechRecognition({
     enabled: isClient && isVoiceModeActive,
     language: speechLanguage,
     onResult: handleVoiceResult,
     onError: handleVoiceError,
-    continuous: true, // Keep listening while voice mode is active
+    continuous: false, // Tap-to-talk: stop after a single utterance
+    autoStart: false, // Tap-to-talk: only start from explicit user action
   });
+
+  const handleTapToTalk = useCallback(() => {
+    if (!isVoiceModeActive) return;
+
+    if (isVoiceListening) {
+      stopVoiceListening();
+      return;
+    }
+
+    startVoiceListening();
+  }, [isVoiceListening, isVoiceModeActive, startVoiceListening, stopVoiceListening]);
+
+  // Safety: if voice mode becomes inactive while we are listening, stop.
+  useEffect(() => {
+    if (!isVoiceModeActive && isVoiceListening) {
+      stopVoiceListening();
+    }
+  }, [isVoiceModeActive, isVoiceListening, stopVoiceListening]);
 
   // Load notebook name and learn manifest when authenticated
   useEffect(() => {
@@ -717,13 +740,6 @@ function LearnViewContent({
     }));
   };
 
-  const handleToggleVoiceMode = () => {
-    setSession((prev) => ({
-      ...prev,
-      voiceMode: !prev.voiceMode,
-    }));
-  };
-
   const handleToggleVoiceAutoCheck = () => {
     setSession((prev) => ({
       ...prev,
@@ -876,7 +892,6 @@ function LearnViewContent({
         shuffle: prev.shuffle,
         useContainsMode: prev.useContainsMode,
         answerInputMode: prev.answerInputMode,
-        voiceMode: prev.voiceMode,
         voiceAutoCheck: prev.voiceAutoCheck,
       }));
       return;
@@ -903,7 +918,6 @@ function LearnViewContent({
         shuffle: prev.shuffle,
         useContainsMode: prev.useContainsMode,
         answerInputMode: prev.answerInputMode,
-        voiceMode: prev.voiceMode,
         voiceAutoCheck: prev.voiceAutoCheck,
       }));
       return;
@@ -1286,46 +1300,26 @@ function LearnViewContent({
                 <div className="space-y-2">
                   <button
                     type="button"
-                    onClick={handleToggleVoiceMode}
+                    onClick={handleToggleVoiceAutoCheck}
                     className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground hover:bg-muted/60 transition-colors w-full sm:w-auto"
+                    disabled={!isSpeechSupported}
+                    title={isSpeechSupported ? "Auto-check after tap-to-talk" : "Voice input not supported"}
                   >
-                    {session.voiceMode ? (
-                      <Mic className="size-4 text-primary" />
+                    {session.voiceAutoCheck ? (
+                      <CheckCircle2 className="size-4 text-primary" />
                     ) : (
-                      <MicOff className="size-4 text-muted-foreground" />
+                      <CheckCircle2 className="size-4 text-muted-foreground" />
                     )}
                     <div
                       className={`size-4 rounded border ${
-                        session.voiceMode ? "bg-primary border-primary" : "border-muted-foreground/40"
+                        session.voiceAutoCheck ? "bg-primary border-primary" : "border-muted-foreground/40"
                       }`}
                       aria-hidden="true"
                     />
-                    <span>{session.voiceMode ? "Voice input enabled" : "Voice input disabled"}</span>
+                    <span>
+                      {session.voiceAutoCheck ? "Auto-check after tap-to-talk" : "Manual check after tap-to-talk"}
+                    </span>
                   </button>
-                  {session.voiceMode && (
-                    <button
-                      type="button"
-                      onClick={handleToggleVoiceAutoCheck}
-                      className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground hover:bg-muted/60 transition-colors w-full sm:w-auto"
-                    >
-                      {session.voiceAutoCheck ? (
-                        <CheckCircle2 className="size-4 text-primary" />
-                      ) : (
-                        <CheckCircle2 className="size-4 text-muted-foreground" />
-                      )}
-                      <div
-                        className={`size-4 rounded border ${
-                          session.voiceAutoCheck ? "bg-primary border-primary" : "border-muted-foreground/40"
-                        }`}
-                        aria-hidden="true"
-                      />
-                      <span>
-                        {session.voiceAutoCheck
-                          ? "Auto-check enabled (checks after voice input)"
-                          : "Auto-check disabled (manual check required)"}
-                      </span>
-                    </button>
-                  )}
                   {!isSpeechSupported && (
                     <p className="text-xs text-muted-foreground">
                       Voice input is not supported in your browser. Please use Chrome, Edge, or Safari.
@@ -1537,33 +1531,31 @@ function LearnViewContent({
                   <div className="flex items-center justify-between mb-1.5">
                     <div className="text-xs font-medium text-muted-foreground">Your answer</div>
                     {isSpeechSupported && (
-                      <button
-                        type="button"
-                        onClick={handleToggleVoiceMode}
-                        className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
-                          session.voiceMode
-                            ? "bg-primary/10 text-primary border border-primary/30"
-                            : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                        }`}
-                        title={session.voiceMode ? "Voice input enabled" : "Enable voice input"}
-                      >
-                        {isVoiceListening ? (
-                          <>
-                            <Mic className="size-3.5 animate-pulse" />
-                            <span>Listening...</span>
-                          </>
-                        ) : session.voiceMode ? (
-                          <>
-                            <Mic className="size-3.5" />
-                            <span>Voice ON</span>
-                          </>
-                        ) : (
-                          <>
-                            <MicOff className="size-3.5" />
-                            <span>Voice OFF</span>
-                          </>
-                        )}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleTapToTalk}
+                          className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors border ${
+                            isVoiceListening
+                              ? "bg-primary/15 text-primary border-primary/40"
+                              : "bg-muted/40 text-foreground border-border hover:bg-muted/60"
+                          }`}
+                          title={isVoiceListening ? "Stop listening" : "Tap to talk"}
+                        >
+                          <Mic className={`size-3.5 ${isVoiceListening ? "animate-pulse" : ""}`} />
+                          <span>{isVoiceListening ? "Listening..." : "Tap to talk"}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleClearCurrentAnswer}
+                          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                          disabled={(currentCardResult?.selectedTokens || []).length === 0}
+                          title="Clear answer"
+                        >
+                          <span>Clear</span>
+                        </button>
+                      </div>
                     )}
                   </div>
                   <WordBank
@@ -1577,7 +1569,7 @@ function LearnViewContent({
                     isChecked={false}
                     onAutoCheck={handleCheckAnswer}
                   />
-                  {session.voiceMode && session.voiceAutoCheck && (
+                  {session.voiceAutoCheck && (
                     <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
                       <CheckCircle2 className="size-3" />
                       <span>Auto-check enabled</span>
@@ -1591,33 +1583,31 @@ function LearnViewContent({
                       Your answer ({getAnswerLanguageLabel(session.direction)})
                     </label>
                     {isSpeechSupported && (
-                      <button
-                        type="button"
-                        onClick={handleToggleVoiceMode}
-                        className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
-                          session.voiceMode
-                            ? "bg-primary/10 text-primary border border-primary/30"
-                            : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                        }`}
-                        title={session.voiceMode ? "Voice input enabled" : "Enable voice input"}
-                      >
-                        {isVoiceListening ? (
-                          <>
-                            <Mic className="size-3.5 animate-pulse" />
-                            <span>Listening...</span>
-                          </>
-                        ) : session.voiceMode ? (
-                          <>
-                            <Mic className="size-3.5" />
-                            <span>Voice ON</span>
-                          </>
-                        ) : (
-                          <>
-                            <MicOff className="size-3.5" />
-                            <span>Voice OFF</span>
-                          </>
-                        )}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleTapToTalk}
+                          className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors border ${
+                            isVoiceListening
+                              ? "bg-primary/15 text-primary border-primary/40"
+                              : "bg-muted/40 text-foreground border-border hover:bg-muted/60"
+                          }`}
+                          title={isVoiceListening ? "Stop listening" : "Tap to talk"}
+                        >
+                          <Mic className={`size-3.5 ${isVoiceListening ? "animate-pulse" : ""}`} />
+                          <span>{isVoiceListening ? "Listening..." : "Tap to talk"}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleClearCurrentAnswer}
+                          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                          disabled={!userAnswer}
+                          title="Clear answer"
+                        >
+                          <span>Clear</span>
+                        </button>
+                      </div>
                     )}
                   </div>
                   <div className="relative">
@@ -1626,17 +1616,13 @@ function LearnViewContent({
                       className="w-full min-h-[72px] rounded-md border border-border bg-card px-3 py-2 text-base min-[480px]:text-lg sm:text-xl text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                       placeholder={
                         session.direction === "en_to_pl"
-                          ? session.voiceMode
-                            ? "Speak or type the Polish translation…"
-                            : "Type the Polish translation…"
-                          : session.voiceMode
-                            ? "Speak or type the English translation…"
-                            : "Type the English translation…"
+                          ? "Type the Polish translation…"
+                          : "Type the English translation…"
                       }
                       value={userAnswer}
                       onChange={(e) => handleUserAnswerChange(e.target.value)}
                     />
-                    {session.voiceMode && session.voiceAutoCheck && (
+                    {session.voiceAutoCheck && (
                       <div className="absolute top-2 right-2 flex items-center gap-1 text-xs text-muted-foreground">
                         <CheckCircle2 className="size-3" />
                         <span className="hidden sm:inline">Auto-check</span>

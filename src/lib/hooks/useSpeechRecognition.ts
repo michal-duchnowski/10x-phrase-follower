@@ -6,6 +6,7 @@ interface UseSpeechRecognitionOptions {
   onResult: (text: string) => void;
   onError?: (error: string) => void;
   continuous?: boolean; // If true, keeps listening; if false, stops after result
+  autoStart?: boolean; // If true (default), starts/stops automatically when enabled toggles
 }
 
 interface SpeechRecognition extends EventTarget {
@@ -65,11 +66,40 @@ export function useSpeechRecognition({
   onResult,
   onError,
   continuous = false,
+  autoStart = true,
 }: UseSpeechRecognitionOptions) {
   const [isListening, setIsListening] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const lastResultRef = useRef<string>("");
+  const onResultRef = useRef(onResult);
+  const onErrorRef = useRef(onError);
+  const enabledRef = useRef(enabled);
+  const continuousRef = useRef(continuous);
+  const autoStartRef = useRef(autoStart);
+
+  useEffect(() => {
+    onResultRef.current = onResult;
+  }, [onResult]);
+
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
+
+  useEffect(() => {
+    enabledRef.current = enabled;
+  }, [enabled]);
+
+  useEffect(() => {
+    continuousRef.current = continuous;
+    if (recognitionRef.current) {
+      recognitionRef.current.continuous = continuous;
+    }
+  }, [continuous]);
+
+  useEffect(() => {
+    autoStartRef.current = autoStart;
+  }, [autoStart]);
 
   // Check if Speech Recognition is supported
   useEffect(() => {
@@ -89,6 +119,7 @@ export function useSpeechRecognition({
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!isSupported) return;
+    if (recognitionRef.current) return;
 
     let SpeechRecognition: (new () => SpeechRecognition) | undefined;
     try {
@@ -101,7 +132,7 @@ export function useSpeechRecognition({
 
     const recognition = new SpeechRecognition();
 
-    recognition.continuous = continuous;
+    recognition.continuous = continuousRef.current;
     recognition.interimResults = false; // We only want final results
     recognition.lang = language;
 
@@ -111,7 +142,7 @@ export function useSpeechRecognition({
         const transcript = result[0]?.transcript?.trim() || "";
         if (transcript && transcript !== lastResultRef.current) {
           lastResultRef.current = transcript;
-          onResult(transcript);
+          onResultRef.current(transcript);
         }
       }
     };
@@ -119,8 +150,9 @@ export function useSpeechRecognition({
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       const errorMessage = event.error || "Unknown error";
       setIsListening(false);
-      if (onError) {
-        onError(errorMessage);
+      const handler = onErrorRef.current;
+      if (handler) {
+        handler(errorMessage);
       }
       // eslint-disable-next-line no-console
       console.error("[SpeechRecognition] Error:", errorMessage);
@@ -128,11 +160,11 @@ export function useSpeechRecognition({
 
     recognition.onend = () => {
       setIsListening(false);
-      // If enabled and continuous, restart automatically
-      if (enabled && continuous) {
+      // If enabled and continuous, restart automatically (only when autoStart is enabled)
+      if (autoStartRef.current && enabledRef.current && continuousRef.current) {
         // Small delay before restarting to avoid rapid restarts
         setTimeout(() => {
-          if (enabled && recognitionRef.current) {
+          if (enabledRef.current && recognitionRef.current) {
             try {
               recognitionRef.current.start();
               setIsListening(true);
@@ -158,12 +190,31 @@ export function useSpeechRecognition({
       }
       setIsListening(false);
     };
-  }, [isSupported, language, continuous, enabled, onResult, onError]);
+  }, [isSupported, language]);
+
+  // Keep language updated without re-initializing recognition
+  useEffect(() => {
+    if (!recognitionRef.current) return;
+    recognitionRef.current.lang = language;
+  }, [language]);
 
   // Start/stop based on enabled prop
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!isSupported || !recognitionRef.current) return;
+
+    if (!autoStartRef.current) {
+      // Manual control mode (tap-to-talk): do not auto-start
+      if (!enabled && isListening) {
+        try {
+          recognitionRef.current.stop();
+          setIsListening(false);
+        } catch {
+          // Ignore errors
+        }
+      }
+      return;
+    }
 
     if (enabled && !isListening) {
       try {
@@ -188,6 +239,7 @@ export function useSpeechRecognition({
   const start = useCallback(() => {
     if (typeof window === "undefined") return;
     if (!isSupported || !recognitionRef.current) return;
+    if (!enabledRef.current) return;
     try {
       recognitionRef.current.start();
       setIsListening(true);
