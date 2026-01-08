@@ -50,9 +50,68 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
   const [selectedNotebookIds, setSelectedNotebookIds] = useState<Set<string>>(new Set());
   const [allNotebooks, setAllNotebooks] = useState<NotebookDTO[]>([]);
   const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
+  const [quickSelectInput, setQuickSelectInput] = useState<string>("");
 
   // Check if this is a virtual notebook (Smart List)
   const isVirtual = isVirtualNotebook(notebookId);
+
+  /**
+   * Parses a quick select input string like "1-3, 4, 8-9" into an array of numbers.
+   * Returns an array of 1-based indices (e.g., [1, 2, 3, 4, 8, 9]).
+   * Invalid numbers or ranges are ignored.
+   */
+  const parseQuickSelectInput = (input: string): number[] => {
+    if (!input.trim()) return [];
+
+    const numbers = new Set<number>();
+    const parts = input
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    for (const part of parts) {
+      if (part.includes("-")) {
+        // Range like "1-3"
+        const [startStr, endStr] = part.split("-").map((s) => s.trim());
+        const start = parseInt(startStr, 10);
+        const end = parseInt(endStr, 10);
+
+        if (!isNaN(start) && !isNaN(end) && start > 0 && end > 0 && start <= end) {
+          for (let i = start; i <= end; i++) {
+            numbers.add(i);
+          }
+        }
+      } else {
+        // Single number
+        const num = parseInt(part, 10);
+        if (!isNaN(num) && num > 0) {
+          numbers.add(num);
+        }
+      }
+    }
+
+    return Array.from(numbers).sort((a, b) => a - b);
+  };
+
+  const handleQuickSelectByNumbers = () => {
+    if (!quickSelectInput.trim()) return;
+
+    const selectedIndices = parseQuickSelectInput(quickSelectInput);
+    if (selectedIndices.length === 0) return;
+
+    // Filter phrases by 1-based index (selectedIndices are 1-based)
+    const selectedPhraseIdsArray = state.phrases
+      .filter((_, index) => {
+        const oneBasedIndex = index + 1;
+        return selectedIndices.includes(oneBasedIndex);
+      })
+      .map((p) => p.id);
+
+    if (selectedPhraseIdsArray.length > 0) {
+      setSelectedPhraseIds(new Set(selectedPhraseIdsArray));
+      setQuickSelectInput(""); // Clear input after selection
+    }
+  };
 
   // Load difficulty filter and pinned filter from localStorage/URL
   useEffect(() => {
@@ -941,6 +1000,19 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                 >
                   <Minimize2 className="size-4" />
                 </button>
+                <input
+                  type="text"
+                  value={quickSelectInput}
+                  onChange={(e) => setQuickSelectInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleQuickSelectByNumbers();
+                    }
+                  }}
+                  placeholder="e.g., 1-3, 4, 8-9"
+                  className="w-32 px-2 py-1 text-xs rounded-md border border-border bg-background text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                />
               </div>
             )}
 
