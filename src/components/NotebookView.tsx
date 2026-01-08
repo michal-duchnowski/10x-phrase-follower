@@ -997,7 +997,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                       className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       onClick={handleBulkDeletePhrases}
                     >
-                      Usuń zaznaczone
+                      Delete selected
                     </Button>
                   )}
                   <Button variant="ghost" size="sm" onClick={() => setSelectedPhraseIds(new Set())}>
@@ -1082,7 +1082,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                         className="w-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
                         onClick={handleBulkDeletePhrases}
                       >
-                        Usuń zaznaczone
+                        Delete selected
                       </Button>
                     )}
                   </div>

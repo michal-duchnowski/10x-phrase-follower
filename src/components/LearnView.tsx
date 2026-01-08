@@ -40,6 +40,7 @@ interface CardResultState {
   userAnswer: string;
   correctAnswer: string; // Store original correct answer for diff display
   selectedTokens?: string[]; // For word bank mode
+  wasEverIncorrect: boolean; // Track if this phrase was ever incorrect in this round
 }
 
 type AnswerInputMode = "text" | "word_bank" | "hybrid";
@@ -242,6 +243,7 @@ function LearnViewContent({
               correctAnswer: prevState ? prevState.correctAnswer : getCorrectAnswer(currentPhrase, prev.direction),
               userAnswer: value,
               selectedTokens: prevState?.selectedTokens,
+              wasEverIncorrect: prevState?.wasEverIncorrect ?? false,
             },
           },
         };
@@ -309,6 +311,9 @@ function LearnViewContent({
           ? (currentCardResult?.selectedTokens || []).join(" ")
           : (currentCardResult?.userAnswer ?? "");
 
+      const previousState = prev.answers[currentPhrase.id];
+      const wasEverIncorrect = previousState?.wasEverIncorrect || result.is_correct === false;
+
       const newAnswers: Record<string, CardResultState> = {
         ...prev.answers,
         [currentPhrase.id]: {
@@ -318,6 +323,7 @@ function LearnViewContent({
           userAnswer,
           correctAnswer,
           selectedTokens: currentCardResult?.selectedTokens,
+          wasEverIncorrect,
         },
       };
 
@@ -326,7 +332,8 @@ function LearnViewContent({
 
       prev.currentRound.forEach((p) => {
         const answer = newAnswers[p.id];
-        if (answer && answer.isChecked && answer.isCorrect === false) {
+        // If phrase was ever incorrect in this round, it goes to next round
+        if (answer && answer.isChecked && answer.wasEverIncorrect) {
           incorrectPhrasesMap[p.id] = p;
         }
       });
@@ -414,6 +421,7 @@ function LearnViewContent({
                   correctAnswer: prevState ? prevState.correctAnswer : getCorrectAnswer(currentPhrase, prev.direction),
                   userAnswer,
                   selectedTokens,
+                  wasEverIncorrect: prevState?.wasEverIncorrect ?? false,
                 },
               },
             };
@@ -481,6 +489,9 @@ function LearnViewContent({
                 ? (cardResult.selectedTokens || []).join(" ")
                 : (cardResult.userAnswer ?? "");
 
+            const previousState = cardResult;
+            const wasEverIncorrect = previousState?.wasEverIncorrect || result.is_correct === false;
+
             const newAnswers: Record<string, CardResultState> = {
               ...prev.answers,
               [phrase.id]: {
@@ -490,6 +501,7 @@ function LearnViewContent({
                 userAnswer,
                 correctAnswer,
                 selectedTokens: cardResult.selectedTokens,
+                wasEverIncorrect,
               },
             };
 
@@ -498,7 +510,8 @@ function LearnViewContent({
 
             prev.currentRound.forEach((p) => {
               const answer = newAnswers[p.id];
-              if (answer && answer.isChecked && answer.isCorrect === false) {
+              // If phrase was ever incorrect in this round, it goes to next round
+              if (answer && answer.isChecked && answer.wasEverIncorrect) {
                 incorrectPhrasesMap[p.id] = p;
               }
             });
@@ -549,6 +562,7 @@ function LearnViewContent({
             correctAnswer: prevState?.correctAnswer ?? getCorrectAnswer(currentPhrase, prev.direction),
             userAnswer: "",
             selectedTokens: [],
+            wasEverIncorrect: prevState?.wasEverIncorrect ?? false,
           },
         },
       };
@@ -617,6 +631,7 @@ function LearnViewContent({
             correctAnswer: prevState.correctAnswer,
             userAnswer: "",
             selectedTokens: [],
+            wasEverIncorrect: prevState.wasEverIncorrect,
           },
         },
       };
@@ -1169,6 +1184,7 @@ function LearnViewContent({
               correctAnswer: prevState ? prevState.correctAnswer : getCorrectAnswer(currentPhrase, prev.direction),
               userAnswer,
               selectedTokens: newTokens,
+              wasEverIncorrect: prevState?.wasEverIncorrect ?? false,
             },
           },
         };
@@ -1203,6 +1219,7 @@ function LearnViewContent({
               correctAnswer: prevState ? prevState.correctAnswer : getCorrectAnswer(currentPhrase, prev.direction),
               userAnswer,
               selectedTokens: newTokens,
+              wasEverIncorrect: prevState?.wasEverIncorrect ?? false,
             },
           },
         };
@@ -1454,6 +1471,18 @@ function LearnViewContent({
       // Handle Enter and Backspace for in_progress and round_summary phases
       if (session.phase === "in_progress" || session.phase === "round_summary") {
         if (event.key === "Enter") {
+          // Shift+Enter: Try again (only if answer is incorrect and checked)
+          if (
+            event.shiftKey &&
+            session.phase === "in_progress" &&
+            currentCardResult?.isChecked &&
+            currentCardResult?.isCorrect === false
+          ) {
+            event.preventDefault();
+            handleTryAgain();
+            return;
+          }
+          // Regular Enter: normal flow
           event.preventDefault();
           handleEnterKey();
         }
@@ -1505,6 +1534,7 @@ function LearnViewContent({
     currentCardResult,
     handleWordBankTokenRemove,
     handleMarkDifficulty,
+    handleTryAgain,
   ]);
 
   if (!isAuthenticated) {
@@ -2187,9 +2217,6 @@ function LearnViewContent({
                       Clear
                     </Button>
                   </div>
-                </div>
-                <div className="mt-2 text-xs text-muted-foreground">
-                  Keyboard shortcuts: 1=Easy, 2=Medium, 3=Hard, 0=Clear
                 </div>
               </div>
 
