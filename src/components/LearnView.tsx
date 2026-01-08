@@ -197,6 +197,7 @@ function LearnViewContent({
   const [manifestLoading, setManifestLoading] = useState<boolean>(true);
   const [manifestError, setManifestError] = useState<string | null>(null);
   const [notebookName, setNotebookName] = useState<string | null>(null);
+  const [quickSelectInput, setQuickSelectInput] = useState<string>("");
   // Get difficulty filter from props (URL params) - no localStorage fallback
   const difficultyFilter: PhraseDifficultyOrUnset | "all" =
     initialDifficultyFilter &&
@@ -1168,6 +1169,44 @@ function LearnViewContent({
     }));
   };
 
+  /**
+   * Parses a quick select input string like "1-3, 4, 8-9" into an array of numbers.
+   * Returns an array of 1-based indices (e.g., [1, 2, 3, 4, 8, 9]).
+   * Invalid numbers or ranges are ignored.
+   */
+  const parseQuickSelectInput = (input: string): number[] => {
+    if (!input.trim()) return [];
+
+    const numbers = new Set<number>();
+    const parts = input
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    for (const part of parts) {
+      if (part.includes("-")) {
+        // Range like "1-3"
+        const [startStr, endStr] = part.split("-").map((s) => s.trim());
+        const start = parseInt(startStr, 10);
+        const end = parseInt(endStr, 10);
+
+        if (!isNaN(start) && !isNaN(end) && start > 0 && end > 0 && start <= end) {
+          for (let i = start; i <= end; i++) {
+            numbers.add(i);
+          }
+        }
+      } else {
+        // Single number
+        const num = parseInt(part, 10);
+        if (!isNaN(num) && num > 0) {
+          numbers.add(num);
+        }
+      }
+    }
+
+    return Array.from(numbers).sort((a, b) => a - b);
+  };
+
   const handleStart = () => {
     if (!manifest || manifest.phrase_count === 0) {
       addToast({
@@ -1178,7 +1217,30 @@ function LearnViewContent({
       return;
     }
 
-    startRound(manifest.phrases);
+    let phrasesToUse = manifest.phrases;
+
+    // Apply quick select filter if input is provided
+    if (quickSelectInput.trim()) {
+      const selectedIndices = parseQuickSelectInput(quickSelectInput);
+      if (selectedIndices.length > 0) {
+        // Filter phrases by 1-based index (selectedIndices are 1-based)
+        phrasesToUse = manifest.phrases.filter((_, index) => {
+          const oneBasedIndex = index + 1;
+          return selectedIndices.includes(oneBasedIndex);
+        });
+
+        if (phrasesToUse.length === 0) {
+          addToast({
+            type: "info",
+            title: "No phrases selected",
+            description: "The selected numbers don't match any phrases.",
+          });
+          return;
+        }
+      }
+    }
+
+    startRound(phrasesToUse);
   };
 
   const handleWordBankTokenSelect = useCallback(
@@ -1865,6 +1927,20 @@ function LearnViewContent({
               You will work card by card. At the end of each round, only incorrect phrases will be repeated in the next
               round.
             </p>
+            {phraseCount > 0 && (
+              <div className="pt-2 border-t border-border/60">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-muted-foreground font-medium">Quick select:</span>
+                  <input
+                    type="text"
+                    value={quickSelectInput}
+                    onChange={(e) => setQuickSelectInput(e.target.value)}
+                    placeholder="e.g., 1-3, 4, 8-9"
+                    className="w-32 px-2 py-1 text-xs rounded-md border border-border bg-background text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
