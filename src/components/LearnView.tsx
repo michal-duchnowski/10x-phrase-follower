@@ -59,6 +59,8 @@ interface LearnSessionState {
   roundNumber: number;
   correctCount: number;
   incorrectCount: number;
+  skipCount: number;
+  retryCount: number; // Phrases that were incorrect then corrected
   // map phrase_id -> last result in this round
   answers: Record<string, CardResultState>;
   // phrases that were answered incorrectly in this round
@@ -115,6 +117,8 @@ function createInitialSessionState(): LearnSessionState {
     roundNumber: 1,
     correctCount: 0,
     incorrectCount: 0,
+    skipCount: 0,
+    retryCount: 0,
     answers: {},
     incorrectPhrases: [],
   };
@@ -286,6 +290,7 @@ function LearnViewContent({
 
       let correctCount = prev.correctCount;
       let incorrectCount = prev.incorrectCount;
+      let retryCount = prev.retryCount;
 
       // Adjust stats only if this is the first check for this card in this round
       if (!wasAnsweredBefore) {
@@ -295,14 +300,21 @@ function LearnViewContent({
           incorrectCount += 1;
         }
       } else if (previousCorrect !== null && previousCorrect !== result.is_correct) {
-        // Rare case: user changed answer and rechecked before moving on
+        // User changed answer and rechecked before moving on
         if (previousCorrect) {
           correctCount -= 1;
           incorrectCount += 1;
         } else {
+          // Was incorrect, now correct - add to correct count and retry count
           incorrectCount -= 1;
           correctCount += 1;
+          retryCount += 1;
         }
+      } else if (wasAnsweredBefore && previousCorrect === false && result.is_correct === true) {
+        // Was incorrect, now correct after retry - add to correct count and retry count
+        // (This handles the case where user clicks "Try again" and gets it right)
+        correctCount += 1;
+        retryCount += 1;
       }
 
       const effectiveMode = getEffectiveInputMode(session.answerInputMode, currentPhrase, session.direction);
@@ -345,6 +357,7 @@ function LearnViewContent({
         answers: newAnswers,
         correctCount,
         incorrectCount,
+        retryCount,
         incorrectPhrases,
       };
     });
@@ -467,6 +480,7 @@ function LearnViewContent({
 
             let correctCount = prev.correctCount;
             let incorrectCount = prev.incorrectCount;
+            let retryCount = prev.retryCount;
 
             if (!wasAnsweredBefore) {
               if (result.is_correct) {
@@ -479,9 +493,15 @@ function LearnViewContent({
                 correctCount -= 1;
                 incorrectCount += 1;
               } else {
+                // Was incorrect, now correct - add to correct count and retry count
                 incorrectCount -= 1;
                 correctCount += 1;
+                retryCount += 1;
               }
+            } else if (wasAnsweredBefore && previousCorrect === false && result.is_correct === true) {
+              // Was incorrect, now correct after retry - add to correct count and retry count
+              correctCount += 1;
+              retryCount += 1;
             }
 
             const userAnswer =
@@ -523,6 +543,7 @@ function LearnViewContent({
               answers: newAnswers,
               correctCount,
               incorrectCount,
+              retryCount,
               incorrectPhrases,
             };
           });
@@ -1140,6 +1161,8 @@ function LearnViewContent({
       currentIndex: 0,
       correctCount: 0,
       incorrectCount: 0,
+      skipCount: 0,
+      retryCount: 0,
       answers: {},
       incorrectPhrases: [],
     }));
@@ -1293,7 +1316,11 @@ function LearnViewContent({
   ]);
 
   const handleSkip = useCallback(() => {
-    // Skip: move to next card without changing stats or incorrect list
+    // Skip: move to next card and increment skip count
+    setSession((prev) => ({
+      ...prev,
+      skipCount: prev.skipCount + 1,
+    }));
     goToNextCard();
   }, [goToNextCard]);
 
@@ -1321,6 +1348,8 @@ function LearnViewContent({
       roundNumber: prev.roundNumber + 1,
       correctCount: 0,
       incorrectCount: 0,
+      skipCount: 0,
+      retryCount: 0,
       answers: {},
       incorrectPhrases: [],
     }));
@@ -1349,6 +1378,8 @@ function LearnViewContent({
       roundNumber: 1,
       correctCount: 0,
       incorrectCount: 0,
+      skipCount: 0,
+      retryCount: 0,
       answers: {},
       incorrectPhrases: [],
     }));
@@ -1470,6 +1501,19 @@ function LearnViewContent({
 
       // Handle Enter and Backspace for in_progress and round_summary phases
       if (session.phase === "in_progress" || session.phase === "round_summary") {
+        // Ctrl+Shift: Skip (only in in_progress phase)
+        if (
+          event.ctrlKey &&
+          event.shiftKey &&
+          session.phase === "in_progress" &&
+          currentPhrase &&
+          !currentCardResult?.isChecked
+        ) {
+          event.preventDefault();
+          handleSkip();
+          return;
+        }
+
         if (event.key === "Enter") {
           // Shift+Enter: Try again (only if answer is incorrect and checked)
           if (
@@ -1535,6 +1579,7 @@ function LearnViewContent({
     handleWordBankTokenRemove,
     handleMarkDifficulty,
     handleTryAgain,
+    handleSkip,
   ]);
 
   if (!isAuthenticated) {
@@ -1956,6 +2001,22 @@ function LearnViewContent({
               <span>
                 Incorrect: <span className="font-semibold text-foreground">{session.incorrectCount}</span>
               </span>
+              {session.skipCount > 0 && (
+                <>
+                  <span className="text-border">•</span>
+                  <span>
+                    Skip: <span className="font-semibold text-foreground">{session.skipCount}</span>
+                  </span>
+                </>
+              )}
+              {session.retryCount > 0 && (
+                <>
+                  <span className="text-border">•</span>
+                  <span>
+                    Retry: <span className="font-semibold text-foreground">{session.retryCount}</span>
+                  </span>
+                </>
+              )}
               <span className="text-border">•</span>
               <span>
                 Left:{" "}
