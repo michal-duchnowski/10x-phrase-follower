@@ -556,8 +556,6 @@ function LearnViewContent({
       effectiveInputMode,
       session.direction,
       session.voiceAutoCheck,
-      session.answerInputMode,
-      session.useContainsMode,
       manifest,
       handleUserAnswerChange,
     ]
@@ -721,7 +719,7 @@ function LearnViewContent({
       isVoiceModeActive &&
       !isVoiceListening &&
       !isPromptAudioPlaying && // Don't start while audio is playing
-      currentPhrase &&
+      currentPhrase?.id &&
       !currentCardResult?.isChecked
     ) {
       // Small delay to ensure everything is ready
@@ -949,9 +947,9 @@ function LearnViewContent({
           isVoiceModeActive &&
           !isVoiceListening
         ) {
-          setTimeout(() => {
-            startVoiceListening();
-          }, 200);
+          // Start immediately after audio ends to reduce the chance of missing the first words.
+          // This still avoids transcribing the playback audio itself (we only start on `ended`).
+          startVoiceListening();
         }
       });
 
@@ -1289,11 +1287,11 @@ function LearnViewContent({
     if (
       session.autoAdvanceAfterCheck &&
       session.phase === "in_progress" &&
-      currentPhrase &&
+      currentPhrase?.id &&
       currentCardResult?.isChecked
     ) {
-      // Use different delay based on whether answer is correct or not
-      const delay = currentCardResult.isCorrect ? 2000 : 5000;
+      // Faster feedback: 0.5s for correct, 2s for incorrect
+      const delay = currentCardResult.isCorrect ? 500 : 2000;
       autoAdvanceTimerRef.current = setTimeout(() => {
         if (goToNextCardRef.current) {
           goToNextCardRef.current();
