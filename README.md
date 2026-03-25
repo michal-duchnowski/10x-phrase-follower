@@ -274,4 +274,4 @@ For deployment setup instructions, see [docs/guides/droplet-setup.md](./docs/gui
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-The MIT License allows others to use, modify, and distribute this software, but requires that the original copyright notice and license be included in all copies or substantial portions of the software.
+The MIT License allows others to use, modify, and distribute this software but requires that the original copyright notice and license be included in all copies or substantial portions of the software.
