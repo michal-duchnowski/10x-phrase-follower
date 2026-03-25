@@ -245,9 +245,7 @@ export default function NotebookList({ initialItems = [] }: NotebookListProps) {
     }
 
     fetchPinnedNotebooks();
-    if (initialItems.length === 0) {
-      fetchAllNotebooks();
-    }
+    fetchAllNotebooks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
