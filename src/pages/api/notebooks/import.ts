@@ -44,7 +44,7 @@ export const POST: APIRoute = withErrorHandling(async ({ locals, request }) => {
   const command: ImportNotebookCommand = await request.json();
   validateImportCommand(command);
 
-  const { name, lines, normalize = false } = command;
+  const { notebook_id: existingNotebookId, name, lines, normalize = false } = command;
 
   // Get authenticated Supabase client
   const context = { locals, request } as Parameters<typeof getSupabaseClient>[0];
@@ -55,19 +55,9 @@ export const POST: APIRoute = withErrorHandling(async ({ locals, request }) => {
   // but we need a corresponding row in the public.users table for foreign key constraints
   await ensureUserExists(supabase, userId);
 
-  // Check notebook limit (500 per user)
-  const { count: notebookCount, error: countError } = await supabase
-    .from("notebooks")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", userId);
-
-  if (countError) {
-    throw ApiErrors.internal("Failed to check notebook limit", countError);
-  }
-
-  if (notebookCount && notebookCount >= 500) {
-    throw ApiErrors.limitExceeded("Maximum 500 notebooks per user exceeded");
-  }
+  const isAppending = Boolean(existingNotebookId);
+  let notebookId: string;
+  let notebook: ImportNotebookResultDTO["notebook"];
 
   // Process import lines
   const importResult = processImportLines(lines, normalize);
@@ -77,27 +67,77 @@ export const POST: APIRoute = withErrorHandling(async ({ locals, request }) => {
     throw ApiErrors.validationError("No valid phrases found in import");
   }
 
-  // Create notebook
-  const notebookId = randomUUID();
-  const { data: notebook, error: notebookError } = await supabase
-    .from("notebooks")
-    .insert({
-      id: notebookId,
-      user_id: userId,
-      name: name.trim(),
-    })
-    .select("id, name, current_build_id, last_generate_job_id, created_at, updated_at")
-    .single();
+  if (isAppending) {
+    notebookId = existingNotebookId as string;
 
-  if (notebookError) {
-    if (notebookError.code === "23505") {
-      throw ApiErrors.uniqueViolation("Notebook name already exists");
+    const { data: existingNotebook, error: existingNotebookError } = await supabase
+      .from("notebooks")
+      .select("id, name, current_build_id, last_generate_job_id, created_at, updated_at")
+      .eq("id", notebookId)
+      .eq("user_id", userId)
+      .single();
+
+    if (existingNotebookError) {
+      throw ApiErrors.notFound("Notebook not found");
     }
-    throw ApiErrors.internal("Failed to create notebook", notebookError);
+
+    notebook = existingNotebook;
+  } else {
+    // Check notebook limit (500 per user) only when creating a new notebook
+    const { count: notebookCount, error: countError } = await supabase
+      .from("notebooks")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId);
+
+    if (countError) {
+      throw ApiErrors.internal("Failed to check notebook limit", countError);
+    }
+
+    if (notebookCount && notebookCount >= 500) {
+      throw ApiErrors.limitExceeded("Maximum 500 notebooks per user exceeded");
+    }
+
+    // Create notebook
+    notebookId = randomUUID();
+    const { data: createdNotebook, error: notebookError } = await supabase
+      .from("notebooks")
+      .insert({
+        id: notebookId,
+        user_id: userId,
+        name: name.trim(),
+      })
+      .select("id, name, current_build_id, last_generate_job_id, created_at, updated_at")
+      .single();
+
+    if (notebookError) {
+      if (notebookError.code === "23505") {
+        throw ApiErrors.uniqueViolation("Notebook name already exists");
+      }
+      throw ApiErrors.internal("Failed to create notebook", notebookError);
+    }
+
+    notebook = createdNotebook;
   }
 
   // Create phrases with positions
-  const positions = generatePositions(accepted.length);
+  let basePosition = 0;
+  if (isAppending) {
+    const { data: maxRow, error: maxError } = await supabase
+      .from("phrases")
+      .select("position")
+      .eq("notebook_id", notebookId)
+      .order("position", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (maxError) {
+      throw ApiErrors.internal("Failed to determine phrase position", maxError);
+    }
+
+    basePosition = maxRow?.position ?? 0;
+  }
+
+  const positions = generatePositions(accepted.length).map((p) => p + basePosition);
   const phrases = accepted.map((line, index) => ({
     id: randomUUID(),
     notebook_id: notebookId,

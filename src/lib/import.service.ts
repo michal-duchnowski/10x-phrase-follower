@@ -166,7 +166,11 @@ export function processImportLines(lines: string[], normalize = false): ImportRe
  * Validates import command and limits
  */
 export function validateImportCommand(command: ImportNotebookCommand): void {
-  const { name, lines, normalize } = command;
+  const { notebook_id, name, lines, normalize } = command;
+
+  if (notebook_id !== undefined && typeof notebook_id !== "string") {
+    throw ApiErrors.validationError("notebook_id must be a string (UUID)");
+  }
 
   // Validate notebook name
   if (!name || typeof name !== "string") {

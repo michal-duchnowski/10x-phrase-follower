@@ -5,7 +5,7 @@ import { ToastProvider, useToast } from "./ui/toast";
 import GenerateAudioButton from "./GenerateAudioButton";
 import ExportZipButton from "./ExportZipButton";
 import MobileActionMenu from "./MobileActionMenu";
-import { Trash2, Minimize2 } from "lucide-react";
+import { Trash2, Minimize2, Plus } from "lucide-react";
 import DifficultyBadge from "./DifficultyBadge";
 import type {
   PhraseDTO,
@@ -718,6 +718,13 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                     activeJobId={state.activeJob?.id || null}
                   />
                 )}
+                {!isVirtualNotebook(notebookId) && (
+                  <Button asChild size="sm" variant="outline" className="shrink-0" title="Import phrases into notebook">
+                    <a href={`/import?notebookId=${encodeURIComponent(notebookId)}`} aria-label="Import phrases">
+                      <Plus className="size-4" />
+                    </a>
+                  </Button>
+                )}
                 <ExportZipButton
                   notebookId={notebookId}
                   disabled={!isVirtualNotebook(notebookId) && !state.notebook?.current_build_id}
@@ -787,6 +794,12 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                           containerClassName="w-full"
                           buttonClassName="w-full"
                         />
+                        <Button asChild variant="default" className="w-full justify-start">
+                          <a href={`/import?notebookId=${encodeURIComponent(notebookId)}`} title="Import phrases">
+                            <Plus className="size-4 mr-2" />
+                            Import
+                          </a>
+                        </Button>
                         <ExportZipButton
                           notebookId={notebookId}
                           disabled={!state.notebook?.current_build_id}
@@ -1186,7 +1199,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
           <div className="p-8 text-center">
             <p className="text-muted-foreground">No phrases found in this notebook.</p>
             <a
-              href="/import"
+              href={`/import?notebookId=${encodeURIComponent(notebookId)}`}
               className="inline-flex items-center mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
             >
               Import Phrases

@@ -137,6 +137,7 @@ describe("Import Service", () => {
   describe("validateImportCommand", () => {
     it("should validate correct command", () => {
       const command = {
+        notebook_id: "00000000-0000-0000-0000-000000000000",
         name: "Test Notebook",
         lines: ["Hello ::: Cześć"],
         normalize: true,
@@ -183,6 +184,16 @@ describe("Import Service", () => {
       const command = {
         name: "Test Notebook",
         lines: ["Hello ::: Cześć", 123],
+        normalize: true,
+      };
+      expect(() => validateImportCommand(command)).toThrow(ApiError);
+    });
+
+    it("should reject invalid notebook_id type", () => {
+      const command = {
+        notebook_id: 123,
+        name: "Test Notebook",
+        lines: ["Hello ::: Cześć"],
         normalize: true,
       };
       expect(() => validateImportCommand(command)).toThrow(ApiError);

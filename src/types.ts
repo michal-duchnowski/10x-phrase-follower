@@ -154,6 +154,11 @@ export interface BulkUpdatePhrasesResultDTO {
 // Import
 // ------------------------------------
 export interface ImportNotebookCommand {
+  /**
+   * When provided, phrases are appended to this existing notebook.
+   * When omitted, a new notebook is created using `name`.
+   */
+  notebook_id?: UUID;
   name: string;
   lines: string[];
   normalize: boolean;

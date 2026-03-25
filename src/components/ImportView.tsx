@@ -1,9 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { useApi } from "../lib/hooks/useApi";
 import { ToastProvider, useToast } from "./ui/toast";
 import { generateUUID } from "../lib/utils";
-import type { ImportNotebookCommand, ImportNotebookResultDTO } from "../types";
+import type { ImportNotebookCommand, ImportNotebookResultDTO, NotebookDTO } from "../types";
 
 interface ImportState {
   step: "form" | "summary";
@@ -25,6 +25,33 @@ function ImportViewContent() {
   const [notebookName, setNotebookName] = useState("");
   const [linesText, setLinesText] = useState("");
   const [normalize, setNormalize] = useState(false);
+  const [lockedNotebookId, setLockedNotebookId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const url = new URL(window.location.href);
+    const notebookId = url.searchParams.get("notebookId");
+    if (!notebookId) return;
+
+    setLockedNotebookId(notebookId);
+
+    const loadNotebookName = async () => {
+      try {
+        const notebook = await apiCall<NotebookDTO>(`/api/notebooks/${notebookId}`, { method: "GET" });
+        setNotebookName(notebook.name ?? "");
+      } catch (err) {
+        setLockedNotebookId(null);
+        addToast({
+          type: "error",
+          title: "Notebook not found",
+          description: err instanceof Error ? err.message : "Failed to load notebook",
+        });
+      }
+    };
+
+    loadNotebookName();
+  }, [apiCall, addToast]);
 
   // Import result
   const [importResult, setImportResult] = useState<ImportNotebookResultDTO | null>(null);
@@ -91,6 +118,7 @@ function ImportViewContent() {
         name: notebookName.trim(),
         lines,
         normalize,
+        notebook_id: lockedNotebookId ?? undefined,
       };
 
       // Generate idempotency key
@@ -152,6 +180,7 @@ function ImportViewContent() {
       <ImportForm
         notebookName={notebookName}
         setNotebookName={setNotebookName}
+        isNotebookLocked={Boolean(lockedNotebookId)}
         linesText={linesText}
         setLinesText={setLinesText}
         normalize={normalize}
@@ -168,6 +197,7 @@ function ImportViewContent() {
 interface ImportFormProps {
   notebookName: string;
   setNotebookName: (value: string) => void;
+  isNotebookLocked: boolean;
   linesText: string;
   setLinesText: (value: string) => void;
   normalize: boolean;
@@ -180,6 +210,7 @@ interface ImportFormProps {
 function ImportForm({
   notebookName,
   setNotebookName,
+  isNotebookLocked,
   linesText,
   setLinesText,
   normalize,
@@ -189,6 +220,7 @@ function ImportForm({
   error,
 }: ImportFormProps) {
   const lineCount = linesText.split("\n").filter((line) => line.trim()).length;
+  const effectiveLineCount = Math.min(lineCount, 100);
 
   return (
     <div className="bg-card border border-border rounded-lg p-6">
@@ -213,9 +245,12 @@ function ImportForm({
             placeholder="Enter notebook name (1-100 characters)"
             maxLength={100}
             required
-            className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+            disabled={isNotebookLocked}
+            className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent disabled:opacity-60 disabled:cursor-not-allowed"
           />
-          <p className="text-xs text-muted-foreground">{notebookName.length}/100 characters</p>
+          <p className="text-xs text-muted-foreground">
+            {isNotebookLocked ? "Importing into an existing notebook." : `${notebookName.length}/100 characters`}
+          </p>
         </div>
 
         {/* Import content */}
@@ -274,7 +309,7 @@ function ImportForm({
 
         {/* Submit button */}
         <Button type="submit" disabled={isLoading || lineCount > 100} className="w-full">
-          {isLoading ? "Importing..." : `Import ${lineCount} phrases`}
+          {isLoading ? "Importing..." : `Import ${effectiveLineCount} phrase(s)`}
         </Button>
       </form>
     </div>
@@ -307,7 +342,7 @@ function ImportSummary({ result, onStartOver }: ImportSummaryProps) {
           <h3 className="text-sm font-medium text-green-800 dark:text-green-200">Import completed successfully!</h3>
         </div>
         <p className="text-sm text-green-700 dark:text-green-300 mt-1">
-          Notebook &quot;{notebook.name}&quot; has been created with {accepted} phrases.
+          Imported {accepted} phrase(s) into &quot;{notebook.name}&quot;.
         </p>
       </div>
 
