@@ -208,14 +208,29 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
           return;
         }
 
-        // Only load notebooks that have phrases with this difficulty
-        const data = await apiCall<{ items: NotebookDTO[]; next_cursor: string | null }>(
-          `/api/notebooks?limit=100&difficulty=${difficulty}`,
-          {
-            method: "GET",
-          }
-        );
-        setAllNotebooks(data.items || []);
+        const all: NotebookDTO[] = [];
+        let cursor: string | null = null;
+        let safety = 0;
+
+        do {
+          const params = new URLSearchParams();
+          params.set("limit", "100");
+          params.set("difficulty", difficulty);
+          if (cursor) params.set("cursor", cursor);
+
+          const data = await apiCall<{ items: NotebookDTO[]; next_cursor: string | null }>(
+            `/api/notebooks?${params.toString()}`,
+            {
+              method: "GET",
+            }
+          );
+
+          all.push(...(data.items ?? []));
+          cursor = data.next_cursor ?? null;
+          safety++;
+        } while (cursor && safety < 50);
+
+        setAllNotebooks(all);
       } catch (err) {
         // Silently fail - notebooks filter is optional
         // eslint-disable-next-line no-console

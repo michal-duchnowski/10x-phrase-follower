@@ -17,7 +17,6 @@ export default function NotebookList({ initialItems = [] }: NotebookListProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [activeLetter, setActiveLetter] = useState<string>("ALL");
 
   const LETTER_FILTER_ALL = "ALL";
@@ -181,8 +180,10 @@ export default function NotebookList({ initialItems = [] }: NotebookListProps) {
     }
   }, [activeLetter, letterFilters]);
 
-  // Fetch notebooks from API
-  const fetchNotebooks = async (cursor?: string, query?: string) => {
+  const NOTEBOOKS_PAGE_LIMIT = 100; // API max; we auto-fetch pages until exhausted
+
+  // Fetch all notebooks from API (auto-load all pages)
+  const fetchAllNotebooks = async (query?: string) => {
     if (!isAuthenticated) {
       setError("Authentication required");
       return;
@@ -192,22 +193,24 @@ export default function NotebookList({ initialItems = [] }: NotebookListProps) {
     setError(null);
 
     try {
-      const params = new URLSearchParams();
-      if (cursor) params.append("cursor", cursor);
-      if (query) params.append("q", query);
-      params.append("limit", "20");
+      const all: NotebookDTO[] = [];
+      let cursor: string | null = null;
+      let safety = 0;
 
-      const data = await apiCall<NotebookListResponse>(`/api/notebooks?${params.toString()}`, { method: "GET" });
+      do {
+        const params = new URLSearchParams();
+        if (cursor) params.append("cursor", cursor);
+        if (query) params.append("q", query);
+        params.append("limit", NOTEBOOKS_PAGE_LIMIT.toString());
 
-      if (cursor) {
-        // Append to existing notebooks (load more)
-        setNotebooks((prev) => [...prev, ...data.items]);
-      } else {
-        // Replace notebooks (new search or initial load)
-        setNotebooks(data.items);
-      }
+        const data = await apiCall<NotebookListResponse>(`/api/notebooks?${params.toString()}`, { method: "GET" });
+        all.push(...(data.items ?? []));
+        cursor = data.next_cursor ?? null;
 
-      setNextCursor(data.next_cursor);
+        safety++;
+      } while (cursor && safety < 50);
+
+      setNotebooks(all);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load notebooks");
     } finally {
@@ -243,7 +246,7 @@ export default function NotebookList({ initialItems = [] }: NotebookListProps) {
 
     fetchPinnedNotebooks();
     if (initialItems.length === 0) {
-      fetchNotebooks();
+      fetchAllNotebooks();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
@@ -251,14 +254,7 @@ export default function NotebookList({ initialItems = [] }: NotebookListProps) {
   // Handle search
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    fetchNotebooks(undefined, searchQuery);
-  };
-
-  // Handle load more
-  const handleLoadMore = () => {
-    if (nextCursor) {
-      fetchNotebooks(nextCursor, searchQuery);
-    }
+    fetchAllNotebooks(searchQuery);
   };
 
   // Handle notebook actions
@@ -510,15 +506,6 @@ export default function NotebookList({ initialItems = [] }: NotebookListProps) {
               })}
           </div>
         </>
-      )}
-
-      {/* Load more */}
-      {nextCursor && (
-        <div className="text-center">
-          <Button onClick={handleLoadMore} disabled={isLoading} variant="outline">
-            {isLoading ? "Loading..." : "Load More"}
-          </Button>
-        </div>
       )}
 
       {/* Loading indicator */}
