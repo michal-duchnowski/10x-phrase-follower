@@ -719,7 +719,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                   />
                 )}
                 {!isVirtualNotebook(notebookId) && (
-                  <Button asChild size="sm" variant="outline" className="shrink-0" title="Import phrases into notebook">
+                  <Button asChild size="sm" variant="default" className="shrink-0" title="Import phrases into notebook">
                     <a href={`/import?notebookId=${encodeURIComponent(notebookId)}`} aria-label="Import phrases">
                       <Plus className="size-4" />
                     </a>
@@ -752,7 +752,9 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
 
             {/* Mobile actions */}
             <div className="md:hidden">
-              <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-stretch">
+              <div
+                className={`grid ${!isVirtualNotebook(notebookId) ? "grid-cols-[1fr_1fr_auto_auto]" : "grid-cols-[1fr_1fr_auto]"} gap-2 items-stretch`}
+              >
                 <Button asChild size="lg" variant="default" className="w-full">
                   <a
                     href={`/player/${notebookId}${difficultyFilter !== "all" ? `?difficulty=${difficultyFilter}` : ""}`}
@@ -780,6 +782,13 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                     Learn
                   </a>
                 </Button>
+                {!isVirtualNotebook(notebookId) && (
+                  <Button asChild size="icon" variant="outline" title="Import phrases">
+                    <a href={`/import?notebookId=${encodeURIComponent(notebookId)}`} aria-label="Import phrases">
+                      <Plus className="size-4" />
+                    </a>
+                  </Button>
+                )}
 
                 {!isVirtualNotebook(notebookId) && (
                   <MobileActionMenu triggerLabel="Actions" triggerIcon triggerVariant="outline" triggerSize="icon">
@@ -794,12 +803,6 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                           containerClassName="w-full"
                           buttonClassName="w-full"
                         />
-                        <Button asChild variant="default" className="w-full justify-start">
-                          <a href={`/import?notebookId=${encodeURIComponent(notebookId)}`} title="Import phrases">
-                            <Plus className="size-4 mr-2" />
-                            Import
-                          </a>
-                        </Button>
                         <ExportZipButton
                           notebookId={notebookId}
                           disabled={!state.notebook?.current_build_id}
