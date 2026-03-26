@@ -722,7 +722,6 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                   <Button asChild size="sm" variant="default" className="shrink-0" title="Import phrases into notebook">
                     <a href={`/import?notebookId=${encodeURIComponent(notebookId)}`} aria-label="Import phrases">
                       <Plus className="size-4" />
-                      <span>Import</span>
                     </a>
                   </Button>
                 )}
@@ -787,7 +786,6 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                   <Button asChild size="lg" variant="outline" className="shrink-0 px-3" title="Import phrases">
                     <a href={`/import?notebookId=${encodeURIComponent(notebookId)}`} aria-label="Import phrases">
                       <Plus className="size-4" />
-                      <span>Import</span>
                     </a>
                   </Button>
                 )}
