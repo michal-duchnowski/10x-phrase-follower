@@ -44,6 +44,7 @@ Główny dokument wymagań produktu (PRD) - opis funkcjonalności, wymagań bizn
 - [Security](./details/security.md) - Bezpieczeństwo i szyfrowanie
 - [Tokenizacja](./details/tokenization.md) - Tokenizacja tekstu dla highlight
 - [TTS Audio Pipeline](./details/tts-audio-pipeline.md) - Pipeline generowania audio
+- [Incremental Auto Audio](./details/incremental-auto-audio.md) - Auto-generowanie audio tylko dla nowych fraz
 - [Prefetching](./details/prefetching.md) - Strategia prefetchingu (planowane)
 - [Export ZIP](./details/export-zip.md) - Eksport ZIP (planowane)
 

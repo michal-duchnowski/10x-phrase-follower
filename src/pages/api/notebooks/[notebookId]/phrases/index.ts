@@ -18,6 +18,7 @@ import {
   isVirtualNotebook,
   getDifficultyFromVirtualNotebook,
 } from "../../../../../lib/utils";
+import { triggerIncrementalAudioGeneration } from "../../../../../lib/incremental-audio";
 
 export const prerender = false;
 
@@ -377,6 +378,14 @@ const createPhrase = async (context: APIContext): Promise<Response> => {
     console.error("Database error:", error);
     throw ApiErrors.internal("Failed to create phrase");
   }
+
+  triggerIncrementalAudioGeneration({
+    context,
+    userId: locals.userId,
+    notebookId,
+    phraseIds: [data.id],
+    source: "create_phrase",
+  });
 
   return new Response(JSON.stringify(data), {
     status: 201,

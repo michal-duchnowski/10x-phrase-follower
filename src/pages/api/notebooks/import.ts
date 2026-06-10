@@ -15,6 +15,7 @@ import {
 } from "../../../lib/import.service";
 import type { Json } from "../../../db/database.types";
 import { ensureUserExists, getSupabaseClient } from "../../../lib/utils";
+import { triggerIncrementalAudioGeneration } from "../../../lib/incremental-audio";
 
 export const prerender = false;
 
@@ -151,6 +152,16 @@ export const POST: APIRoute = withErrorHandling(async ({ locals, request }) => {
 
   if (phrasesError) {
     throw ApiErrors.internal("Failed to create phrases", phrasesError);
+  }
+
+  if (isAppending) {
+    triggerIncrementalAudioGeneration({
+      context: { locals, request } as Parameters<typeof triggerIncrementalAudioGeneration>[0]["context"],
+      userId,
+      notebookId,
+      phraseIds: phrases.map((phrase) => phrase.id),
+      source: "append_import",
+    });
   }
 
   // Create import logs for rejected lines
