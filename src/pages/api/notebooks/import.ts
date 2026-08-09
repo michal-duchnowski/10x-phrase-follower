@@ -145,6 +145,7 @@ export const POST: APIRoute = withErrorHandling(async ({ locals, request }) => {
     position: positions[index],
     en_text: line.en,
     pl_text: line.pl,
+    learning_hint_markdown: line.learningHintMarkdown,
     tokens: createBasicTokens(line.en, line.pl) as unknown as Json, // Cast to Json for DB compatibility
   }));
 

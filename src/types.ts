@@ -106,7 +106,7 @@ export type PhraseDifficultyOrUnset = PhraseDifficulty | "unset";
 
 export type PhraseDTO = Pick<
   Tables<"phrases">,
-  "id" | "position" | "en_text" | "pl_text" | "created_at" | "updated_at"
+  "id" | "position" | "en_text" | "pl_text" | "learning_hint_markdown" | "created_at" | "updated_at"
 > & {
   // Strongly typed version of DB Json
   tokens: PhraseTokens | null;
@@ -117,12 +117,17 @@ export type PhraseDTO = Pick<
   notebook_name?: string;
 };
 
-export type CreatePhraseCommand = Pick<TablesInsert<"phrases">, "position" | "en_text" | "pl_text"> & {
+export type CreatePhraseCommand = Pick<
+  TablesInsert<"phrases">,
+  "position" | "en_text" | "pl_text" | "learning_hint_markdown"
+> & {
   tokens?: PhraseTokens | null;
   difficulty?: PhraseDifficulty | null;
 };
 
-export type UpdatePhraseCommand = Partial<Pick<TablesUpdate<"phrases">, "position" | "en_text" | "pl_text">> & {
+export type UpdatePhraseCommand = Partial<
+  Pick<TablesUpdate<"phrases">, "position" | "en_text" | "pl_text" | "learning_hint_markdown">
+> & {
   tokens?: PhraseTokens | null;
   // null clears difficulty (sets to unset), undefined means "no change"
   difficulty?: PhraseDifficulty | null;
@@ -453,6 +458,7 @@ export interface LearnPhraseDTO {
   position: number;
   en_text: string;
   pl_text: string;
+  learning_hint_markdown: string | null;
   tokens: PhraseTokens | null;
   difficulty: PhraseDifficulty | null;
   audio: LearnPhraseAudioAvailability;

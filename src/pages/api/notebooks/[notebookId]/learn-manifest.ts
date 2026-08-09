@@ -131,7 +131,7 @@ async function fetchPhrasesForNotebook(
 
     query = supabase
       .from("phrases")
-      .select("id, position, en_text, pl_text, tokens, difficulty, notebook_id")
+      .select("id, position, en_text, pl_text, learning_hint_markdown, tokens, difficulty, notebook_id")
       .in("notebook_id", notebookIds)
       .eq("difficulty", difficulty)
       .order("created_at", { ascending: false });
@@ -144,7 +144,7 @@ async function fetchPhrasesForNotebook(
     // Regular notebook
     query = supabase
       .from("phrases")
-      .select("id, position, en_text, pl_text, tokens, difficulty")
+      .select("id, position, en_text, pl_text, learning_hint_markdown, tokens, difficulty")
       .eq("notebook_id", notebookId)
       .order("position");
 
@@ -368,6 +368,7 @@ const getLearnManifest = async (context: APIContext): Promise<Response> => {
         position: phrase.position,
         en_text: phrase.en_text,
         pl_text: phrase.pl_text,
+        learning_hint_markdown: phrase.learning_hint_markdown,
         tokens: (phrase.tokens as LearnManifestDTO["phrases"][number]["tokens"]) ?? null,
         difficulty: phrase.difficulty,
         audio,

@@ -207,7 +207,9 @@ const getPhrases = async (context: APIContext): Promise<Response> => {
     // Query phrases from user's notebooks (or pinned only) with matching difficulty
     query = supabase
       .from("phrases")
-      .select("id, position, en_text, pl_text, tokens, difficulty, created_at, updated_at, notebook_id")
+      .select(
+        "id, position, en_text, pl_text, learning_hint_markdown, tokens, difficulty, created_at, updated_at, notebook_id"
+      )
       .in("notebook_id", notebookIds)
       .eq("difficulty", difficulty)
       .order(sort, { ascending: order === "asc" })
@@ -235,7 +237,7 @@ const getPhrases = async (context: APIContext): Promise<Response> => {
     // Build query
     query = supabase
       .from("phrases")
-      .select("id, position, en_text, pl_text, tokens, difficulty, created_at, updated_at")
+      .select("id, position, en_text, pl_text, learning_hint_markdown, tokens, difficulty, created_at, updated_at")
       .eq("notebook_id", notebookId)
       .order(sort, { ascending: order === "asc" })
       .limit(limit + 1); // Get one extra to check if there are more
@@ -278,6 +280,7 @@ const getPhrases = async (context: APIContext): Promise<Response> => {
         position: phraseWithNotebook.position,
         en_text: phraseWithNotebook.en_text,
         pl_text: phraseWithNotebook.pl_text,
+        learning_hint_markdown: phraseWithNotebook.learning_hint_markdown,
         tokens: phraseWithNotebook.tokens,
         difficulty: phraseWithNotebook.difficulty,
         created_at: phraseWithNotebook.created_at,
@@ -327,7 +330,7 @@ const createPhrase = async (context: APIContext): Promise<Response> => {
   const body = await context.request.json();
   validateJsonBody(body, ["position", "en_text", "pl_text"]);
 
-  const { position, en_text, pl_text, tokens }: CreatePhraseCommand = body;
+  const { position, en_text, pl_text, learning_hint_markdown, tokens }: CreatePhraseCommand = body;
 
   // Validate input
   const validatedPosition = validateInteger(position, 1, undefined, "Position");
@@ -340,6 +343,15 @@ const createPhrase = async (context: APIContext): Promise<Response> => {
 
   if (sanitizedPlText.length > 2000) {
     throw ApiErrors.validationError("Polish text must be at most 2000 characters");
+  }
+
+  if (learning_hint_markdown !== undefined && learning_hint_markdown !== null) {
+    if (typeof learning_hint_markdown !== "string") {
+      throw ApiErrors.validationError("Learning hint must be a string or null");
+    }
+    if (learning_hint_markdown.length > 12000) {
+      throw ApiErrors.validationError("Learning hint must be at most 12000 characters");
+    }
   }
 
   // First verify the notebook exists and belongs to the user
@@ -363,10 +375,11 @@ const createPhrase = async (context: APIContext): Promise<Response> => {
       position: validatedPosition,
       en_text: sanitizedEnText,
       pl_text: sanitizedPlText,
+      learning_hint_markdown: learning_hint_markdown?.trim() || null,
       tokens: tokens || null,
       difficulty: null, // Default to unset
     })
-    .select("id, position, en_text, pl_text, tokens, difficulty, created_at, updated_at")
+    .select("id, position, en_text, pl_text, learning_hint_markdown, tokens, difficulty, created_at, updated_at")
     .single();
 
   if (error) {

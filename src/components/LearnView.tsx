@@ -3,7 +3,7 @@ import { Button } from "./ui/button";
 import { ToastProvider, useToast } from "./ui/toast";
 import { useApi } from "../lib/hooks/useApi";
 import { useSpeechRecognition } from "../lib/hooks/useSpeechRecognition";
-import { Mic, CheckCircle2 } from "lucide-react";
+import { Edit3, Mic, CheckCircle2 } from "lucide-react";
 import type {
   CheckAnswerResultDTO,
   LearnDirection,
@@ -22,6 +22,7 @@ import PhraseTokenPills from "./learn/PhraseTokenPills";
 import WordBank from "./learn/WordBank";
 import MobileActionMenu from "./MobileActionMenu";
 import DifficultyBadge from "./DifficultyBadge";
+import PhraseLearningHintModal from "./PhraseLearningHintModal";
 
 interface LearnViewProps {
   notebookId: string;
@@ -197,6 +198,9 @@ function LearnViewContent({
   const [manifestLoading, setManifestLoading] = useState<boolean>(true);
   const [manifestError, setManifestError] = useState<string | null>(null);
   const [notebookName, setNotebookName] = useState<string | null>(null);
+  const [editingHintPhrase, setEditingHintPhrase] = useState<LearnPhraseDTO | null>(null);
+  const [isSavingHint, setIsSavingHint] = useState(false);
+  const [hintSaveError, setHintSaveError] = useState<string | null>(null);
   // Get difficulty filter from props (URL params) - no localStorage fallback
   const difficultyFilter: PhraseDifficultyOrUnset | "all" =
     initialDifficultyFilter &&
@@ -1465,6 +1469,74 @@ function LearnViewContent({
     [currentPhrase, apiCall, addToast]
   );
 
+  const handleOpenHintEditor = useCallback((phrase: LearnPhraseDTO) => {
+    setEditingHintPhrase(phrase);
+    setHintSaveError(null);
+  }, []);
+
+  const handleCloseHintEditor = useCallback(() => {
+    if (isSavingHint) return;
+    setEditingHintPhrase(null);
+    setHintSaveError(null);
+  }, [isSavingHint]);
+
+  const handleSaveHint = useCallback(
+    async (learningHintMarkdown: string | null) => {
+      if (!editingHintPhrase) return;
+
+      setIsSavingHint(true);
+      setHintSaveError(null);
+
+      try {
+        const updatedPhrase = await apiCall<{ learning_hint_markdown: string | null }>(
+          `/api/phrases/${editingHintPhrase.id}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ learning_hint_markdown: learningHintMarkdown }),
+          }
+        );
+
+        setManifest((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            phrases: prev.phrases.map((phrase) =>
+              phrase.id === editingHintPhrase.id
+                ? { ...phrase, learning_hint_markdown: updatedPhrase.learning_hint_markdown }
+                : phrase
+            ),
+          };
+        });
+
+        setSession((prev) => ({
+          ...prev,
+          currentRound: prev.currentRound.map((phrase) =>
+            phrase.id === editingHintPhrase.id
+              ? { ...phrase, learning_hint_markdown: updatedPhrase.learning_hint_markdown }
+              : phrase
+          ),
+          incorrectPhrases: prev.incorrectPhrases.map((phrase) =>
+            phrase.id === editingHintPhrase.id
+              ? { ...phrase, learning_hint_markdown: updatedPhrase.learning_hint_markdown }
+              : phrase
+          ),
+        }));
+
+        setEditingHintPhrase(null);
+        addToast({
+          type: "success",
+          title: "Learning hint saved",
+          description: learningHintMarkdown ? "The hint was updated." : "The hint was cleared.",
+        });
+      } catch (err) {
+        setHintSaveError(err instanceof Error ? err.message : "Failed to save learning hint");
+      } finally {
+        setIsSavingHint(false);
+      }
+    },
+    [addToast, apiCall, editingHintPhrase]
+  );
+
   // Auto-focus textarea when new phrase appears (not checked yet, text mode only)
   useEffect(() => {
     if (
@@ -2281,6 +2353,15 @@ function LearnViewContent({
 
               {/* Controls - After check */}
               <div className="hidden sm:flex justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={currentPhrase.learning_hint_markdown ? "default" : "outline"}
+                  onClick={() => handleOpenHintEditor(currentPhrase)}
+                >
+                  <Edit3 className="size-4" />
+                  {currentPhrase.learning_hint_markdown ? "Hint" : "Add hint"}
+                </Button>
                 {isCorrect === false && (
                   <Button type="button" size="sm" variant="default" onClick={handleTryAgain}>
                     Try again
@@ -2310,6 +2391,16 @@ function LearnViewContent({
     <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-32 md:p-6 md:pb-6">
       {content}
 
+      <PhraseLearningHintModal
+        open={Boolean(editingHintPhrase)}
+        phraseLabel={editingHintPhrase ? getPromptText(editingHintPhrase, session.direction) : ""}
+        initialValue={editingHintPhrase?.learning_hint_markdown ?? null}
+        isSaving={isSavingHint}
+        error={hintSaveError}
+        onSave={handleSaveHint}
+        onClose={handleCloseHintEditor}
+      />
+
       {/* Mobile action bar (matches Player's fixed bottom controls) */}
       {session.phase === "in_progress" && currentPhrase && (
         <div className="fixed inset-x-0 bottom-0 z-30 bg-background/95 backdrop-blur border-t pb-[env(safe-area-inset-bottom)] sm:hidden">
@@ -2338,6 +2429,15 @@ function LearnViewContent({
               <>
                 {currentCardResult?.isCorrect === false ? (
                   <>
+                    <Button
+                      type="button"
+                      variant={currentPhrase.learning_hint_markdown ? "default" : "outline"}
+                      size="icon"
+                      onClick={() => handleOpenHintEditor(currentPhrase)}
+                      aria-label={currentPhrase.learning_hint_markdown ? "Open learning hint" : "Add learning hint"}
+                    >
+                      <Edit3 className="size-4" />
+                    </Button>
                     <Button type="button" variant="default" onClick={handleTryAgain}>
                       Try again
                     </Button>
@@ -2347,6 +2447,15 @@ function LearnViewContent({
                   </>
                 ) : (
                   <>
+                    <Button
+                      type="button"
+                      variant={currentPhrase.learning_hint_markdown ? "default" : "outline"}
+                      size="icon"
+                      onClick={() => handleOpenHintEditor(currentPhrase)}
+                      aria-label={currentPhrase.learning_hint_markdown ? "Open learning hint" : "Add learning hint"}
+                    >
+                      <Edit3 className="size-4" />
+                    </Button>
                     <MobileActionMenu
                       triggerLabel="Difficulty"
                       triggerIcon

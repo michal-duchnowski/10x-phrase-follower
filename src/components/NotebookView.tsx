@@ -5,7 +5,8 @@ import { ToastProvider, useToast } from "./ui/toast";
 import GenerateAudioButton from "./GenerateAudioButton";
 import ExportZipButton from "./ExportZipButton";
 import MobileActionMenu from "./MobileActionMenu";
-import { Trash2, Minimize2, Plus } from "lucide-react";
+import PhraseLearningHintModal from "./PhraseLearningHintModal";
+import { Edit3, Trash2, Minimize2, Plus } from "lucide-react";
 import DifficultyBadge from "./DifficultyBadge";
 import type {
   PhraseDTO,
@@ -51,6 +52,9 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
   const [allNotebooks, setAllNotebooks] = useState<NotebookDTO[]>([]);
   const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
   const [quickSelectInput, setQuickSelectInput] = useState<string>("");
+  const [editingHintPhrase, setEditingHintPhrase] = useState<PhraseDTO | null>(null);
+  const [isSavingHint, setIsSavingHint] = useState(false);
+  const [hintSaveError, setHintSaveError] = useState<string | null>(null);
 
   // Check if this is a virtual notebook (Smart List)
   const isVirtual = isVirtualNotebook(notebookId);
@@ -477,6 +481,51 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
         title: "Delete failed",
         description: errorMessage,
       });
+    }
+  };
+
+  // Handle bulk phrase deletion
+  const handleOpenHintEditor = (phrase: PhraseDTO) => {
+    setEditingHintPhrase(phrase);
+    setHintSaveError(null);
+  };
+
+  const handleCloseHintEditor = () => {
+    if (isSavingHint) return;
+    setEditingHintPhrase(null);
+    setHintSaveError(null);
+  };
+
+  const handleSaveHint = async (learningHintMarkdown: string | null) => {
+    if (!editingHintPhrase) return;
+
+    setIsSavingHint(true);
+    setHintSaveError(null);
+
+    try {
+      const updatedPhrase = await apiCall<PhraseDTO>(`/api/phrases/${editingHintPhrase.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ learning_hint_markdown: learningHintMarkdown }),
+      });
+
+      setState((prev) => ({
+        ...prev,
+        phrases: prev.phrases.map((phrase) =>
+          phrase.id === editingHintPhrase.id
+            ? { ...phrase, learning_hint_markdown: updatedPhrase.learning_hint_markdown }
+            : phrase
+        ),
+      }));
+      setEditingHintPhrase(null);
+      addToast({
+        type: "success",
+        title: "Learning hint saved",
+        description: learningHintMarkdown ? "The hint was updated." : "The hint was cleared.",
+      });
+    } catch (err) {
+      setHintSaveError(err instanceof Error ? err.message : "Failed to save learning hint");
+    } finally {
+      setIsSavingHint(false);
     }
   };
 
@@ -1215,6 +1264,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
               phrases={state.phrases}
               notebookId={notebookId}
               onDelete={handleDeletePhrase}
+              onEditHint={handleOpenHintEditor}
               selectedPhraseIds={selectedPhraseIds}
               onSelectionChange={setSelectedPhraseIds}
               difficultyFilter={difficultyFilter}
@@ -1226,6 +1276,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
               phrases={state.phrases}
               notebookId={notebookId}
               onDelete={handleDeletePhrase}
+              onEditHint={handleOpenHintEditor}
               selectedPhraseIds={selectedPhraseIds}
               onSelectionChange={setSelectedPhraseIds}
               difficultyFilter={difficultyFilter}
@@ -1234,6 +1285,15 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
             />
           </>
         )}
+        <PhraseLearningHintModal
+          open={Boolean(editingHintPhrase)}
+          phraseLabel={editingHintPhrase?.en_text ?? ""}
+          initialValue={editingHintPhrase?.learning_hint_markdown ?? null}
+          isSaving={isSavingHint}
+          error={hintSaveError}
+          onSave={handleSaveHint}
+          onClose={handleCloseHintEditor}
+        />
       </div>
     </div>
   );
@@ -1244,6 +1304,7 @@ interface PhraseTableProps {
   phrases: PhraseDTO[];
   notebookId: string;
   onDelete: (phraseId: string) => void;
+  onEditHint: (phrase: PhraseDTO) => void;
   selectedPhraseIds: Set<string>;
   onSelectionChange: (ids: Set<string>) => void;
   difficultyFilter: PhraseDifficultyOrUnset | "all";
@@ -1255,6 +1316,7 @@ function PhraseTable({
   phrases,
   notebookId,
   onDelete,
+  onEditHint,
   selectedPhraseIds,
   onSelectionChange,
   difficultyFilter,
@@ -1326,7 +1388,7 @@ function PhraseTable({
             <th className="text-left p-4 font-medium text-muted-foreground">English</th>
             <th className="text-left p-4 font-medium text-muted-foreground">Polish</th>
             <th className="text-left p-4 font-medium text-muted-foreground w-24">Difficulty</th>
-            <th className="text-left p-4 font-medium text-muted-foreground w-16">Actions</th>
+            <th className="text-right p-4 font-medium text-muted-foreground w-24">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -1336,6 +1398,7 @@ function PhraseTable({
               phrase={phrase}
               index={index}
               onDelete={onDelete}
+              onEditHint={onEditHint}
               onRowClick={handleRowClick}
               selectedPhraseIds={selectedPhraseIds}
               onSelectionChange={onSelectionChange}
@@ -1353,6 +1416,7 @@ interface PhraseRowProps {
   phrase: PhraseDTO;
   index: number;
   onDelete: (phraseId: string) => void;
+  onEditHint: (phrase: PhraseDTO) => void;
   onRowClick: PhraseRowClickHandler;
   selectedPhraseIds: Set<string>;
   onSelectionChange: (ids: Set<string>) => void;
@@ -1363,6 +1427,7 @@ function PhraseRow({
   phrase,
   index,
   onDelete,
+  onEditHint,
   onRowClick,
   selectedPhraseIds,
   onSelectionChange,
@@ -1388,6 +1453,11 @@ function PhraseRow({
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onDelete(phrase.id);
+  };
+
+  const handleEditHintClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onEditHint(phrase);
   };
 
   const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1455,18 +1525,32 @@ function PhraseRow({
       <td className="p-4 w-24">
         <DifficultyBadge difficulty={phrase.difficulty} />
       </td>
-      <td className="p-4 w-16 text-right">
-        {!isVirtual && (
+      <td className="p-4 w-24">
+        <div className="flex w-16 items-center justify-end gap-1">
           <Button
-            variant="ghost"
+            variant={phrase.learning_hint_markdown ? "default" : "ghost"}
             size="sm"
-            className="p-1 h-auto text-destructive hover:text-destructive"
-            onClick={handleDeleteClick}
-            aria-label="Usuń frazę"
+            className={
+              phrase.learning_hint_markdown ? "h-7 w-7 p-0" : "h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+            }
+            onClick={handleEditHintClick}
+            aria-label={phrase.learning_hint_markdown ? "Edit learning hint" : "Add learning hint"}
+            title={phrase.learning_hint_markdown ? "Edit learning hint" : "Add learning hint"}
           >
-            <Trash2 className="size-4" />
+            <Edit3 className="size-4" />
           </Button>
-        )}
+          {!isVirtual && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+              onClick={handleDeleteClick}
+              aria-label="Usuń frazę"
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          )}
+        </div>
       </td>
     </tr>
   );
@@ -1477,6 +1561,7 @@ interface PhraseListProps {
   phrases: PhraseDTO[];
   notebookId: string;
   onDelete: (phraseId: string) => void;
+  onEditHint: (phrase: PhraseDTO) => void;
   selectedPhraseIds: Set<string>;
   onSelectionChange: (ids: Set<string>) => void;
   difficultyFilter: PhraseDifficultyOrUnset | "all";
@@ -1490,6 +1575,7 @@ function PhraseList({
   phrases,
   notebookId,
   onDelete,
+  onEditHint,
   selectedPhraseIds,
   onSelectionChange,
   difficultyFilter,
@@ -1516,6 +1602,7 @@ function PhraseList({
           phrase={phrase}
           index={index}
           onDelete={onDelete}
+          onEditHint={onEditHint}
           onRowClick={handleRowClick}
           selectedPhraseIds={selectedPhraseIds}
           onSelectionChange={onSelectionChange}
@@ -1531,6 +1618,7 @@ interface PhraseCardProps {
   phrase: PhraseDTO;
   index: number;
   onDelete: (phraseId: string) => void;
+  onEditHint: (phrase: PhraseDTO) => void;
   onRowClick: PhraseRowClickHandler;
   selectedPhraseIds: Set<string>;
   onSelectionChange: (ids: Set<string>) => void;
@@ -1541,6 +1629,7 @@ function PhraseCard({
   phrase,
   index,
   onDelete,
+  onEditHint,
   onRowClick,
   selectedPhraseIds,
   onSelectionChange,
@@ -1565,6 +1654,11 @@ function PhraseCard({
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onDelete(phrase.id);
+  };
+
+  const handleEditHintClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onEditHint(phrase);
   };
 
   const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1629,6 +1723,17 @@ function PhraseCard({
       {!isVirtual && (
         <div className="flex items-center gap-1 shrink-0">
           <Button
+            variant={phrase.learning_hint_markdown ? "default" : "ghost"}
+            size="sm"
+            className={
+              phrase.learning_hint_markdown ? "h-8 w-8 p-0" : "p-1 h-auto text-muted-foreground hover:text-foreground"
+            }
+            onClick={handleEditHintClick}
+            aria-label={phrase.learning_hint_markdown ? "Edit learning hint" : "Add learning hint"}
+          >
+            <Edit3 className="size-4" />
+          </Button>
+          <Button
             variant="ghost"
             size="sm"
             className="p-1 h-auto text-destructive hover:text-destructive"
@@ -1638,6 +1743,21 @@ function PhraseCard({
             <Trash2 className="size-4" />
           </Button>
         </div>
+      )}
+      {isVirtual && (
+        <Button
+          variant={phrase.learning_hint_markdown ? "default" : "ghost"}
+          size="sm"
+          className={
+            phrase.learning_hint_markdown
+              ? "h-8 w-8 p-0 shrink-0"
+              : "p-1 h-auto text-muted-foreground hover:text-foreground shrink-0"
+          }
+          onClick={handleEditHintClick}
+          aria-label={phrase.learning_hint_markdown ? "Edit learning hint" : "Add learning hint"}
+        >
+          <Edit3 className="size-4" />
+        </Button>
       )}
     </div>
   );

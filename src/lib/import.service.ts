@@ -8,6 +8,7 @@ import { ApiErrors } from "./errors";
 export interface ParsedLine {
   en: string;
   pl: string;
+  learningHintMarkdown: string | null;
   lineNo: number;
   rawText: string;
 }
@@ -19,6 +20,12 @@ export interface ImportResult {
     rawText: string;
     reason: string;
   }[];
+}
+
+export interface ImportRecord {
+  text: string;
+  lineNo: number;
+  rawText: string;
 }
 
 /**
@@ -68,8 +75,68 @@ export function normalizeText(text: string): string {
   );
 }
 
+const HINT_OPEN = ':::"';
+const HINT_CLOSE = '":::';
+
+export function splitImportRecords(lines: string[]): ImportRecord[] {
+  const records: ImportRecord[] = [];
+  let buffer: string[] = [];
+  let startLineNo = 0;
+  let inHint = false;
+
+  const flush = () => {
+    if (buffer.length === 0) return;
+
+    const rawText = buffer.join("\n");
+    if (rawText.trim().length > 0) {
+      records.push({
+        text: rawText,
+        lineNo: startLineNo,
+        rawText,
+      });
+    }
+
+    buffer = [];
+    startLineNo = 0;
+    inHint = false;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lineNo = i + 1;
+
+    if (buffer.length === 0) {
+      if (line.trim().length === 0) continue;
+      startLineNo = lineNo;
+    }
+
+    buffer.push(line);
+
+    const currentText = buffer.join("\n");
+    const hintOpenIndex = currentText.indexOf(HINT_OPEN);
+
+    if (hintOpenIndex >= 0) {
+      const hintCloseIndex = currentText.indexOf(HINT_CLOSE, hintOpenIndex + HINT_OPEN.length);
+      inHint = hintCloseIndex < 0;
+
+      if (!inHint) {
+        flush();
+      }
+      continue;
+    }
+
+    flush();
+  }
+
+  if (buffer.length > 0) {
+    flush();
+  }
+
+  return records;
+}
+
 /**
- * Parses a single line in EN ::: PL format
+ * Parses a single line in EN ::: PL or EN ::: PL :::"learning hint markdown"::: format.
  */
 export function parseLine(line: string, lineNo: number): { success: boolean; data?: ParsedLine; reason?: string } {
   const rawText = line;
@@ -80,24 +147,54 @@ export function parseLine(line: string, lineNo: number): { success: boolean; dat
     return { success: false, reason: "Empty line" };
   }
 
-  // Count separators
-  const separatorCount = (trimmed.match(/:::/g) || []).length;
+  const hintOpenIndex = trimmed.indexOf(HINT_OPEN);
+  let enRaw: string;
+  let plRaw: string;
+  let learningHintMarkdown: string | null = null;
 
-  if (separatorCount === 0) {
-    return { success: false, reason: "Missing separator (:::) between EN and PL parts" };
+  if (hintOpenIndex >= 0) {
+    const hintCloseIndex = trimmed.lastIndexOf(HINT_CLOSE);
+    if (hintCloseIndex <= hintOpenIndex + HINT_OPEN.length - 1) {
+      return { success: false, reason: 'Learning hint must end with closing marker ":::' };
+    }
+
+    const afterHint = trimmed.slice(hintCloseIndex + HINT_CLOSE.length).trim();
+    if (afterHint.length > 0) {
+      return { success: false, reason: "Unexpected content after learning hint closing marker" };
+    }
+
+    const prefix = trimmed.slice(0, hintOpenIndex).trim();
+    const prefixParts = prefix.split(":::");
+    if (prefixParts.length !== 2) {
+      return { success: false, reason: 'Invalid hint format, expected EN ::: PL :::"hint":::' };
+    }
+
+    [enRaw, plRaw] = prefixParts;
+    learningHintMarkdown = trimmed.slice(hintOpenIndex + HINT_OPEN.length, hintCloseIndex).trim();
+  } else {
+    // Count separators
+    const separatorCount = (trimmed.match(/:::/g) || []).length;
+
+    if (separatorCount === 0) {
+      return { success: false, reason: "Missing separator (:::) between EN and PL parts" };
+    }
+
+    if (separatorCount > 1) {
+      return {
+        success: false,
+        reason: 'Too many separators (:::) found, expected EN ::: PL or EN ::: PL :::"hint":::',
+      };
+    }
+
+    // Split by separator
+    const parts = trimmed.split(":::");
+    if (parts.length !== 2) {
+      return { success: false, reason: "Invalid format after splitting by separator" };
+    }
+
+    [enRaw, plRaw] = parts;
   }
 
-  if (separatorCount > 1) {
-    return { success: false, reason: "Multiple separators (:::) found, expected exactly one" };
-  }
-
-  // Split by separator
-  const parts = trimmed.split(":::");
-  if (parts.length !== 2) {
-    return { success: false, reason: "Invalid format after splitting by separator" };
-  }
-
-  const [enRaw, plRaw] = parts;
   const en = enRaw.trim();
   const pl = plRaw.trim();
 
@@ -119,11 +216,16 @@ export function parseLine(line: string, lineNo: number): { success: boolean; dat
     return { success: false, reason: "PL part exceeds 2000 characters" };
   }
 
+  if (learningHintMarkdown !== null && learningHintMarkdown.length > 12000) {
+    return { success: false, reason: "Learning hint exceeds 12000 characters" };
+  }
+
   return {
     success: true,
     data: {
       en,
       pl,
+      learningHintMarkdown: learningHintMarkdown || null,
       lineNo,
       rawText,
     },
@@ -136,24 +238,25 @@ export function parseLine(line: string, lineNo: number): { success: boolean; dat
 export function processImportLines(lines: string[], normalize = false): ImportResult {
   const accepted: ParsedLine[] = [];
   const rejected: { lineNo: number; rawText: string; reason: string }[] = [];
+  const records = splitImportRecords(lines);
 
-  for (let i = 0; i < lines.length; i++) {
-    const lineNo = i + 1;
-    let line = lines[i];
-
-    // Apply normalization if requested
-    if (normalize) {
-      line = normalizeText(line);
-    }
-
-    const result = parseLine(line, lineNo);
+  for (const record of records) {
+    const result = parseLine(record.text, record.lineNo);
 
     if (result.success && result.data) {
-      accepted.push(result.data);
+      accepted.push(
+        normalize
+          ? {
+              ...result.data,
+              en: normalizeText(result.data.en),
+              pl: normalizeText(result.data.pl),
+            }
+          : result.data
+      );
     } else {
       rejected.push({
-        lineNo,
-        rawText: lines[i], // Keep original text for logging
+        lineNo: record.lineNo,
+        rawText: record.rawText,
         reason: result.reason || "Unknown parsing error",
       });
     }
@@ -190,20 +293,20 @@ export function validateImportCommand(command: ImportNotebookCommand): void {
     throw ApiErrors.validationError("Lines array cannot be empty");
   }
 
-  if (lines.length > 100) {
+  // Validate each line is a string
+  for (let i = 0; i < lines.length; i++) {
+    if (typeof lines[i] !== "string") {
+      throw ApiErrors.validationError(`Line ${i + 1} must be a string`);
+    }
+  }
+
+  if (splitImportRecords(lines).length > 100) {
     throw ApiErrors.limitExceeded("Import exceeds 100 phrases limit");
   }
 
   // Validate normalize flag
   if (normalize !== undefined && typeof normalize !== "boolean") {
     throw ApiErrors.validationError("Normalize must be a boolean");
-  }
-
-  // Validate each line is a string
-  for (let i = 0; i < lines.length; i++) {
-    if (typeof lines[i] !== "string") {
-      throw ApiErrors.validationError(`Line ${i + 1} must be a string`);
-    }
   }
 }
 

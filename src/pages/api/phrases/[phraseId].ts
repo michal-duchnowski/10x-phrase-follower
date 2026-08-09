@@ -22,7 +22,7 @@ const updatePhrase = async (context: APIContext): Promise<Response> => {
   }
 
   const body = await context.request.json();
-  const { position, en_text, pl_text, tokens, difficulty }: UpdatePhraseCommand = body;
+  const { position, en_text, pl_text, learning_hint_markdown, tokens, difficulty }: UpdatePhraseCommand = body;
 
   // Validate input
   if (position !== undefined && (typeof position !== "number" || !Number.isInteger(position))) {
@@ -47,6 +47,15 @@ const updatePhrase = async (context: APIContext): Promise<Response> => {
     }
   }
 
+  if (learning_hint_markdown !== undefined) {
+    if (learning_hint_markdown !== null && typeof learning_hint_markdown !== "string") {
+      throw ApiErrors.validationError("Learning hint must be a string or null");
+    }
+    if (learning_hint_markdown !== null && learning_hint_markdown.length > 12000) {
+      throw ApiErrors.validationError("Learning hint must be at most 12000 characters");
+    }
+  }
+
   if (difficulty !== undefined) {
     if (difficulty !== null && difficulty !== "easy" && difficulty !== "medium" && difficulty !== "hard") {
       throw ApiErrors.validationError("Difficulty must be 'easy', 'medium', 'hard', or null");
@@ -63,6 +72,10 @@ const updatePhrase = async (context: APIContext): Promise<Response> => {
   }
   if (pl_text !== undefined) {
     updateData.pl_text = pl_text.trim();
+  }
+  if (learning_hint_markdown !== undefined) {
+    const trimmedHint = learning_hint_markdown?.trim() ?? null;
+    updateData.learning_hint_markdown = trimmedHint && trimmedHint.length > 0 ? trimmedHint : null;
   }
   if (tokens !== undefined) {
     updateData.tokens = tokens;
@@ -83,7 +96,7 @@ const updatePhrase = async (context: APIContext): Promise<Response> => {
     .eq("id", phraseId)
     .select(
       `
-      id, position, en_text, pl_text, tokens, difficulty, created_at, updated_at,
+      id, position, en_text, pl_text, learning_hint_markdown, tokens, difficulty, created_at, updated_at,
       notebook:notebooks!inner(id, user_id)
     `
     )

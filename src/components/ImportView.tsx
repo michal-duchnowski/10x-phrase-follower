@@ -3,6 +3,7 @@ import { Button } from "./ui/button";
 import { useApi } from "../lib/hooks/useApi";
 import { ToastProvider, useToast } from "./ui/toast";
 import { generateUUID } from "../lib/utils";
+import { splitImportRecords } from "../lib/import.service";
 import type { ImportNotebookCommand, ImportNotebookResultDTO, NotebookDTO } from "../types";
 
 interface ImportState {
@@ -70,21 +71,21 @@ function ImportViewContent() {
       return "Import content is required";
     }
 
-    const lines = linesText.split("\n").filter((line) => line.trim());
+    const records = splitImportRecords(linesText.split("\n"));
 
-    if (lines.length === 0) {
+    if (records.length === 0) {
       return "No valid lines found";
     }
 
-    if (lines.length > 100) {
+    if (records.length > 100) {
       return "Import exceeds 100 phrases limit";
     }
 
     // Basic format validation
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
+    for (const record of records) {
+      const line = record.text.trim();
       if (line && !line.includes(":::")) {
-        return `Line ${i + 1}: Missing separator (:::) between EN and PL parts`;
+        return `Line ${record.lineNo}: Missing separator (:::) between EN and PL parts`;
       }
     }
 
@@ -111,7 +112,7 @@ function ImportViewContent() {
 
     try {
       // Prepare lines array
-      const lines = linesText.split("\n").filter((line) => line.trim());
+      const lines = splitImportRecords(linesText.split("\n")).map((record) => record.text);
 
       // Prepare import command
       const command: ImportNotebookCommand = {
@@ -219,8 +220,8 @@ function ImportForm({
   isLoading,
   error,
 }: ImportFormProps) {
-  const lineCount = linesText.split("\n").filter((line) => line.trim()).length;
-  const effectiveLineCount = Math.min(lineCount, 100);
+  const phraseCount = splitImportRecords(linesText.split("\n")).length;
+  const effectivePhraseCount = Math.min(phraseCount, 100);
 
   return (
     <div className="bg-card border border-border rounded-lg p-6">
@@ -262,14 +263,18 @@ function ImportForm({
             id="import-content"
             value={linesText}
             onChange={(e) => setLinesText(e.target.value)}
-            placeholder="Enter phrases in format: EN text ::: PL text (one per line)"
+            placeholder={
+              'Enter phrases in format: EN text ::: PL text, optionally EN text ::: PL text :::"learning hint":::'
+            }
             rows={12}
             required
             className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent font-mono text-sm"
           />
           <div className="flex justify-between text-xs text-muted-foreground">
-            <span>{lineCount} lines (max 100)</span>
-            <span className={lineCount > 100 ? "text-destructive" : ""}>{lineCount > 100 ? "Exceeds limit!" : ""}</span>
+            <span>{phraseCount} phrases (max 100)</span>
+            <span className={phraseCount > 100 ? "text-destructive" : ""}>
+              {phraseCount > 100 ? "Exceeds limit!" : ""}
+            </span>
           </div>
         </div>
 
@@ -290,15 +295,19 @@ function ImportForm({
         {/* Format help */}
         <div className="p-4 bg-muted/50 rounded-md">
           <h4 className="text-sm font-medium text-foreground mb-2">Format Requirements:</h4>
+          <p className="mb-2 text-xs text-muted-foreground">
+            Supported formats: <code>EN text ::: PL text</code> or{" "}
+            <code>{'EN text ::: PL text :::"learning hint markdown":::'}</code>.
+          </p>
           <ul className="text-xs text-muted-foreground space-y-1">
             <li>
               • Each line: <code>EN text ::: PL text</code>
             </li>
             <li>
-              • Exactly one separator <code>:::</code> per line
+              - Optional hint starts with <code>{':::"'}</code> and ends with <code>{'":::'}</code>
             </li>
             <li>• Both EN and PL parts must be non-empty</li>
-            <li>• Maximum 2000 characters per part</li>
+            <li>- Maximum 2000 characters per EN/PL part and 12000 per hint</li>
             <li>• Maximum 100 lines per import</li>
           </ul>
           <div className="mt-2">
@@ -308,8 +317,8 @@ function ImportForm({
         </div>
 
         {/* Submit button */}
-        <Button type="submit" disabled={isLoading || lineCount > 100} className="w-full">
-          {isLoading ? "Importing..." : `Import ${effectiveLineCount} phrase(s)`}
+        <Button type="submit" disabled={isLoading || phraseCount > 100} className="w-full">
+          {isLoading ? "Importing..." : `Import ${effectivePhraseCount} phrase(s)`}
         </Button>
       </form>
     </div>

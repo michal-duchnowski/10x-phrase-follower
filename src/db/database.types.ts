@@ -285,6 +285,7 @@ export interface Database {
           difficulty: string | null;
           en_text: string;
           id: string;
+          learning_hint_markdown: string | null;
           notebook_id: string;
           pl_text: string;
           position: number;
@@ -296,6 +297,7 @@ export interface Database {
           difficulty?: string | null;
           en_text: string;
           id: string;
+          learning_hint_markdown?: string | null;
           notebook_id: string;
           pl_text: string;
           position: number;
@@ -307,6 +309,7 @@ export interface Database {
           difficulty?: string | null;
           en_text?: string;
           id?: string;
+          learning_hint_markdown?: string | null;
           notebook_id?: string;
           pl_text?: string;
           position?: number;

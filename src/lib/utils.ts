@@ -231,51 +231,105 @@ function normalizeUnderscores(text: string): string {
   return normalized;
 }
 
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function parseInlineMarkdown(text: string): string {
+  let html = escapeHtml(text);
+  html = normalizeUnderscores(html);
+  html = html.replace(/`([^`]+?)`/g, "<code>$1</code>");
+  html = html.replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/(?:^|[^\w_])__([^_]+?)__(?=[^\w_]|$)/g, (match, content) => {
+    const prefix = match.startsWith("__") ? "" : match[0];
+    return `${prefix}<em>${content}</em>`;
+  });
+  return html;
+}
+
 /**
- * Parses markdown formatting (**bold**, __italic__) and converts to HTML.
- * Supports:
- * - **text** for bold
- * - __text__ or _text_ for italic (single _ is treated as __, only at word boundaries)
- * - Can be nested: **bold __italic__ text**
- *
- * @param text - Text with markdown formatting
- * @returns HTML string with <strong> and <em> tags
+ * Parses a small, safe markdown subset used by phrases and learning hints.
  */
 export function parseMarkdownToHtml(text: string): string {
   if (!text) return "";
 
-  // Escape HTML to prevent XSS
-  let html = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const blocks: string[] = [];
+  let paragraph: string[] = [];
+  let listItems: string[] = [];
+  let codeLines: string[] = [];
+  let inCodeBlock = false;
 
-  // Normalize single underscores to double underscores (only at word boundaries)
-  html = normalizeUnderscores(html);
+  const flushParagraph = () => {
+    if (paragraph.length === 0) return;
+    blocks.push(`<p>${paragraph.map(parseInlineMarkdown).join("<br />")}</p>`);
+    paragraph = [];
+  };
 
-  // Process bold (**text**)
-  html = html.replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>");
+  const flushList = () => {
+    if (listItems.length === 0) return;
+    blocks.push(`<ul>${listItems.map((item) => `<li>${parseInlineMarkdown(item)}</li>`).join("")}</ul>`);
+    listItems = [];
+  };
 
-  // Process italic (__text__) - render as <em> tag, only at word boundaries
-  html = html.replace(/(?:^|[^\w_])__([^_]+?)__(?=[^\w_]|$)/g, (match, content, offset, string) => {
-    // Get the prefix (non-word char before __)
-    // If match starts with _, check if there's a space before the match in original string
-    let prefix = "";
-    if (offset > 0 && !/[\w]/.test(string[offset - 1])) {
-      // There's a non-word char before, preserve it (could be space)
-      prefix = string[offset - 1];
-    } else if (match[0] !== "_") {
-      // Match doesn't start with _, so first char is the prefix (e.g., space)
-      prefix = match[0];
+  const flushCode = () => {
+    blocks.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+    codeLines = [];
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith("```")) {
+      if (inCodeBlock) {
+        flushCode();
+        inCodeBlock = false;
+      } else {
+        flushParagraph();
+        flushList();
+        inCodeBlock = true;
+      }
+      continue;
     }
-    // Get the suffix (non-word char after __)
-    const suffix =
-      offset + match.length < string.length && /[\w]/.test(string[offset + match.length])
-        ? ""
-        : match.endsWith("_")
-          ? ""
-          : match[match.length - 1];
-    return prefix + "<em>" + content + "</em>" + suffix;
-  });
 
-  return html;
+    if (inCodeBlock) {
+      codeLines.push(line);
+      continue;
+    }
+
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      flushParagraph();
+      flushList();
+      const level = heading[1].length;
+      blocks.push(`<h${level}>${parseInlineMarkdown(heading[2])}</h${level}>`);
+      continue;
+    }
+
+    const listItem = trimmed.match(/^[-*]\s+(.+)$/);
+    if (listItem) {
+      flushParagraph();
+      listItems.push(listItem[1]);
+      continue;
+    }
+
+    flushList();
+    paragraph.push(line);
+  }
+
+  if (inCodeBlock) {
+    flushCode();
+  }
+  flushParagraph();
+  flushList();
+
+  return blocks.join("");
 }
 
 /**
