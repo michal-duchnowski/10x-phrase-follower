@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # Multi-stage build for production
 FROM node:22.14.0-alpine AS builder
 
@@ -12,23 +13,11 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Build arguments for environment variables (PUBLIC_* variables need to be available at build time)
-ARG PUBLIC_SUPABASE_URL
-ARG PUBLIC_SUPABASE_KEY
-ARG SUPABASE_URL
-ARG SUPABASE_KEY
-ARG NODE_ENV=production
-
-# Set environment variables for build
-ENV PUBLIC_SUPABASE_URL=${PUBLIC_SUPABASE_URL}
-ENV PUBLIC_SUPABASE_KEY=${PUBLIC_SUPABASE_KEY}
-ENV SUPABASE_URL=${SUPABASE_URL}
-ENV SUPABASE_KEY=${SUPABASE_KEY}
-ENV NODE_ENV=${NODE_ENV}
-
-# Build the application (Astro with Node adapter)
-# Ensure CF_PAGES is not set so Node adapter is used
-RUN npm run build
+# Build the application with an ephemeral BuildKit secret. The `.env` file is never
+# copied into the image or persisted in an ARG/ENV layer.
+RUN --mount=type=secret,id=build_env \
+    tr -d '\r' < /run/secrets/build_env > /tmp/build.env && \
+    set -a && . /tmp/build.env && set +a && rm -f /tmp/build.env && npm run build
 
 # Production stage
 FROM node:22.14.0-alpine AS runner

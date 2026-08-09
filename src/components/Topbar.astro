@@ -49,6 +49,11 @@ const isDev = import.meta.env.NODE_ENV === "development";
             </svg>
             <span class="hidden sm:inline">Import</span>
           </a>
+          <a
+            href="/flashcards"
+            class={`text-sm font-medium transition-colors hover:text-primary ${currentPath === "/flashcards" ? "text-primary" : "text-muted-foreground"}`}
+            >Flashcards</a
+          >
         </div>
       </div>
 

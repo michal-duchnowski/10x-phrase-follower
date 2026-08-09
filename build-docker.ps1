@@ -1,4 +1,5 @@
-# Build Docker image with environment variables from .env file
+# Build Docker image with environment variables from .env file.
+# The file is mounted as a BuildKit secret and is not retained in image layers.
 
 # Check if .env exists
 if (-not (Test-Path .env)) {
@@ -32,18 +33,14 @@ if ($missing.Count -gt 0) {
     exit 1
 }
 
-# Build Docker image with build args
-Write-Host "Building Docker image with environment variables..." -ForegroundColor Green
+# Build Docker image with an ephemeral BuildKit secret
+Write-Host "Building Docker image with an ephemeral .env secret..." -ForegroundColor Green
 
 # Enable BuildKit for better layer caching (no Dockerfile changes needed)
 $env:DOCKER_BUILDKIT = "1"
 
 docker build `
-    --build-arg PUBLIC_SUPABASE_URL="$($envVars['PUBLIC_SUPABASE_URL'])" `
-    --build-arg PUBLIC_SUPABASE_KEY="$($envVars['PUBLIC_SUPABASE_KEY'])" `
-    --build-arg SUPABASE_URL="$($envVars['SUPABASE_URL'])" `
-    --build-arg SUPABASE_KEY="$($envVars['SUPABASE_KEY'])" `
-    --build-arg NODE_ENV="production" `
+    --secret id=build_env,src=.env `
     -t phrase-follower:local .
 
 if ($LASTEXITCODE -eq 0) {

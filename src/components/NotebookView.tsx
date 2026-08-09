@@ -6,7 +6,7 @@ import GenerateAudioButton from "./GenerateAudioButton";
 import ExportZipButton from "./ExportZipButton";
 import MobileActionMenu from "./MobileActionMenu";
 import PhraseLearningHintModal from "./PhraseLearningHintModal";
-import { Edit3, Trash2, Minimize2, Plus } from "lucide-react";
+import { Edit3, Trash2, Minimize2, Plus, Layers } from "lucide-react";
 import DifficultyBadge from "./DifficultyBadge";
 import type {
   PhraseDTO,
@@ -442,6 +442,29 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
         type: "error",
         title: "Update failed",
         description: errorMessage,
+      });
+    }
+  };
+
+  const handleAddToFlashcards = async () => {
+    try {
+      const result = await apiCall<{ added: number; reactivated: number; already_present: number }>(
+        "/api/flashcards/add",
+        {
+          method: "POST",
+          body: JSON.stringify({ phrase_ids: Array.from(selectedPhraseIds) }),
+        }
+      );
+      addToast({
+        type: "success",
+        title: "Flashcards updated",
+        description: `${result.added + result.reactivated} added, ${result.already_present} already present.`,
+      });
+    } catch (err) {
+      addToast({
+        type: "error",
+        title: "Could not add flashcards",
+        description: err instanceof Error ? err.message : "Try again.",
       });
     }
   };
@@ -1127,6 +1150,9 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                       Learn
                     </a>
                   </Button>
+                  <Button variant="default" size="sm" onClick={handleAddToFlashcards}>
+                    <Layers className="size-4" /> Add to Flashcards
+                  </Button>
                   <Button variant="default" size="sm" onClick={() => handleBulkUpdateDifficulty("easy")}>
                     Mark Easy
                   </Button>
@@ -1172,6 +1198,9 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                       >
                         Player
                       </a>
+                    </Button>
+                    <Button variant="default" size="sm" className="w-full" onClick={handleAddToFlashcards}>
+                      <Layers className="size-4" /> Flashcards
                     </Button>
                     <Button
                       asChild

@@ -1,0 +1,9 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+import AuthGuard from "../components/AuthGuard";
+import FlashcardsView from "../components/FlashcardsView";
+---
+
+<AppLayout title="Flashcards - Phrase Follower" currentPath="/flashcards"
+  ><AuthGuard client:load><FlashcardsView client:load /></AuthGuard></AppLayout
+>
