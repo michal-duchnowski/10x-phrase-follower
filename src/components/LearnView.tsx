@@ -3,7 +3,7 @@ import { Button } from "./ui/button";
 import { ToastProvider, useToast } from "./ui/toast";
 import { useApi } from "../lib/hooks/useApi";
 import { useSpeechRecognition } from "../lib/hooks/useSpeechRecognition";
-import { Edit3, Mic, CheckCircle2 } from "lucide-react";
+import { Info, Mic, CheckCircle2 } from "lucide-react";
 import type {
   CheckAnswerResultDTO,
   LearnDirection,
@@ -2359,8 +2359,8 @@ function LearnViewContent({
                   variant={currentPhrase.learning_hint_markdown ? "default" : "outline"}
                   onClick={() => handleOpenHintEditor(currentPhrase)}
                 >
-                  <Edit3 className="size-4" />
-                  {currentPhrase.learning_hint_markdown ? "Hint" : "Add hint"}
+                  <Info className="size-4" />
+                  Description
                 </Button>
                 {isCorrect === false && (
                   <Button type="button" size="sm" variant="default" onClick={handleTryAgain}>
@@ -2434,9 +2434,9 @@ function LearnViewContent({
                       variant={currentPhrase.learning_hint_markdown ? "default" : "outline"}
                       size="icon"
                       onClick={() => handleOpenHintEditor(currentPhrase)}
-                      aria-label={currentPhrase.learning_hint_markdown ? "Open learning hint" : "Add learning hint"}
+                      aria-label="Description"
                     >
-                      <Edit3 className="size-4" />
+                      <Info className="size-4" />
                     </Button>
                     <Button type="button" variant="default" onClick={handleTryAgain}>
                       Try again
@@ -2452,9 +2452,9 @@ function LearnViewContent({
                       variant={currentPhrase.learning_hint_markdown ? "default" : "outline"}
                       size="icon"
                       onClick={() => handleOpenHintEditor(currentPhrase)}
-                      aria-label={currentPhrase.learning_hint_markdown ? "Open learning hint" : "Add learning hint"}
+                      aria-label="Description"
                     >
-                      <Edit3 className="size-4" />
+                      <Info className="size-4" />
                     </Button>
                     <MobileActionMenu
                       triggerLabel="Difficulty"

@@ -32,6 +32,7 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
   const expected = direction.direction === "en_to_pl" ? phrase.pl_text : phrase.en_text;
   const prompt = direction.direction === "en_to_pl" ? phrase.en_text : phrase.pl_text;
   const checked = checkFlashcardAnswer(body.user_answer, expected);
+  if (!body.user_answer.trim()) checked.kind = "manual";
   const { data: settings } = await db
     .from("flashcard_settings")
     .select("request_retention")

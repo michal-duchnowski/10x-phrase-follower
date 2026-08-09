@@ -1,15 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  ArchiveX,
-  CheckCircle2,
-  CircleHelp,
-  Flame,
-  LoaderCircle,
-  Play,
-  Settings2,
-  Volume2,
-  XCircle,
-} from "lucide-react";
+import { ArchiveX, CheckCircle2, Flame, Info, LoaderCircle, Play, Settings2, Volume2, XCircle } from "lucide-react";
 import { Button } from "./ui/button";
 import { ToastProvider, useToast } from "./ui/toast";
 import { useApi } from "../lib/hooks/useApi";
@@ -203,10 +193,13 @@ function FlashcardsContent() {
     }
   };
   const check = () => {
-    if (!answer.trim() || !current) return;
+    if (!current) return;
     const expected = current.expected_answer.toLocaleLowerCase().trim();
     const typed = answer.toLocaleLowerCase().trim();
-    setChecked({ kind: typed === expected ? "exact" : expected.includes(typed) ? "contains" : "manual" });
+    setChecked({
+      kind:
+        typed.length === 0 ? "manual" : typed === expected ? "exact" : expected.includes(typed) ? "contains" : "manual",
+    });
     void playEnglish();
   };
   const rate = (rating: Rating) => {
@@ -259,25 +252,12 @@ function FlashcardsContent() {
     );
   if (current) {
     const isMatch = checked?.kind === "exact" || checked?.kind === "contains";
+    const isManual = checked?.kind === "manual" && answer.trim().length === 0;
     return (
       <section className="mx-auto max-w-2xl py-5">
         <div className="mb-4 flex items-center justify-between text-sm text-muted-foreground">
           <span>{cards.length - index} cards remaining</span>
-          <div className="flex items-center gap-2">
-            <span>{current.direction === "en_to_pl" ? "English to Polish" : "Polish to English"}</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8 text-foreground hover:bg-muted"
-              onClick={() => {
-                setHintSaveError(null);
-                setDetailsOpen(true);
-              }}
-              title="Learning hint"
-            >
-              <CircleHelp />
-            </Button>
-          </div>
+          <span>{current.direction === "en_to_pl" ? "English to Polish" : "Polish to English"}</span>
         </div>
         <div className="rounded-md border border-border bg-card px-5 py-5 shadow-sm sm:px-6">
           <div
@@ -307,17 +287,29 @@ function FlashcardsContent() {
           <Button
             className="mt-3 bg-primary text-primary-foreground hover:bg-primary/90"
             onClick={check}
-            disabled={!answer.trim() || busy}
+            disabled={busy}
           >
             Check answer
           </Button>
         ) : (
           <div className="mt-4 space-y-3 rounded-md border border-border bg-card p-4 shadow-sm">
             <div
-              className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium ${isMatch ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "border-destructive/40 bg-destructive/10 text-destructive"}`}
+              className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium ${isMatch ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : isManual ? "border-primary/40 bg-primary/10 text-primary" : "border-destructive/40 bg-destructive/10 text-destructive"}`}
             >
-              {isMatch ? <CheckCircle2 className="size-4" /> : <XCircle className="size-4" />}
-              {isMatch ? (checked.kind === "exact" ? "Correct" : "Partial match") : "Not correct"}
+              {isMatch ? (
+                <CheckCircle2 className="size-4" />
+              ) : isManual ? (
+                <Info className="size-4" />
+              ) : (
+                <XCircle className="size-4" />
+              )}
+              {isMatch
+                ? checked.kind === "exact"
+                  ? "Correct"
+                  : "Partial match"
+                : isManual
+                  ? "Choose a recall rating"
+                  : "Not correct"}
             </div>
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -327,11 +319,27 @@ function FlashcardsContent() {
                   dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(current.expected_answer) }}
                 />
               </div>
-              <Button variant="secondary" size="icon" onClick={() => void playEnglish()} title="Play English audio">
-                <Volume2 />
-              </Button>
+              <div className="flex shrink-0 gap-2">
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  onClick={() => {
+                    setHintSaveError(null);
+                    setDetailsOpen(true);
+                  }}
+                  title="Description"
+                  aria-label="Description"
+                >
+                  <Info />
+                </Button>
+                <Button variant="secondary" size="icon" onClick={() => void playEnglish()} title="Play English audio">
+                  <Volume2 />
+                </Button>
+              </div>
             </div>
-            {!isMatch && <p className="text-sm text-muted-foreground">Choose the rating that reflects your recall.</p>}
+            {!isMatch && !isManual && (
+              <p className="text-sm text-muted-foreground">Choose the rating that reflects your recall.</p>
+            )}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {(["Again", "Hard", "Good", "Easy"] as const).map((rating) => (
                 <Button key={rating} className={ratingButtonClass(rating)} onClick={() => rate(rating)}>

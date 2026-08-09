@@ -6,7 +6,7 @@ import GenerateAudioButton from "./GenerateAudioButton";
 import ExportZipButton from "./ExportZipButton";
 import MobileActionMenu from "./MobileActionMenu";
 import PhraseLearningHintModal from "./PhraseLearningHintModal";
-import { Edit3, Trash2, Minimize2, Plus, Layers } from "lucide-react";
+import { Info, Trash2, Minimize2, Plus, Layers } from "lucide-react";
 import DifficultyBadge from "./DifficultyBadge";
 import type {
   PhraseDTO,
@@ -1563,10 +1563,10 @@ function PhraseRow({
               phrase.learning_hint_markdown ? "h-7 w-7 p-0" : "h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
             }
             onClick={handleEditHintClick}
-            aria-label={phrase.learning_hint_markdown ? "Edit learning hint" : "Add learning hint"}
-            title={phrase.learning_hint_markdown ? "Edit learning hint" : "Add learning hint"}
+            aria-label="Description"
+            title="Description"
           >
-            <Edit3 className="size-4" />
+            <Info className="size-4" />
           </Button>
           {!isVirtual && (
             <Button
@@ -1758,9 +1758,9 @@ function PhraseCard({
               phrase.learning_hint_markdown ? "h-8 w-8 p-0" : "p-1 h-auto text-muted-foreground hover:text-foreground"
             }
             onClick={handleEditHintClick}
-            aria-label={phrase.learning_hint_markdown ? "Edit learning hint" : "Add learning hint"}
+            aria-label="Description"
           >
-            <Edit3 className="size-4" />
+            <Info className="size-4" />
           </Button>
           <Button
             variant="ghost"
@@ -1783,9 +1783,9 @@ function PhraseCard({
               : "p-1 h-auto text-muted-foreground hover:text-foreground shrink-0"
           }
           onClick={handleEditHintClick}
-          aria-label={phrase.learning_hint_markdown ? "Edit learning hint" : "Add learning hint"}
+          aria-label="Description"
         >
-          <Edit3 className="size-4" />
+          <Info className="size-4" />
         </Button>
       )}
     </div>

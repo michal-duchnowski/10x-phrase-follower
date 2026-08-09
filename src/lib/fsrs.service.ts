@@ -2,7 +2,7 @@ import { createEmptyCard, fsrs, Rating, State, type Card } from "ts-fsrs";
 
 export type FlashcardDirection = "en_to_pl" | "pl_to_en";
 export type FsrsRating = "Again" | "Hard" | "Good" | "Easy";
-export type AnswerMatchKind = "exact" | "contains" | "typo" | "incorrect";
+export type AnswerMatchKind = "exact" | "contains" | "typo" | "incorrect" | "manual";
 
 export interface StoredFsrsCard {
   due_at: string;
