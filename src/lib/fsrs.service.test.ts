@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkFlashcardAnswer, scheduleReview } from "./fsrs.service";
+import { checkFlashcardAnswer, scheduleReview, shouldRequireExactEnglishMatch } from "./fsrs.service";
 
 describe("flashcard answer checking", () => {
   it("identifies exact, partial, typo, and incorrect answers", () => {
@@ -8,6 +8,9 @@ describe("flashcard answer checking", () => {
     expect(checkFlashcardAnswer("good", "good morning, good day").kind).toBe("contains");
     expect(checkFlashcardAnswer("colour", "color").kind).toBe("typo");
     expect(checkFlashcardAnswer("no", "yes").kind).toBe("incorrect");
+    expect(shouldRequireExactEnglishMatch("pl_to_en", "good morning")).toBe(true);
+    expect(checkFlashcardAnswer("good", "good morning", { exactOnly: true }).kind).toBe("incorrect");
+    expect(checkFlashcardAnswer("good mornng", "good morning", { exactOnly: true }).kind).toBe("incorrect");
   });
 });
 

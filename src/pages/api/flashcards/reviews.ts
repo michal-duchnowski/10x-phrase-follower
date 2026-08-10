@@ -3,7 +3,13 @@ import type { APIRoute, APIContext } from "astro";
 import type { LocalsWithAuth } from "../../../lib/types";
 import { ApiErrors, requireAuth, withErrorHandling } from "../../../lib/errors";
 import { getSupabaseClient } from "../../../lib/utils";
-import { checkFlashcardAnswer, scheduleReview, serializeCard, type FsrsRating } from "../../../lib/fsrs.service";
+import {
+  checkFlashcardAnswer,
+  scheduleReview,
+  serializeCard,
+  shouldRequireExactEnglishMatch,
+  type FsrsRating,
+} from "../../../lib/fsrs.service";
 
 export const prerender = false;
 const ratings = new Set<FsrsRating>(["Again", "Hard", "Good", "Easy"]);
@@ -31,7 +37,9 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
   const phrase = Array.isArray(flashcard.phrases) ? flashcard.phrases[0] : flashcard.phrases;
   const expected = direction.direction === "en_to_pl" ? phrase.pl_text : phrase.en_text;
   const prompt = direction.direction === "en_to_pl" ? phrase.en_text : phrase.pl_text;
-  const checked = checkFlashcardAnswer(body.user_answer, expected);
+  const checked = checkFlashcardAnswer(body.user_answer, expected, {
+    exactOnly: shouldRequireExactEnglishMatch(direction.direction, expected),
+  });
   if (!body.user_answer.trim()) checked.kind = "manual";
   const { data: settings } = await db
     .from("flashcard_settings")

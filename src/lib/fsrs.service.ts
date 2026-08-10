@@ -85,22 +85,30 @@ function levenshtein(a: string, b: string): number {
   return row[b.length];
 }
 
+function normalizeAnswer(text: string): string {
+  return text
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[\u200B-\u200D\uFEFF*_]/g, " ")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function shouldRequireExactEnglishMatch(direction: FlashcardDirection, expectedAnswer: string): boolean {
+  return direction === "pl_to_en" && normalizeAnswer(expectedAnswer).split(" ").filter(Boolean).length <= 2;
+}
+
 export function checkFlashcardAnswer(
   userAnswer: string,
-  expectedAnswer: string
+  expectedAnswer: string,
+  options: { exactOnly?: boolean } = {}
 ): { kind: AnswerMatchKind; normalizedUser: string; normalizedExpected: string } {
-  const normalize = (text: string) =>
-    text
-      .normalize("NFKD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .replace(/[\u200B-\u200D\uFEFF*_]/g, " ")
-      .replace(/[^\p{L}\p{N}\s]/gu, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  const normalizedUser = normalize(userAnswer);
-  const normalizedExpected = normalize(expectedAnswer);
+  const normalizedUser = normalizeAnswer(userAnswer);
+  const normalizedExpected = normalizeAnswer(expectedAnswer);
   if (normalizedUser === normalizedExpected) return { kind: "exact", normalizedUser, normalizedExpected };
+  if (options.exactOnly) return { kind: "incorrect", normalizedUser, normalizedExpected };
   const parts = normalizedExpected.split(/\s*(?:\/|;|,|\bor\b)\s*/).filter(Boolean);
   const expectedWords = normalizedExpected.split(" ").filter((word) => word.length > 2);
   if (

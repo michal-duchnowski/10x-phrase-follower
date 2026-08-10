@@ -14,7 +14,7 @@ import {
 import { Button } from "./ui/button";
 import { ToastProvider, useToast } from "./ui/toast";
 import { useApi } from "../lib/hooks/useApi";
-import { checkFlashcardAnswer } from "../lib/fsrs.service";
+import { checkFlashcardAnswer, shouldRequireExactEnglishMatch } from "../lib/fsrs.service";
 import PhraseLearningHintModal from "./PhraseLearningHintModal";
 import { parseMarkdownToHtml } from "../lib/utils";
 
@@ -225,7 +225,9 @@ function FlashcardsContent() {
   };
   const check = () => {
     if (!current) return;
-    const match = checkFlashcardAnswer(answer, current.expected_answer);
+    const match = checkFlashcardAnswer(answer, current.expected_answer, {
+      exactOnly: shouldRequireExactEnglishMatch(current.direction, current.expected_answer),
+    });
     const kind = answer.trim().length === 0 ? "manual" : match.kind === "incorrect" ? "manual" : match.kind;
     if (drillActive) {
       if (kind === "exact" || kind === "contains") {
