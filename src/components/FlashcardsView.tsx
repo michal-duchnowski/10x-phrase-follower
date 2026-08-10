@@ -14,6 +14,7 @@ import {
 import { Button } from "./ui/button";
 import { ToastProvider, useToast } from "./ui/toast";
 import { useApi } from "../lib/hooks/useApi";
+import { checkFlashcardAnswer } from "../lib/fsrs.service";
 import PhraseLearningHintModal from "./PhraseLearningHintModal";
 import { parseMarkdownToHtml } from "../lib/utils";
 
@@ -33,7 +34,11 @@ interface Overview {
   new_phrases: number;
   new_phrases_today: number;
   can_add_new_phrases: boolean;
-  settings: { new_phrases_per_batch: number; review_cards_per_batch: number };
+  settings: {
+    new_phrases_per_batch: number;
+    review_cards_per_batch: number;
+    drill_repetitions: number;
+  };
 }
 type Rating = "Again" | "Hard" | "Good" | "Easy";
 interface DifficultCard {
@@ -59,6 +64,8 @@ function FlashcardsContent() {
   const [index, setIndex] = useState(0);
   const [answer, setAnswer] = useState("");
   const [checked, setChecked] = useState<{ kind: string } | null>(null);
+  const [drillActive, setDrillActive] = useState(false);
+  const [drillStreak, setDrillStreak] = useState(0);
   const [busy, setBusy] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -147,6 +154,8 @@ function FlashcardsContent() {
       setIndex(0);
       setAnswer("");
       setChecked(null);
+      setDrillActive(false);
+      setDrillStreak(0);
       setDetailsOpen(false);
       await loadOverview();
     } catch (error) {
@@ -208,13 +217,28 @@ function FlashcardsContent() {
   };
   const check = () => {
     if (!current) return;
-    const expected = current.expected_answer.toLocaleLowerCase().trim();
-    const typed = answer.toLocaleLowerCase().trim();
-    setChecked({
-      kind:
-        typed.length === 0 ? "manual" : typed === expected ? "exact" : expected.includes(typed) ? "contains" : "manual",
-    });
+    const match = checkFlashcardAnswer(answer, current.expected_answer);
+    const kind = answer.trim().length === 0 ? "manual" : match.kind === "incorrect" ? "manual" : match.kind;
+    if (drillActive) {
+      if (kind === "exact" || kind === "contains") {
+        const nextStreak = drillStreak + 1;
+        setDrillStreak(nextStreak);
+        if (nextStreak >= (overview?.settings.drill_repetitions ?? 3)) setDrillActive(false);
+      } else {
+        setDrillStreak(0);
+      }
+      setAnswer("");
+      void playEnglish();
+      return;
+    }
+    setChecked({ kind });
     void playEnglish();
+  };
+  const startDrill = () => {
+    setDrillActive(true);
+    setDrillStreak(0);
+    setAnswer("");
+    window.requestAnimationFrame(() => answerRef.current?.focus());
   };
   const rate = (rating: Rating) => {
     if (!current || !checked) return;
@@ -223,6 +247,8 @@ function FlashcardsContent() {
     setIndex((value) => value + 1);
     setAnswer("");
     setChecked(null);
+    setDrillActive(false);
+    setDrillStreak(0);
     setDetailsOpen(false);
     void apiCall("/api/flashcards/reviews", { method: "POST", body: JSON.stringify(review) })
       .then(() => {
@@ -246,6 +272,7 @@ function FlashcardsContent() {
         body: JSON.stringify({
           new_phrases_per_batch: Number(form.get("new")),
           review_cards_per_batch: Number(form.get("reviews")),
+          drill_repetitions: Number(form.get("drillRepetitions")),
         }),
       });
       setSettingsOpen(false);
@@ -274,8 +301,9 @@ function FlashcardsContent() {
       </section>
     );
   if (current) {
-    const isMatch = checked?.kind === "exact" || checked?.kind === "contains";
+    const isMatch = checked?.kind === "exact" || checked?.kind === "contains" || checked?.kind === "typo";
     const isManual = checked?.kind === "manual" && answer.trim().length === 0;
+    const drillTarget = overview?.settings.drill_repetitions ?? 3;
     return (
       <section className="mx-auto max-w-2xl py-5">
         <div className="mb-4 flex items-center justify-between text-sm text-muted-foreground">
@@ -289,13 +317,13 @@ function FlashcardsContent() {
           />
         </div>
         <label htmlFor="flashcard-answer" className="mt-4 block text-sm font-medium text-foreground">
-          Your answer
+          {drillActive ? `Drill: ${drillStreak} / ${drillTarget} consecutive correct answers` : "Your answer"}
         </label>
         <textarea
           id="flashcard-answer"
           ref={answerRef}
           value={answer}
-          disabled={Boolean(checked) || busy}
+          disabled={(Boolean(checked) && !drillActive) || busy}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
@@ -306,7 +334,16 @@ function FlashcardsContent() {
           placeholder="Type your answer"
           className="mt-2 min-h-[72px] w-full rounded-md border border-input bg-card p-3 text-base text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
-        {!checked ? (
+        {drillActive ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={check} disabled={busy}>
+              Check drill answer
+            </Button>
+            <Button variant="secondary" onClick={() => setDrillActive(false)} disabled={busy}>
+              Back to rating
+            </Button>
+          </div>
+        ) : !checked ? (
           <Button
             className="mt-3 bg-primary text-primary-foreground hover:bg-primary/90"
             onClick={check}
@@ -355,6 +392,17 @@ function FlashcardsContent() {
                 >
                   <Info />
                 </Button>
+                {!isMatch && !isManual && (
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    onClick={startDrill}
+                    title={`Drill: ${drillTarget} consecutive correct answers`}
+                    aria-label={`Drill: ${drillTarget} consecutive correct answers`}
+                  >
+                    <span className="text-sm font-bold">{drillTarget}×</span>
+                  </Button>
+                )}
                 <Button variant="secondary" size="icon" onClick={() => void playEnglish()} title="Play English audio">
                   <Volume2 />
                 </Button>
@@ -418,7 +466,7 @@ function FlashcardsContent() {
       {settingsOpen && overview && (
         <form
           onSubmit={saveSettings}
-          className="mt-6 grid grid-cols-2 gap-4 rounded-md border border-border bg-card p-4 shadow-sm"
+          className="mt-6 grid gap-4 rounded-md border border-border bg-card p-4 shadow-sm sm:grid-cols-3"
         >
           <label className="text-sm font-medium text-foreground">
             New phrases per batch
@@ -442,7 +490,18 @@ function FlashcardsContent() {
               className="mt-1 w-full rounded-md border border-input bg-background p-2 text-foreground"
             />
           </label>
-          <Button type="submit" disabled={busy} className="col-span-2 bg-primary text-primary-foreground">
+          <label className="text-sm font-medium text-foreground">
+            Drill repetitions
+            <input
+              name="drillRepetitions"
+              type="number"
+              min="1"
+              max="10"
+              defaultValue={overview.settings.drill_repetitions}
+              className="mt-1 w-full rounded-md border border-input bg-background p-2 text-foreground"
+            />
+          </label>
+          <Button type="submit" disabled={busy} className="sm:col-span-3 bg-primary text-primary-foreground">
             Save settings
           </Button>
         </form>

@@ -4,6 +4,7 @@ import { checkFlashcardAnswer, scheduleReview } from "./fsrs.service";
 describe("flashcard answer checking", () => {
   it("identifies exact, partial, typo, and incorrect answers", () => {
     expect(checkFlashcardAnswer("Dzien dobry", "Dzień dobry").kind).toBe("exact");
+    expect(checkFlashcardAnswer("HELLO", "hello").kind).toBe("exact");
     expect(checkFlashcardAnswer("good", "good morning, good day").kind).toBe("contains");
     expect(checkFlashcardAnswer("colour", "color").kind).toBe("typo");
     expect(checkFlashcardAnswer("no", "yes").kind).toBe("incorrect");

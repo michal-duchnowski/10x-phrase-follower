@@ -47,7 +47,12 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
   const hasPendingNew = Array.from(newPhraseIds).some(
     (phraseId) => introductionDateByPhrase.has(phraseId) && introductionDateByPhrase.get(phraseId) !== today
   );
-  const config = settings ?? { new_phrases_per_batch: 5, review_cards_per_batch: 50, request_retention: 0.9 };
+  const config = settings ?? {
+    new_phrases_per_batch: 5,
+    review_cards_per_batch: 50,
+    request_retention: 0.9,
+    drill_repetitions: 3,
+  };
   return Response.json({
     due_reviews: due,
     overdue_reviews: overdue,
