@@ -239,7 +239,9 @@ function parseInlineMarkdown(text: string): string {
   let html = escapeHtml(text);
   html = normalizeUnderscores(html);
   html = html.replace(/`([^`]+?)`/g, "<code>$1</code>");
+  html = html.replace(/\*\*\*([^*]+?)\*\*\*/g, "<strong><em>$1</em></strong>");
   html = html.replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/\*([^*]+?)\*/g, "<em>$1</em>");
   html = html.replace(/(?:^|[^\w_])__([^_]+?)__(?=[^\w_]|$)/g, (match, content) => {
     const prefix = match.startsWith("__") ? "" : match[0];
     return `${prefix}<em>${content}</em>`;
