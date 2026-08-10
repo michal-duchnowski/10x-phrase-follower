@@ -128,13 +128,21 @@ function FlashcardsContent() {
   }, [current?.direction_id, checked, detailsOpen]);
   useEffect(() => {
     const handleRatingShortcut = (event: KeyboardEvent) => {
-      if (!checked || busy || detailsOpen) return;
+      if (!checked || busy || detailsOpen || drillActive) return;
       if (
         event.target instanceof HTMLInputElement ||
         event.target instanceof HTMLTextAreaElement ||
         event.target instanceof HTMLSelectElement
       )
         return;
+      if (event.key.toLowerCase() === "r" && checked.kind !== "manual") {
+        event.preventDefault();
+        setDrillActive(true);
+        setDrillStreak(0);
+        setAnswer("");
+        window.requestAnimationFrame(() => answerRef.current?.focus());
+        return;
+      }
       const rating = ({ "1": "Again", "2": "Hard", "3": "Good", "4": "Easy" } as const)[event.key];
       if (!rating) return;
       event.preventDefault();
@@ -142,7 +150,7 @@ function FlashcardsContent() {
     };
     window.addEventListener("keydown", handleRatingShortcut);
     return () => window.removeEventListener("keydown", handleRatingShortcut);
-  }, [checked, busy, detailsOpen, current]);
+  }, [checked, busy, detailsOpen, drillActive, current]);
   const start = async (includeMoreNew = false) => {
     setBusy(true);
     try {
@@ -392,13 +400,13 @@ function FlashcardsContent() {
                 >
                   <Info />
                 </Button>
-                {!isMatch && !isManual && (
+                {!isManual && (
                   <Button
                     variant="secondary"
                     size="icon"
                     onClick={startDrill}
-                    title={`Drill: ${drillTarget} consecutive correct answers`}
-                    aria-label={`Drill: ${drillTarget} consecutive correct answers`}
+                    title={`Drill: ${drillTarget} consecutive correct answers (shortcut: R)`}
+                    aria-label={`Drill: ${drillTarget} consecutive correct answers. Shortcut: R`}
                   >
                     <span className="text-sm font-bold">{drillTarget}×</span>
                   </Button>
