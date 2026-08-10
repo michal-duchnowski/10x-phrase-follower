@@ -1,5 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { ArchiveX, CheckCircle2, Flame, Info, LoaderCircle, Play, Settings2, Volume2, XCircle } from "lucide-react";
+import {
+  ArchiveX,
+  CheckCircle2,
+  Flame,
+  Info,
+  LoaderCircle,
+  Play,
+  Plus,
+  Settings2,
+  Volume2,
+  XCircle,
+} from "lucide-react";
 import { Button } from "./ui/button";
 import { ToastProvider, useToast } from "./ui/toast";
 import { useApi } from "../lib/hooks/useApi";
@@ -20,6 +31,8 @@ interface Overview {
   due_reviews: number;
   overdue_reviews: number;
   new_phrases: number;
+  new_phrases_today: number;
+  can_add_new_phrases: boolean;
   settings: { new_phrases_per_batch: number; review_cards_per_batch: number };
 }
 type Rating = "Again" | "Hard" | "Good" | "Easy";
@@ -123,18 +136,19 @@ function FlashcardsContent() {
     window.addEventListener("keydown", handleRatingShortcut);
     return () => window.removeEventListener("keydown", handleRatingShortcut);
   }, [checked, busy, detailsOpen, current]);
-  const start = async () => {
+  const start = async (includeMoreNew = false) => {
     setBusy(true);
     try {
       const data = await apiCall<{ cards: SessionCard[] }>("/api/flashcards/session", {
         method: "POST",
-        body: JSON.stringify({}),
+        body: JSON.stringify({ include_more_new: includeMoreNew }),
       });
       setCards(data.cards);
       setIndex(0);
       setAnswer("");
       setChecked(null);
       setDetailsOpen(false);
+      await loadOverview();
     } catch (error) {
       addToast({
         type: "error",
@@ -245,9 +259,18 @@ function FlashcardsContent() {
       <section className="mx-auto max-w-xl py-16 text-center">
         <h1 className="text-2xl font-semibold">Daily session completed</h1>
         <p className="mt-2 text-muted-foreground">Your reviews have been saved.</p>
-        <Button className="mt-6" onClick={start}>
-          Learn more
-        </Button>
+        <div className="mt-6 flex justify-center gap-2">
+          <Button onClick={() => void start()}>
+            <Play />
+            Start session
+          </Button>
+          {overview?.can_add_new_phrases && (
+            <Button variant="secondary" onClick={() => void start(true)}>
+              <Plus />
+              Add {overview.settings.new_phrases_per_batch} new phrases
+            </Button>
+          )}
+        </div>
       </section>
     );
   if (current) {
@@ -475,9 +498,17 @@ function FlashcardsContent() {
         <Metric label="Overdue" value={overview?.overdue_reviews ?? 0} />
         <Metric label="New phrases" value={overview?.new_phrases ?? 0} />
       </div>
-      <Button className="mt-10" onClick={start} disabled={busy}>
-        {busy ? <LoaderCircle className="animate-spin" /> : <Play />}Start session
-      </Button>
+      <div className="mt-10 flex flex-wrap gap-2">
+        <Button onClick={() => void start()} disabled={busy}>
+          {busy ? <LoaderCircle className="animate-spin" /> : <Play />}Start session
+        </Button>
+        {overview?.can_add_new_phrases && (
+          <Button variant="secondary" onClick={() => void start(true)} disabled={busy}>
+            <Plus />
+            Add {overview.settings.new_phrases_per_batch} new phrases
+          </Button>
+        )}
+      </div>
     </section>
   );
 }

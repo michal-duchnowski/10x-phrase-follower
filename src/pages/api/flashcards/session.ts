@@ -3,7 +3,7 @@ import type { APIRoute, APIContext } from "astro";
 import type { LocalsWithAuth } from "../../../lib/types";
 import { ApiErrors, requireAuth, withErrorHandling } from "../../../lib/errors";
 import { getSupabaseClient } from "../../../lib/utils";
-import { spaceDirections } from "../../../lib/flashcards.service";
+import { getFlashcardsDay, spaceDirections } from "../../../lib/flashcards.service";
 
 export const prerender = false;
 export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
@@ -12,7 +12,9 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
   const db: any = getSupabaseClient(context);
   const body = await context.request.json().catch(() => ({}));
   const completed = new Set(Array.isArray(body.completed_direction_ids) ? body.completed_direction_ids : []);
+  const includeMoreNew = body.include_more_new === true;
   const now = new Date().toISOString();
+  const today = getFlashcardsDay();
   const { data: settings } = await db.from("flashcard_settings").select("*").eq("user_id", userId).maybeSingle();
   const config = settings ?? { new_phrases_per_batch: 5, review_cards_per_batch: 50 };
   const { data: flashcards, error } = await db
@@ -24,6 +26,11 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
   const cards = flashcards ?? [];
   const ids = cards.map((card: any) => card.id);
   if (!ids.length) return Response.json({ cards: [] });
+  const { data: introductions, error: introductionError } = await db
+    .from("flashcard_phrase_introductions")
+    .select("phrase_id,introduced_on")
+    .eq("user_id", userId);
+  if (introductionError) throw ApiErrors.internal("Failed to read introduced phrases");
   const { data: directions, error: directionError } = await db
     .from("flashcard_directions")
     .select("*")
@@ -55,19 +62,37 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
     (d: any) => d.fsrs_state !== "New" && d.due_at < new Date(new Date().setHours(0, 0, 0, 0)).toISOString()
   ).length;
   const selected = [...reviews];
-  if (reviews.length < config.review_cards_per_batch && overdue <= config.review_cards_per_batch * 2) {
-    const newByPhrase = new Map<string, any[]>();
-    available
-      .filter((d: any) => d.fsrs_state === "New" && d.reps === 0)
-      .forEach((d: any) => {
-        const card = byFlashcard.get(d.flashcard_id);
-        const list = newByPhrase.get(card.phrase_id) ?? [];
-        list.push(d);
-        newByPhrase.set(card.phrase_id, list);
-      });
-    Array.from(newByPhrase.values())
-      .slice(0, config.new_phrases_per_batch)
-      .forEach((group) => selected.push(...group));
+  const introducedByPhrase = new Map((introductions ?? []).map((item: any) => [item.phrase_id, item.introduced_on]));
+  const newByPhrase = new Map<string, any[]>();
+  available
+    .filter((d: any) => d.fsrs_state === "New" && d.reps === 0)
+    .forEach((d: any) => {
+      const card = byFlashcard.get(d.flashcard_id);
+      const list = newByPhrase.get(card.phrase_id) ?? [];
+      list.push(d);
+      newByPhrase.set(card.phrase_id, list);
+    });
+  const pendingGroups = Array.from(newByPhrase.entries()).filter(
+    ([phraseId]) => introducedByPhrase.has(phraseId) && introducedByPhrase.get(phraseId) !== today
+  );
+  const canAddNew = reviews.length < config.review_cards_per_batch && overdue <= config.review_cards_per_batch * 2;
+  if (pendingGroups.length && canAddNew) {
+    pendingGroups.slice(0, config.new_phrases_per_batch).forEach(([, group]) => selected.push(...group));
+  } else if (canAddNew) {
+    const introducedToday = Array.from(introducedByPhrase.values()).filter((date) => date === today).length;
+    const canIntroduceAutomatically = introducedToday === 0;
+    if (canIntroduceAutomatically || includeMoreNew) {
+      const groups = Array.from(newByPhrase.entries())
+        .filter(([phraseId]) => !introducedByPhrase.has(phraseId))
+        .slice(0, config.new_phrases_per_batch);
+      if (groups.length) {
+        const { error: insertError } = await db
+          .from("flashcard_phrase_introductions")
+          .insert(groups.map(([phraseId]) => ({ user_id: userId, phrase_id: phraseId, introduced_on: today })));
+        if (insertError) throw ApiErrors.internal("Failed to introduce new phrases");
+        groups.forEach(([, group]) => selected.push(...group));
+      }
+    }
   }
   return Response.json({ cards: spaceDirections(selected.map(makeCard)) });
 });

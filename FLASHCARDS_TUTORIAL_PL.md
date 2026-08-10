@@ -60,7 +60,9 @@ Przykład: fiszka z terminem dziś o 10:00 jest o 11:00 w `Due now`, ale nie w `
 
 ## Kolejność sesji
 
-Najpierw trafiają do sesji bieżące i zaległe powtórki, od najwcześniejszego terminu. Nowe frazy są dodawane tylko wtedy, gdy pula powtórek nie wypełniła limitu sesji i liczba zaległości nie jest zbyt duża.
+Najpierw trafiają do sesji bieżące i zaległe powtórki, od najwcześniejszego terminu. Pierwsze zwykłe uruchomienie sesji danego dnia może wprowadzić jedną porcję nowych fraz, tylko gdy pula powtórek nie wypełniła limitu i liczba zaległości nie jest zbyt duża. Kolejne zwykłe sesje tego dnia zawierają wyłącznie powtórki.
+
+Gdy pierwsza porcja została już wprowadzona, nie ma dużej liczby zaległości i są dostępne kolejne nowe frazy, pojawia się osobny przycisk `Add new phrases`. Tylko jego użycie wprowadza następną porcję nowych fraz tego samego dnia.
 
 Ustawienia mają różne jednostki:
 

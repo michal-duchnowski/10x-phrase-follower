@@ -19,3 +19,14 @@ export function spaceDirections<T extends { phrase_id: string }>(cards: T[]): T[
   }
   return [...result, ...deferred];
 }
+
+export function getFlashcardsDay(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Europe/Warsaw",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value;
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
