@@ -52,6 +52,7 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
     review_cards_per_batch: 50,
     request_retention: 0.9,
     drill_repetitions: 3,
+    difficult_cards_per_training: 10,
   };
   return Response.json({
     due_reviews: due,

@@ -38,11 +38,14 @@ interface Overview {
     new_phrases_per_batch: number;
     review_cards_per_batch: number;
     drill_repetitions: number;
+    difficult_cards_per_training: number;
   };
 }
 type Rating = "Again" | "Hard" | "Good" | "Easy";
+type SessionMode = "daily" | "training";
 interface DifficultCard {
   flashcard_id: string;
+  phrase_id: string;
   direction_id: string;
   direction: "en_to_pl" | "pl_to_en";
   en_text: string;
@@ -62,6 +65,8 @@ function FlashcardsContent() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [cards, setCards] = useState<SessionCard[]>([]);
   const [index, setIndex] = useState(0);
+  const [sessionMode, setSessionMode] = useState<SessionMode>("daily");
+  const [trainingCompleted, setTrainingCompleted] = useState(false);
   const [answer, setAnswer] = useState("");
   const [checked, setChecked] = useState<{ kind: string } | null>(null);
   const [drillActive, setDrillActive] = useState(false);
@@ -143,14 +148,18 @@ function FlashcardsContent() {
         window.requestAnimationFrame(() => answerRef.current?.focus());
         return;
       }
-      const rating = ({ "1": "Again", "2": "Hard", "3": "Good", "4": "Easy" } as const)[event.key];
+      const ratings: Record<string, Rating> =
+        sessionMode === "training"
+          ? { "1": "Again", "3": "Good" }
+          : { "1": "Again", "2": "Hard", "3": "Good", "4": "Easy" };
+      const rating = ratings[event.key];
       if (!rating) return;
       event.preventDefault();
       void rate(rating);
     };
     window.addEventListener("keydown", handleRatingShortcut);
     return () => window.removeEventListener("keydown", handleRatingShortcut);
-  }, [checked, busy, detailsOpen, drillActive, current]);
+  }, [checked, busy, detailsOpen, drillActive, current, sessionMode]);
   const start = async (includeMoreNew = false) => {
     setBusy(true);
     try {
@@ -160,6 +169,8 @@ function FlashcardsContent() {
       });
       setCards(data.cards);
       setIndex(0);
+      setSessionMode("daily");
+      setTrainingCompleted(false);
       setAnswer("");
       setChecked(null);
       setDrillActive(false);
@@ -175,6 +186,30 @@ function FlashcardsContent() {
     } finally {
       setBusy(false);
     }
+  };
+  const startTraining = () => {
+    if (!difficultCards.length) return;
+    setCards(
+      difficultCards.map((card) => ({
+        direction_id: card.direction_id,
+        phrase_id: card.phrase_id,
+        direction: card.direction,
+        prompt_text: card.direction === "en_to_pl" ? card.en_text : card.pl_text,
+        expected_answer: card.direction === "en_to_pl" ? card.pl_text : card.en_text,
+        en_text: card.en_text,
+        pl_text: card.pl_text,
+        learning_hint_markdown: null,
+      }))
+    );
+    setIndex(0);
+    setSessionMode("training");
+    setTrainingCompleted(false);
+    setAnswer("");
+    setChecked(null);
+    setDrillActive(false);
+    setDrillStreak(0);
+    setDetailsOpen(false);
+    setDifficultOpen(false);
   };
   const playEnglish = async () => {
     if (!current) return;
@@ -252,6 +287,17 @@ function FlashcardsContent() {
   };
   const rate = (rating: Rating) => {
     if (!current || !checked) return;
+    if (sessionMode === "training") {
+      setCards((previous) => (rating === "Again" ? [...previous.slice(1), previous[0]] : previous.slice(1)));
+      setIndex(0);
+      setTrainingCompleted(rating === "Good" && cards.length === 1);
+      setAnswer("");
+      setChecked(null);
+      setDrillActive(false);
+      setDrillStreak(0);
+      setDetailsOpen(false);
+      return;
+    }
     const review = { flashcard_direction_id: current.direction_id, user_answer: answer, fsrs_rating: rating };
     const completedSession = index + 1 >= cards.length;
     setIndex((value) => value + 1);
@@ -283,6 +329,7 @@ function FlashcardsContent() {
           new_phrases_per_batch: Number(form.get("new")),
           review_cards_per_batch: Number(form.get("reviews")),
           drill_repetitions: Number(form.get("drillRepetitions")),
+          difficult_cards_per_training: Number(form.get("difficultCardsPerTraining")),
         }),
       });
       setSettingsOpen(false);
@@ -291,11 +338,15 @@ function FlashcardsContent() {
       setBusy(false);
     }
   };
-  if (cards.length && !current)
+  if (trainingCompleted || (cards.length && !current))
     return (
       <section className="mx-auto max-w-xl py-16 text-center">
-        <h1 className="text-2xl font-semibold">Daily session completed</h1>
-        <p className="mt-2 text-muted-foreground">Your reviews have been saved.</p>
+        <h1 className="text-2xl font-semibold">
+          {trainingCompleted ? "Training session completed" : "Daily session completed"}
+        </h1>
+        <p className="mt-2 text-muted-foreground">
+          {trainingCompleted ? "No review statistics or schedule were changed." : "Your reviews have been saved."}
+        </p>
         <div className="mt-6 flex justify-center gap-2">
           <Button onClick={() => void start()}>
             <Play />
@@ -317,7 +368,9 @@ function FlashcardsContent() {
     return (
       <section className="mx-auto max-w-2xl py-5">
         <div className="mb-4 flex items-center justify-between text-sm text-muted-foreground">
-          <span>{cards.length - index} cards remaining</span>
+          <span>
+            {sessionMode === "training" ? `${cards.length} cards to master` : `${cards.length - index} cards remaining`}
+          </span>
           <span>{current.direction === "en_to_pl" ? "English to Polish" : "Polish to English"}</span>
         </div>
         <div className="rounded-md border border-border bg-card px-5 py-5 shadow-sm sm:px-6">
@@ -421,8 +474,16 @@ function FlashcardsContent() {
             {!isMatch && !isManual && (
               <p className="text-sm text-muted-foreground">Choose the rating that reflects your recall.</p>
             )}
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {(["Again", "Hard", "Good", "Easy"] as const).map((rating) => (
+            {sessionMode === "training" && (
+              <p className="text-sm text-muted-foreground">
+                Training only: Again repeats this card later; Good marks it mastered. Nothing is saved.
+              </p>
+            )}
+            <div className={`grid grid-cols-2 gap-2 ${sessionMode === "training" ? "" : "sm:grid-cols-4"}`}>
+              {(sessionMode === "training"
+                ? (["Again", "Good"] as const)
+                : (["Again", "Hard", "Good", "Easy"] as const)
+              ).map((rating) => (
                 <Button key={rating} className={ratingButtonClass(rating)} onClick={() => rate(rating)}>
                   {rating}
                 </Button>
@@ -476,7 +537,7 @@ function FlashcardsContent() {
       {settingsOpen && overview && (
         <form
           onSubmit={saveSettings}
-          className="mt-6 grid gap-4 rounded-md border border-border bg-card p-4 shadow-sm sm:grid-cols-3"
+          className="mt-6 grid gap-4 rounded-md border border-border bg-card p-4 shadow-sm sm:grid-cols-4"
         >
           <label className="text-sm font-medium text-foreground">
             New phrases per batch
@@ -511,7 +572,18 @@ function FlashcardsContent() {
               className="mt-1 w-full rounded-md border border-input bg-background p-2 text-foreground"
             />
           </label>
-          <Button type="submit" disabled={busy} className="sm:col-span-3 bg-primary text-primary-foreground">
+          <label className="text-sm font-medium text-foreground">
+            Difficult cards in training
+            <input
+              name="difficultCardsPerTraining"
+              type="number"
+              min="1"
+              max="100"
+              defaultValue={overview.settings.difficult_cards_per_training}
+              className="mt-1 w-full rounded-md border border-input bg-background p-2 text-foreground"
+            />
+          </label>
+          <Button type="submit" disabled={busy} className="sm:col-span-4 bg-primary text-primary-foreground">
             Save settings
           </Button>
         </form>
@@ -522,12 +594,20 @@ function FlashcardsContent() {
             <div>
               <h2 className="text-base font-semibold text-foreground">Most difficult</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Top 20 based on FSRS difficulty, stability, lapses, overdue time and recent ratings.
+                Top {overview?.settings.difficult_cards_per_training ?? 10} based on FSRS difficulty, stability, lapses,
+                overdue time and recent ratings.
               </p>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => setDifficultOpen(false)}>
-              Close
-            </Button>
+            <div className="flex gap-2">
+              {difficultCards.length > 0 && (
+                <Button onClick={startTraining}>
+                  <Play /> Start training
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" onClick={() => setDifficultOpen(false)}>
+                Close
+              </Button>
+            </div>
           </div>
           {difficultCards.length === 0 ? (
             <p className="mt-5 text-sm text-muted-foreground">No difficult flashcards yet.</p>

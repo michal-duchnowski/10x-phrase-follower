@@ -10,6 +10,12 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
   const userId = (context.locals as LocalsWithAuth).userId;
   requireAuth(userId);
   const db: any = getSupabaseClient(context);
+  const { data: settings } = await db
+    .from("flashcard_settings")
+    .select("difficult_cards_per_training")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const limit = settings?.difficult_cards_per_training ?? 10;
   const { data: directions, error } = await db
     .from("flashcard_directions")
     .select(
@@ -71,6 +77,7 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
       const phrase = Array.isArray(flashcard.phrases) ? flashcard.phrases[0] : flashcard.phrases;
       return {
         flashcard_id: flashcard.id,
+        phrase_id: flashcard.phrase_id,
         direction_id: direction.id,
         direction: direction.direction,
         en_text: phrase.en_text,
@@ -86,6 +93,6 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
     })
     .filter((item: any) => item.score > 0)
     .sort((a: any, b: any) => b.score - a.score)
-    .slice(0, 20);
+    .slice(0, limit);
   return Response.json({ items });
 });
