@@ -456,17 +456,15 @@ function FlashcardsContent() {
                 >
                   <Info />
                 </Button>
-                {!isManual && (
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    onClick={startDrill}
-                    title={`Drill: ${drillTarget} consecutive correct answers (shortcut: R)`}
-                    aria-label={`Drill: ${drillTarget} consecutive correct answers. Shortcut: R`}
-                  >
-                    <span className="text-sm font-bold">{drillTarget}×</span>
-                  </Button>
-                )}
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  onClick={startDrill}
+                  title={`Drill: ${drillTarget} consecutive correct answers (shortcut: R)`}
+                  aria-label={`Drill: ${drillTarget} consecutive correct answers. Shortcut: R`}
+                >
+                  <span className="text-sm font-bold">{drillTarget}×</span>
+                </Button>
                 <Button variant="secondary" size="icon" onClick={() => void playEnglish()} title="Play English audio">
                   <Volume2 />
                 </Button>
