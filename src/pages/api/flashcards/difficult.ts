@@ -19,7 +19,7 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
   const { data: directions, error } = await db
     .from("flashcard_directions")
     .select(
-      "id, direction, fsrs_state, stability, difficulty, reps, lapses, due_at, last_review_at, flashcards!inner(id, status, user_id, phrase_id, phrases!inner(en_text, pl_text))"
+      "id, direction, fsrs_state, stability, difficulty, reps, lapses, due_at, last_review_at, flashcards!inner(id, status, user_id, phrase_id, phrases!inner(en_text, pl_text, learning_hint_markdown))"
     )
     .eq("flashcards.user_id", userId)
     .eq("flashcards.status", "active");
@@ -82,6 +82,7 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
         direction: direction.direction,
         en_text: phrase.en_text,
         pl_text: phrase.pl_text,
+        learning_hint_markdown: phrase.learning_hint_markdown,
         score: Math.round(score),
         lapses: direction.lapses,
         stability: Number(direction.stability.toFixed(1)),

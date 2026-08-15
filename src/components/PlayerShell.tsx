@@ -16,6 +16,7 @@ import PhraseViewer from "./PhraseViewer";
 import KeyboardShortcutsHandler from "./KeyboardShortcutsHandler";
 import RefreshManifestButton from "./RefreshManifestButton";
 import { Button } from "./ui/button";
+import { Info } from "lucide-react";
 import { usePlaybackEngine } from "../lib/hooks/usePlaybackEngine";
 import { useSignedUrlGuard } from "../lib/hooks/useSignedUrlGuard";
 import { useClickToSeek } from "../lib/hooks/useClickToSeek";
@@ -24,6 +25,7 @@ import { useAuth } from "../lib/hooks/useAuth";
 import { useApi } from "../lib/hooks/useApi";
 import MobileActionMenu from "./MobileActionMenu";
 import DifficultyBadge from "./DifficultyBadge";
+import PhraseLearningHintModal from "./PhraseLearningHintModal";
 
 interface PlayerShellProps {
   notebookId: string;
@@ -53,6 +55,9 @@ export default function PlayerShell({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [descriptionOpen, setDescriptionOpen] = useState(false);
+  const [isSavingDescription, setIsSavingDescription] = useState(false);
+  const [descriptionSaveError, setDescriptionSaveError] = useState<string | null>(null);
   // Get difficulty filter from props (URL params) - no localStorage fallback
   const difficultyFilter: PhraseDifficultyOrUnset | "all" =
     initialDifficultyFilter &&
@@ -400,6 +405,42 @@ export default function PlayerShell({
     [currentPhrase, apiCall, fetchManifest]
   );
 
+  const saveLearningHint = useCallback(
+    async (value: string | null) => {
+      if (!currentPhrase) return;
+
+      setIsSavingDescription(true);
+      setDescriptionSaveError(null);
+      try {
+        const updated = await apiCall<{ learning_hint_markdown: string | null }>(
+          `/api/phrases/${currentPhrase.phrase.id}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ learning_hint_markdown: value }),
+          }
+        );
+        setManifest((previous) =>
+          previous
+            ? {
+                ...previous,
+                sequence: previous.sequence.map((item) =>
+                  item.phrase.id === currentPhrase.phrase.id
+                    ? { ...item, phrase: { ...item.phrase, learning_hint_markdown: updated.learning_hint_markdown } }
+                    : item
+                ),
+              }
+            : previous
+        );
+        setDescriptionOpen(false);
+      } catch (err) {
+        setDescriptionSaveError(err instanceof Error ? err.message : "Failed to save learning hint");
+      } finally {
+        setIsSavingDescription(false);
+      }
+    },
+    [apiCall, currentPhrase]
+  );
+
   // Touch gesture handlers
   const handleSwipeLeft = useCallback(() => {
     onAdvanceNext();
@@ -535,6 +576,21 @@ export default function PlayerShell({
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {currentPhrase && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                onClick={() => {
+                  setDescriptionSaveError(null);
+                  setDescriptionOpen(true);
+                }}
+                title="Description"
+                aria-label="Description"
+              >
+                <Info />
+              </Button>
+            )}
             {/* Mobile: difficulty menu tucked into header */}
             {currentPhrase && (
               <div className="lg:hidden">
@@ -658,6 +714,17 @@ export default function PlayerShell({
       <div aria-live="polite" aria-atomic="true" className="sr-only">
         {playing ? "Playing" : "Paused"} - {currentSlot || "Stopped"}
       </div>
+      {currentPhrase && (
+        <PhraseLearningHintModal
+          open={descriptionOpen}
+          phraseLabel={currentPhrase.phrase.en_text}
+          initialValue={currentPhrase.phrase.learning_hint_markdown}
+          isSaving={isSavingDescription}
+          error={descriptionSaveError}
+          onSave={(value) => void saveLearningHint(value)}
+          onClose={() => setDescriptionOpen(false)}
+        />
+      )}
     </div>
   );
 }

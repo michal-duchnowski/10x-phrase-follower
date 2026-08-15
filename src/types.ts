@@ -335,7 +335,10 @@ export interface PlaybackManifestSegment {
 }
 
 export interface PlaybackManifestItem {
-  phrase: Pick<PhraseDTO, "id" | "position" | "en_text" | "pl_text" | "tokens" | "difficulty">;
+  phrase: Pick<
+    PhraseDTO,
+    "id" | "position" | "en_text" | "pl_text" | "learning_hint_markdown" | "tokens" | "difficulty"
+  >;
   segments: PlaybackManifestSegment[];
 }
 
@@ -386,6 +389,7 @@ export interface PhraseVM {
   position: number;
   en_text: string;
   pl_text: string;
+  learning_hint_markdown: string | null;
   difficulty: PhraseDifficulty | null;
   tokens: {
     en: Token[];

@@ -50,6 +50,7 @@ interface DifficultCard {
   direction: "en_to_pl" | "pl_to_en";
   en_text: string;
   pl_text: string;
+  learning_hint_markdown: string | null;
   score: number;
   lapses: number;
   stability: number;
@@ -198,7 +199,7 @@ function FlashcardsContent() {
         expected_answer: card.direction === "en_to_pl" ? card.pl_text : card.en_text,
         en_text: card.en_text,
         pl_text: card.pl_text,
-        learning_hint_markdown: null,
+        learning_hint_markdown: card.learning_hint_markdown,
       }))
     );
     setIndex(0);

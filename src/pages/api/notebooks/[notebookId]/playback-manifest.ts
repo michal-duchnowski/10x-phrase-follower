@@ -24,7 +24,7 @@ function getUserId(context: APIContext): string {
 type Supabase = SupabaseClient<Database>;
 type PhraseRow = Pick<
   Database["public"]["Tables"]["phrases"]["Row"],
-  "id" | "position" | "en_text" | "pl_text" | "tokens" | "difficulty"
+  "id" | "position" | "en_text" | "pl_text" | "learning_hint_markdown" | "tokens" | "difficulty"
 >;
 type AudioSegmentSelection = Pick<
   Database["public"]["Tables"]["audio_segments"]["Row"],
@@ -266,7 +266,7 @@ export async function GET(context: APIContext) {
       // Query phrases from user's notebooks (or pinned only) with matching difficulty
       phrasesQuery = supabase
         .from("phrases")
-        .select("id, position, en_text, pl_text, tokens, difficulty, notebook_id")
+        .select("id, position, en_text, pl_text, learning_hint_markdown, tokens, difficulty, notebook_id")
         .in("notebook_id", notebookIds)
         .eq("difficulty", difficulty)
         .order("created_at", { ascending: false })
@@ -318,7 +318,7 @@ export async function GET(context: APIContext) {
       // Get phrases for the notebook
       phrasesQuery = supabase
         .from("phrases")
-        .select("id, position, en_text, pl_text, tokens, difficulty")
+        .select("id, position, en_text, pl_text, learning_hint_markdown, tokens, difficulty")
         .eq("notebook_id", notebookId)
         .order("position");
 
@@ -543,6 +543,7 @@ export async function GET(context: APIContext) {
           position: phrase.position,
           en_text: phrase.en_text,
           pl_text: phrase.pl_text,
+          learning_hint_markdown: phrase.learning_hint_markdown,
           tokens: phraseTokens,
           difficulty: phrase.difficulty as "easy" | "medium" | "hard" | null,
         },
