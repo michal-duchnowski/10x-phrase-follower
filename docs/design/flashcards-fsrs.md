@@ -358,7 +358,7 @@ fsrs({
   enable_short_term: true,
   learning_steps: ["1m", "10m"],
   relearning_steps: ["10m"],
-})
+});
 ```
 
 This should be confirmed during implementation against the exact installed `ts-fsrs` version. The important point is to use the library's own learning/relearning mechanism rather than inventing a custom lapse flow.
