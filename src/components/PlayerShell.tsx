@@ -124,6 +124,7 @@ export default function PlayerShell({
             position: item.phrase.position,
             en_text: item.phrase.en_text,
             pl_text: item.phrase.pl_text,
+            learning_hint_markdown: item.phrase.learning_hint_markdown,
             difficulty: item.phrase.difficulty,
             tokens: {
               en:
