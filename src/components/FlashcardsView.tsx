@@ -402,7 +402,6 @@ function FlashcardsContent() {
         <textarea
           id="flashcard-answer"
           ref={answerRef}
-          autoFocus={!checked || drillActive}
           value={answer}
           disabled={(Boolean(checked) && !drillActive) || busy}
           onKeyDown={(event) => {
