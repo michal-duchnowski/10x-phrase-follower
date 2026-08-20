@@ -130,14 +130,16 @@ export default function PhraseLearningHintModal({
           </div>
 
           <div className="flex justify-end gap-2 border-t border-border px-4 py-3">
-            <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>
-              Cancel
-            </Button>
             {activePane === "preview" ? (
-              <Button type="button" onClick={() => setActivePane("edit")} disabled={isSaving}>
-                <Pencil className="size-4" />
-                Edit
-              </Button>
+              <>
+                <Button type="button" variant="outline" onClick={() => setActivePane("edit")} disabled={isSaving}>
+                  <Pencil className="size-4" />
+                  Edit
+                </Button>
+                <Button type="button" onClick={onClose} disabled={isSaving}>
+                  OK
+                </Button>
+              </>
             ) : (
               <>
                 <Button type="button" variant="outline" onClick={() => setActivePane("preview")} disabled={isSaving}>

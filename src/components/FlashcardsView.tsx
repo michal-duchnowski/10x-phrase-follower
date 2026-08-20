@@ -141,6 +141,22 @@ function FlashcardsContent() {
         event.target instanceof HTMLSelectElement
       )
         return;
+      if (event.key === "8") {
+        event.preventDefault();
+        setHintSaveError(null);
+        setDetailsOpen(true);
+        return;
+      }
+      if (event.key === "9") {
+        event.preventDefault();
+        startDrill();
+        return;
+      }
+      if (event.key === "0") {
+        event.preventDefault();
+        void playEnglish();
+        return;
+      }
       if (event.key.toLowerCase() === "r" && checked.kind !== "manual") {
         event.preventDefault();
         setDrillActive(true);
@@ -451,8 +467,8 @@ function FlashcardsContent() {
                     setHintSaveError(null);
                     setDetailsOpen(true);
                   }}
-                  title="Description"
-                  aria-label="Description"
+                  title="Description (shortcut: 8)"
+                  aria-label="Description. Shortcut: 8"
                 >
                   <Info />
                 </Button>
@@ -460,12 +476,18 @@ function FlashcardsContent() {
                   variant="secondary"
                   size="icon"
                   onClick={startDrill}
-                  title={`Drill: ${drillTarget} consecutive correct answers (shortcut: R)`}
-                  aria-label={`Drill: ${drillTarget} consecutive correct answers. Shortcut: R`}
+                  title={`Drill: ${drillTarget} consecutive correct answers (shortcut: 9)`}
+                  aria-label={`Drill: ${drillTarget} consecutive correct answers. Shortcut: 9`}
                 >
                   <span className="text-sm font-bold">{drillTarget}×</span>
                 </Button>
-                <Button variant="secondary" size="icon" onClick={() => void playEnglish()} title="Play English audio">
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  onClick={() => void playEnglish()}
+                  title="Play English audio (shortcut: 0)"
+                  aria-label="Play English audio. Shortcut: 0"
+                >
                   <Volume2 />
                 </Button>
               </div>
