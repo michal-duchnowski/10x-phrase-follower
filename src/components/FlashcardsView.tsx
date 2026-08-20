@@ -128,10 +128,10 @@ function FlashcardsContent() {
   }, [isAuthenticated]);
   useEffect(() => () => audioRef.current?.pause(), []);
   useEffect(() => {
-    if (!current || checked || detailsOpen) return;
+    if (!current || detailsOpen || (checked && !drillActive)) return;
     const frame = window.requestAnimationFrame(() => answerRef.current?.focus());
     return () => window.cancelAnimationFrame(frame);
-  }, [current?.direction_id, checked, detailsOpen]);
+  }, [current?.direction_id, checked, detailsOpen, drillActive]);
   useEffect(() => {
     const handleRatingShortcut = (event: KeyboardEvent) => {
       if (!checked || busy || detailsOpen || drillActive) return;
@@ -402,6 +402,7 @@ function FlashcardsContent() {
         <textarea
           id="flashcard-answer"
           ref={answerRef}
+          autoFocus={!checked || drillActive}
           value={answer}
           disabled={(Boolean(checked) && !drillActive) || busy}
           onKeyDown={(event) => {
