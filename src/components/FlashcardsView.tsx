@@ -10,12 +10,14 @@ import {
   Settings2,
   Volume2,
   XCircle,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { ToastProvider, useToast } from "./ui/toast";
 import { useApi } from "../lib/hooks/useApi";
 import { checkFlashcardAnswer, shouldRequireExactEnglishMatch } from "../lib/fsrs.service";
 import PhraseLearningHintModal from "./PhraseLearningHintModal";
+import StoryModal from "./StoryModal";
 import { parseMarkdownToHtml } from "../lib/utils";
 
 interface SessionCard {
@@ -80,6 +82,7 @@ function FlashcardsContent() {
   const [difficultOpen, setDifficultOpen] = useState(false);
   const [difficultCards, setDifficultCards] = useState<DifficultCard[]>([]);
   const [difficultLoading, setDifficultLoading] = useState(false);
+  const [storyOpen, setStoryOpen] = useState(false);
   const current = cards[index];
   const loadOverview = async () => {
     try {
@@ -621,9 +624,19 @@ function FlashcardsContent() {
             </div>
             <div className="flex gap-2">
               {difficultCards.length > 0 && (
-                <Button onClick={startTraining}>
-                  <Play /> Start training
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => setStoryOpen(true)}
+                    disabled={difficultCards.length < 3}
+                    title="At least 3 difficult flashcards are needed to create a story"
+                  >
+                    <Sparkles /> Create story
+                  </Button>
+                  <Button onClick={startTraining}>
+                    <Play /> Start training
+                  </Button>
+                </>
               )}
               <Button variant="ghost" size="sm" onClick={() => setDifficultOpen(false)}>
                 Close
@@ -679,6 +692,11 @@ function FlashcardsContent() {
           </Button>
         )}
       </div>
+      <StoryModal
+        open={storyOpen}
+        phraseIds={difficultCards.map((card) => card.phrase_id)}
+        onClose={() => setStoryOpen(false)}
+      />
     </section>
   );
 }

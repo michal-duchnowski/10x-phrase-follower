@@ -46,7 +46,7 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
   }
 
   const now = Date.now();
-  const items = (directions ?? [])
+  const scoredItems = (directions ?? [])
     .map((direction: any) => {
       const history = reviewsByDirection.get(direction.id) ?? [];
       const historyScore = history.reduce((total, review) => {
@@ -93,7 +93,14 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
       };
     })
     .filter((item: any) => item.score > 0)
-    .sort((a: any, b: any) => b.score - a.score)
+    .sort((a: any, b: any) => b.score - a.score);
+  const seenPhraseIds = new Set<string>();
+  const items = scoredItems
+    .filter((item: any) => {
+      if (seenPhraseIds.has(item.phrase_id)) return false;
+      seenPhraseIds.add(item.phrase_id);
+      return true;
+    })
     .slice(0, limit);
   return Response.json({ items });
 });

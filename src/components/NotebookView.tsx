@@ -6,7 +6,8 @@ import GenerateAudioButton from "./GenerateAudioButton";
 import ExportZipButton from "./ExportZipButton";
 import MobileActionMenu from "./MobileActionMenu";
 import PhraseLearningHintModal from "./PhraseLearningHintModal";
-import { Info, Trash2, Minimize2, Plus, Layers } from "lucide-react";
+import StoryModal from "./StoryModal";
+import { Info, Trash2, Minimize2, Plus, Layers, Sparkles } from "lucide-react";
 import DifficultyBadge from "./DifficultyBadge";
 import type {
   PhraseDTO,
@@ -55,6 +56,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
   const [editingHintPhrase, setEditingHintPhrase] = useState<PhraseDTO | null>(null);
   const [isSavingHint, setIsSavingHint] = useState(false);
   const [hintSaveError, setHintSaveError] = useState<string | null>(null);
+  const [storyOpen, setStoryOpen] = useState(false);
 
   // Check if this is a virtual notebook (Smart List)
   const isVirtual = isVirtualNotebook(notebookId);
@@ -1168,6 +1170,15 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                   <Button variant="default" size="sm" onClick={handleCreateSnapshot} disabled={isCreatingSnapshot}>
                     {isCreatingSnapshot ? "Creating..." : "Snapshot selected"}
                   </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => setStoryOpen(true)}
+                    disabled={selectedPhraseIds.size < 3}
+                    title="Select at least 3 phrases to create a story"
+                  >
+                    <Sparkles className="size-4" /> Create story
+                  </Button>
                   {!isVirtualNotebook(notebookId) && (
                     <Button
                       variant="default"
@@ -1201,6 +1212,16 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                     </Button>
                     <Button variant="default" size="sm" className="w-full" onClick={handleAddToFlashcards}>
                       <Layers className="size-4" /> Flashcards
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => setStoryOpen(true)}
+                      disabled={selectedPhraseIds.size < 3}
+                      title="Select at least 3 phrases to create a story"
+                    >
+                      <Sparkles className="size-4" /> Story
                     </Button>
                     <Button
                       asChild
@@ -1323,6 +1344,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
           onSave={handleSaveHint}
           onClose={handleCloseHintEditor}
         />
+        <StoryModal open={storyOpen} phraseIds={Array.from(selectedPhraseIds)} onClose={() => setStoryOpen(false)} />
       </div>
     </div>
   );
