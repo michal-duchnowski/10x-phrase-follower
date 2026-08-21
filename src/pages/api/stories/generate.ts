@@ -76,7 +76,7 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
     console.error("DeepSeek story generation failed", response.status, await response.text());
     throw ApiErrors.internal("Could not generate a story. Please try again.");
   }
-  const result = (await response.json()) as { choices?: Array<{ message?: { content?: string | null } }> };
+  const result = (await response.json()) as { choices?: { message?: { content?: string | null } }[] };
   const story = result.choices?.[0]?.message?.content?.trim();
   if (!story) throw ApiErrors.internal("The story generator returned an empty response. Please try again.");
   return Response.json({ story });

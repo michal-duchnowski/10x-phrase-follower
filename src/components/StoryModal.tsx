@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { LoaderCircle, RefreshCw, X } from "lucide-react";
 import { parseMarkdownToHtml } from "../lib/utils";
 import { useApi } from "../lib/hooks/useApi";
@@ -16,7 +16,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const generate = async () => {
+  const generate = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -30,16 +30,14 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
     } finally {
       setLoading(false);
     }
-  };
+  }, [apiCall, phraseIds]);
 
   useEffect(() => {
     if (!open) return;
     setStory("");
     setError(null);
     void generate();
-    // The modal is deliberately a fresh, one-off generation each time it opens.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [generate, open]);
 
   useEffect(() => {
     if (!open) return;
