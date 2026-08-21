@@ -19,6 +19,9 @@ services:
       PUBLIC_SUPABASE_KEY: ${PUBLIC_SUPABASE_KEY}
       # TTS encryption key
       PHRASE_TTS_ENCRYPTION_KEY: ${PHRASE_TTS_ENCRYPTION_KEY}
+      # AI story generation (server-only; never exposed as a PUBLIC_ variable)
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-flash}
       # Node environment
       NODE_ENV: production
     # Health check
