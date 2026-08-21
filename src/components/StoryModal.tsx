@@ -109,7 +109,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
           )}
         </main>
         <footer className="flex justify-end gap-2 border-t border-border px-4 py-3">
-          <Button className="bg-emerald-500 text-black hover:bg-emerald-400" onClick={onClose} disabled={loading}>
+          <Button onClick={onClose} disabled={loading}>
             Close
           </Button>
           <Button onClick={() => void generate()} disabled={loading}>

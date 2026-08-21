@@ -626,7 +626,6 @@ function FlashcardsContent() {
               {difficultCards.length > 0 && (
                 <>
                   <Button
-                    className="bg-emerald-500 text-black hover:bg-emerald-400"
                     onClick={() => setStoryOpen(true)}
                     disabled={difficultCards.length < 3}
                     title="At least 3 difficult flashcards are needed to create a story"
