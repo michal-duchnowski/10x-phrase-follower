@@ -9,10 +9,14 @@ interface StoryModalProps {
   phraseIds: string[];
   onClose: () => void;
 }
+interface Stories {
+  english_story: string;
+  polish_english_story: string;
+}
 
 export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps) {
   const { apiCall } = useApi();
-  const [story, setStory] = useState("");
+  const [stories, setStories] = useState<Stories | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -20,11 +24,11 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
     setLoading(true);
     setError(null);
     try {
-      const result = await apiCall<{ story: string }>("/api/stories/generate", {
+      const result = await apiCall<Stories>("/api/stories/generate", {
         method: "POST",
         body: JSON.stringify({ phrase_ids: phraseIds }),
       });
-      setStory(result.story);
+      setStories(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not generate a story.");
     } finally {
@@ -34,7 +38,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
 
   useEffect(() => {
     if (!open) return;
-    setStory("");
+    setStories(null);
     setError(null);
     void generate();
   }, [generate, open]);
@@ -85,11 +89,23 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
               {error}
             </p>
           )}
-          {!loading && story && (
-            <div
-              className="markdown-content text-sm leading-7 text-foreground"
-              dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(story) }}
-            />
+          {!loading && stories && (
+            <div className="space-y-6">
+              <section>
+                <h3 className="mb-2 text-sm font-semibold text-foreground">English story</h3>
+                <div
+                  className="markdown-content text-sm leading-7 text-foreground"
+                  dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(stories.english_story) }}
+                />
+              </section>
+              <section className="border-t border-border pt-5">
+                <h3 className="mb-2 text-sm font-semibold text-foreground">Polish-English story</h3>
+                <div
+                  className="markdown-content text-sm leading-7 text-foreground"
+                  dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(stories.polish_english_story) }}
+                />
+              </section>
+            </div>
           )}
         </main>
         <footer className="flex justify-end gap-2 border-t border-border px-4 py-3">
