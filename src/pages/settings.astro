@@ -4,18 +4,29 @@ import AuthGuard from "../components/AuthGuard";
 import TtsKeyForm from "../components/TtsKeyForm";
 import VoiceSlotEditor from "../components/VoiceSlotEditor";
 import ConfigStatusBadge from "../components/ConfigStatusBadge";
+import StorySettingsForm from "../components/StorySettingsForm";
 ---
 
-<AppLayout title="Settings - TTS Configuration">
+<AppLayout title="Settings">
   <AuthGuard client:load>
     <main class="container mx-auto px-4 py-8">
       <div class="max-w-4xl mx-auto">
         <!-- Header -->
         <div class="mb-8">
-          <h1 class="text-3xl font-bold text-foreground mb-2">TTS Configuration</h1>
+          <h1 class="text-3xl font-bold text-foreground mb-2">Settings</h1>
           <p class="text-muted-foreground">
-            Configure your Google TTS credentials and voice settings for audio generation.
+            Configure AI stories, Google TTS credentials, and voice settings.
           </p>
+        </div>
+
+        <div class="mb-8">
+          <div class="bg-card border border-border rounded-lg p-6">
+            <h2 class="text-xl font-semibold text-foreground mb-2">AI Story Generation</h2>
+            <p class="text-sm text-muted-foreground mb-6">
+              Your DeepSeek key, model, and story prompt are private to your account.
+            </p>
+            <StorySettingsForm client:load />
+          </div>
         </div>
 
         <!-- TTS Key Configuration -->

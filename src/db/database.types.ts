@@ -326,6 +326,41 @@ export interface Database {
           },
         ];
       };
+      story_settings: {
+        Row: {
+          created_at: string;
+          encrypted_api_key: string | null;
+          model: string;
+          prompt: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          encrypted_api_key?: string | null;
+          model?: string;
+          prompt?: string;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          encrypted_api_key?: string | null;
+          model?: string;
+          prompt?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "story_settings_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: true;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       tts_credentials: {
         Row: {
           encrypted_key: string;

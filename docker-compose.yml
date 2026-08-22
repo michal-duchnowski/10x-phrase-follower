@@ -4,8 +4,8 @@ services:
   app:
     # Image name should be set via environment variable or replace with your actual GHCR path
     # Example: ghcr.io/your-username/10x-phrase-follower:latest
-    image: ${DOCKER_IMAGE:-ghcr.io/michal-duchnowski/10x-phrase-follower:latest}
-    # image: phrase-follower:local # zamiast ghcr.io/...
+#    image: ${DOCKER_IMAGE:-ghcr.io/michal-duchnowski/10x-phrase-follower:latest}
+    image: phrase-follower:local # zamiast ghcr.io/...
     container_name: phrase-follower
     restart: unless-stopped
     ports:
@@ -19,14 +19,11 @@ services:
       PUBLIC_SUPABASE_KEY: ${PUBLIC_SUPABASE_KEY}
       # TTS encryption key
       PHRASE_TTS_ENCRYPTION_KEY: ${PHRASE_TTS_ENCRYPTION_KEY}
-      # AI story generation (server-only; never exposed as a PUBLIC_ variable)
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
-      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-flash}
       # Node environment
       NODE_ENV: production
     # Health check
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/"]
       interval: 30s
       timeout: 10s
       retries: 3
