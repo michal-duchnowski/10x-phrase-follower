@@ -9,14 +9,13 @@ interface StoryModalProps {
   phraseIds: string[];
   onClose: () => void;
 }
-interface Stories {
-  english_story: string;
-  polish_english_story: string;
+interface StoryContent {
+  content: string;
 }
 
 export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps) {
   const { apiCall } = useApi();
-  const [stories, setStories] = useState<Stories | null>(null);
+  const [story, setStory] = useState<StoryContent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -24,11 +23,11 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
     setLoading(true);
     setError(null);
     try {
-      const result = await apiCall<Stories>("/api/stories/generate", {
+      const result = await apiCall<StoryContent>("/api/stories/generate", {
         method: "POST",
         body: JSON.stringify({ phrase_ids: phraseIds }),
       });
-      setStories(result);
+      setStory(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not generate a story.");
     } finally {
@@ -38,7 +37,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
 
   useEffect(() => {
     if (!open) return;
-    setStories(null);
+    setStory(null);
     setError(null);
     void generate();
   }, [generate, open]);
@@ -62,10 +61,10 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
         <header className="flex items-start justify-between gap-4 border-b border-border px-4 py-3">
           <div>
             <h2 id="story-title" className="text-base font-semibold">
-              Your memory story
+              Your AI exercise
             </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              A fresh English story using {phraseIds.length} selected expressions.
+              Generated from {phraseIds.length} selected expressions.
             </p>
           </div>
           <button
@@ -89,23 +88,11 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
               {error}
             </p>
           )}
-          {!loading && stories && (
-            <div className="space-y-6">
-              <section>
-                <h3 className="mb-2 text-sm font-semibold text-foreground">English story</h3>
-                <div
-                  className="markdown-content text-sm leading-7 text-foreground"
-                  dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(stories.english_story) }}
-                />
-              </section>
-              <section className="border-t border-border pt-5">
-                <h3 className="mb-2 text-sm font-semibold text-foreground">Polish-English story</h3>
-                <div
-                  className="markdown-content text-sm leading-7 text-foreground"
-                  dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(stories.polish_english_story) }}
-                />
-              </section>
-            </div>
+          {!loading && story && (
+            <div
+              className="markdown-content text-sm leading-7 text-foreground"
+              dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(story.content) }}
+            />
           )}
         </main>
         <footer className="flex justify-end gap-2 border-t border-border px-4 py-3">

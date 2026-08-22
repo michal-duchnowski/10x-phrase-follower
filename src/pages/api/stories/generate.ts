@@ -2,7 +2,7 @@
 import type { APIRoute, APIContext } from "astro";
 import type { LocalsWithAuth } from "../../../lib/types";
 import { ApiErrors, requireAuth, withErrorHandling } from "../../../lib/errors";
-import { STORY_PROMPT_SUFFIX } from "../../../lib/story-settings";
+import { STORY_VOCABULARY_MESSAGE } from "../../../lib/story-settings";
 import { decrypt, setRuntimeEnv } from "../../../lib/tts-encryption";
 import { getSupabaseClient } from "../../../lib/utils";
 
@@ -84,10 +84,9 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
         },
         {
           role: "user",
-          content: `${STORY_PROMPT_SUFFIX}\n\n<vocabulary-data>\n${vocabulary}\n</vocabulary-data>`,
+          content: `${STORY_VOCABULARY_MESSAGE}\n\n<vocabulary-data>\n${vocabulary}\n</vocabulary-data>`,
         },
       ],
-      response_format: { type: "json_object" },
     }),
   });
   if (!response.ok) {
@@ -97,17 +96,5 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
   const result = (await response.json()) as { choices?: { message?: { content?: string | null } }[] };
   const content = result.choices?.[0]?.message?.content?.trim();
   if (!content) throw ApiErrors.internal("The story generator returned an empty response. Please try again.");
-  let stories: { english_story?: unknown; polish_english_story?: unknown };
-  try {
-    stories = JSON.parse(content);
-  } catch {
-    throw ApiErrors.internal("The story generator returned an invalid response. Please try again.");
-  }
-  if (typeof stories.english_story !== "string" || typeof stories.polish_english_story !== "string") {
-    throw ApiErrors.internal("The story generator returned an incomplete response. Please try again.");
-  }
-  return Response.json({
-    english_story: stories.english_story.trim(),
-    polish_english_story: stories.polish_english_story.trim(),
-  });
+  return Response.json({ content });
 });

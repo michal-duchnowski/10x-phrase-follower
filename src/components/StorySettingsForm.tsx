@@ -96,8 +96,8 @@ export default function StorySettingsForm() {
           className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
         />
         <p className="mt-1 text-xs text-muted-foreground">
-          These are the main instructions for the model. The app always adds the vocabulary and required JSON response
-          format.
+          This is the complete instruction for the model. Define the Markdown sections and format you want; the app only
+          adds the vocabulary data.
         </p>
       </div>
       {message && (
