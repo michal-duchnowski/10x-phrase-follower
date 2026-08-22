@@ -51,14 +51,14 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-background/80 px-0 pt-8 backdrop-blur-sm sm:items-center sm:px-4 sm:py-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-background/80 px-0 backdrop-blur-sm sm:items-center sm:px-4 sm:py-4">
       <section
         role="dialog"
         aria-modal="true"
-        aria-labelledby="story-title"
-        className="flex h-[75vh] w-full flex-col overflow-hidden rounded-t-lg border border-border bg-card shadow-lg sm:h-auto sm:max-h-[80vh] sm:max-w-2xl sm:rounded-lg"
+        aria-label="AI exercise"
+        className="flex h-[100dvh] w-full flex-col overflow-hidden bg-card shadow-lg sm:h-auto sm:max-h-[80vh] sm:max-w-2xl sm:rounded-lg sm:border sm:border-border"
       >
-        <header className="flex items-start justify-between gap-4 border-b border-border px-4 py-3">
+        <header className="hidden items-start justify-between gap-4 border-b border-border px-4 py-3 sm:flex">
           <div>
             <h2 id="story-title" className="text-base font-semibold">
               Your AI exercise
@@ -90,7 +90,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
           )}
           {!loading && story && (
             <div
-              className="markdown-content text-sm leading-7 text-foreground"
+              className="markdown-content text-base leading-7 text-foreground sm:text-sm"
               dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(story.content) }}
             />
           )}
