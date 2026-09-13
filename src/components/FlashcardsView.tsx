@@ -20,6 +20,7 @@ import { FlashcardAudioCache } from "../lib/flashcard-audio-cache";
 import PhraseLearningHintModal from "./PhraseLearningHintModal";
 import StoryModal from "./StoryModal";
 import { parseMarkdownToHtml } from "../lib/utils";
+import ExportFlashcardsButton from "./ExportFlashcardsButton";
 
 interface SessionCard {
   direction_id: string;
@@ -85,7 +86,7 @@ function FlashcardsContent() {
   const [difficultOpen, setDifficultOpen] = useState(false);
   const [difficultCards, setDifficultCards] = useState<DifficultCard[]>([]);
   const [difficultLoading, setDifficultLoading] = useState(false);
-  const [difficultPool, setDifficultPool] = useState<DifficultCardPool>("most_difficult");
+  const [difficultPool, setDifficultPool] = useState<DifficultCardPool>("recent_again");
   const [storyOpen, setStoryOpen] = useState(false);
   const current = cards[index];
   const loadOverview = async () => {
@@ -642,9 +643,12 @@ function FlashcardsContent() {
               className="mt-1 w-full rounded-md border border-input bg-background p-2 text-foreground"
             />
           </label>
-          <Button type="submit" disabled={busy} className="sm:col-span-4 bg-primary text-primary-foreground">
-            Save settings
-          </Button>
+          <div className="flex flex-wrap gap-2 sm:col-span-4">
+            <Button type="submit" disabled={busy} className="bg-primary text-primary-foreground">
+              Save settings
+            </Button>
+            <ExportFlashcardsButton showLabel />
+          </div>
         </form>
       )}
       {difficultOpen && (
@@ -666,8 +670,8 @@ function FlashcardsContent() {
               aria-label="Difficult card pool"
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground sm:w-auto"
             >
-              <option value="most_difficult">Most difficult</option>
               <option value="recent_again">Incorrect in last 90 days</option>
+              <option value="most_difficult">Most difficult</option>
               <option value="frequent_lapses">Frequently incorrect</option>
             </select>
             <div className="flex flex-wrap gap-2 sm:justify-end">
