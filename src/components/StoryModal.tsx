@@ -20,6 +20,20 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   const [loading, setLoading] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const isOpenRef = useRef(open);
+
+  const stopAudio = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.pause();
+    audio.currentTime = 0;
+    audioRef.current = null;
+  }, []);
+
+  const closeStory = useCallback(() => {
+    stopAudio();
+    onClose();
+  }, [onClose, stopAudio]);
 
   const generate = useCallback(async () => {
     setLoading(true);
@@ -46,33 +60,38 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
         method: "POST",
         body: JSON.stringify({ content: story.content }),
       });
-      audioRef.current?.pause();
+      stopAudio();
       const nextAudio = new Audio(result.url);
       audioRef.current = nextAudio;
+      if (!isOpenRef.current) return;
       await nextAudio.play();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not play story audio.");
     } finally {
       setAudioLoading(false);
     }
-  }, [apiCall, story]);
+  }, [apiCall, stopAudio, story]);
 
   useEffect(() => {
-    if (!open) return;
+    isOpenRef.current = open;
+    if (!open) {
+      stopAudio();
+      return;
+    }
     setStory(null);
     setError(null);
-    audioRef.current?.pause();
+    stopAudio();
     void generate();
-  }, [generate, open]);
+  }, [generate, open, stopAudio]);
 
-  useEffect(() => () => audioRef.current?.pause(), []);
+  useEffect(() => () => stopAudio(), [stopAudio]);
 
   useEffect(() => {
     if (!open) return;
-    const handleKeyDown = (event: KeyboardEvent) => event.key === "Escape" && !loading && onClose();
+    const handleKeyDown = (event: KeyboardEvent) => event.key === "Escape" && !loading && closeStory();
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [loading, onClose, open]);
+  }, [closeStory, loading, open]);
 
   if (!open) return null;
   return (
@@ -94,7 +113,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={closeStory}
             disabled={loading}
             className="rounded-md p-1 text-muted-foreground hover:bg-muted"
             aria-label="Close"
@@ -121,12 +140,17 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
           )}
         </main>
         <footer className="flex justify-end gap-2 border-t border-border px-4 py-3">
-          <Button onClick={onClose} disabled={loading || audioLoading}>
+          <Button onClick={closeStory} disabled={loading || audioLoading}>
             Close
           </Button>
-          <Button onClick={() => void playStory()} disabled={loading || audioLoading || !story} variant="secondary">
+          <Button
+            onClick={() => void playStory()}
+            disabled={loading || audioLoading || !story}
+            size="icon"
+            aria-label="Play English story"
+            title="Play English story"
+          >
             {audioLoading ? <LoaderCircle className="size-4 animate-spin" /> : <Volume2 className="size-4" />}
-            Play English story
           </Button>
           <Button onClick={() => void generate()} disabled={loading}>
             <RefreshCw className="size-4" /> Generate another

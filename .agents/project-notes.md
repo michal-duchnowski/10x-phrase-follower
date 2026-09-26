@@ -23,3 +23,8 @@
 - Contains mode answer checking lives in `src/lib/learn.service.ts`.
 - Contains mode should treat separators such as commas and semicolons as synonym delimiters, so answers like `porządny` match `porządny, przyzwoity`, and `rozproszyć` matches `rozrzucić, rozproszyć; rozsypać się`.
 - Regression tests for this behavior are in `src/lib/learn.service.test.ts`.
+
+## UI Action Buttons
+
+- Use the default `Button` variant for primary actions. It uses the project green `bg-primary` styling.
+- An icon-only primary action must use `size="icon"`, retain the default variant, and include an accessible `aria-label` and `title`.
