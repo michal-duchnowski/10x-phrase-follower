@@ -807,9 +807,7 @@ function FlashcardsContent() {
       />
       <PhraseLearningHintModal
         open={Boolean(editingDifficultHint)}
-        phraseLabel={
-          editingDifficultHint ? `${editingDifficultHint.en_text} / ${editingDifficultHint.pl_text}` : ""
-        }
+        phraseLabel={editingDifficultHint ? `${editingDifficultHint.en_text} / ${editingDifficultHint.pl_text}` : ""}
         initialValue={editingDifficultHint?.learning_hint_markdown ?? null}
         isSaving={isSavingHint}
         error={hintSaveError}

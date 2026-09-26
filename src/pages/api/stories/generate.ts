@@ -8,7 +8,7 @@ import { getSupabaseClient } from "../../../lib/utils";
 
 export const prerender = false;
 
-const MAX_PHRASES = 20;
+const MAX_PHRASES = 30;
 const MAX_PHRASE_LENGTH = 500;
 const MAX_VOCABULARY_LENGTH = 6000;
 
