@@ -87,6 +87,7 @@ function FlashcardsContent() {
   const [difficultCards, setDifficultCards] = useState<DifficultCard[]>([]);
   const [difficultLoading, setDifficultLoading] = useState(false);
   const [difficultPool, setDifficultPool] = useState<DifficultCardPool>("recent_again");
+  const [editingDifficultHint, setEditingDifficultHint] = useState<DifficultCard | null>(null);
   const [storyOpen, setStoryOpen] = useState(false);
   const current = cards[index];
   const loadOverview = async () => {
@@ -297,6 +298,37 @@ function FlashcardsContent() {
         )
       );
       setDetailsOpen(false);
+      addToast({
+        type: "success",
+        title: "Learning hint saved",
+        description: value ? "The hint was updated." : "The hint was cleared.",
+      });
+    } catch (error) {
+      setHintSaveError(error instanceof Error ? error.message : "Failed to save learning hint");
+    } finally {
+      setIsSavingHint(false);
+    }
+  };
+  const saveDifficultLearningHint = async (value: string | null) => {
+    if (!editingDifficultHint) return;
+    setIsSavingHint(true);
+    setHintSaveError(null);
+    try {
+      const updated = await apiCall<{ learning_hint_markdown: string | null }>(
+        `/api/phrases/${editingDifficultHint.phrase_id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ learning_hint_markdown: value }),
+        }
+      );
+      setDifficultCards((previous) =>
+        previous.map((card) =>
+          card.phrase_id === editingDifficultHint.phrase_id
+            ? { ...card, learning_hint_markdown: updated.learning_hint_markdown }
+            : card
+        )
+      );
+      setEditingDifficultHint(null);
       addToast({
         type: "success",
         title: "Learning hint saved",
@@ -723,15 +755,29 @@ function FlashcardsContent() {
                       )}
                     </p>
                   </div>
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    className="shrink-0 bg-red-600 text-white hover:bg-red-500"
-                    onClick={() => void archiveFlashcard(card.flashcard_id)}
-                    title="Remove from Flashcards"
-                  >
-                    <ArchiveX />
-                  </Button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button
+                      variant={card.learning_hint_markdown ? "default" : "secondary"}
+                      onClick={() => {
+                        setHintSaveError(null);
+                        setEditingDifficultHint(card);
+                      }}
+                      title="Description"
+                    >
+                      <Info />
+                      Description
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      className="hidden bg-red-600 text-white hover:bg-red-500 sm:inline-flex"
+                      onClick={() => void archiveFlashcard(card.flashcard_id)}
+                      title="Remove from Flashcards"
+                      aria-label="Remove from Flashcards"
+                    >
+                      <ArchiveX />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -758,6 +804,19 @@ function FlashcardsContent() {
         open={storyOpen}
         phraseIds={difficultCards.map((card) => card.phrase_id)}
         onClose={() => setStoryOpen(false)}
+      />
+      <PhraseLearningHintModal
+        open={Boolean(editingDifficultHint)}
+        phraseLabel={
+          editingDifficultHint ? `${editingDifficultHint.en_text} / ${editingDifficultHint.pl_text}` : ""
+        }
+        initialValue={editingDifficultHint?.learning_hint_markdown ?? null}
+        isSaving={isSavingHint}
+        error={hintSaveError}
+        onSave={saveDifficultLearningHint}
+        onClose={() => {
+          if (!isSavingHint) setEditingDifficultHint(null);
+        }}
       />
     </section>
   );
