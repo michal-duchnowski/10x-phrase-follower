@@ -75,7 +75,7 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
     body: JSON.stringify({
       model: settings.model,
       temperature: 0.8,
-      max_tokens: 500,
+      max_tokens: 800,
       thinking: { type: "disabled" },
       messages: [
         {

@@ -758,14 +758,15 @@ function FlashcardsContent() {
                   <div className="flex shrink-0 items-center gap-2">
                     <Button
                       variant={card.learning_hint_markdown ? "default" : "secondary"}
+                      size="icon"
                       onClick={() => {
                         setHintSaveError(null);
                         setEditingDifficultHint(card);
                       }}
                       title="Description"
+                      aria-label="Description"
                     >
                       <Info />
-                      Description
                     </Button>
                     <Button
                       variant="secondary"
