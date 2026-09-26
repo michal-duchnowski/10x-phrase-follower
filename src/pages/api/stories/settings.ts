@@ -4,6 +4,7 @@ import { ApiErrors, requireAuth, withErrorHandling } from "../../../lib/errors";
 import {
   DEFAULT_STORY_MODEL,
   DEFAULT_STORY_PROMPT,
+  DEFAULT_STORY_TTS_SPEAKING_RATE,
   DEFAULT_STORY_TTS_VOICE,
   STORY_TTS_VOICES,
 } from "../../../lib/story-settings";
@@ -19,6 +20,7 @@ const StorySettingsSchema = z.object({
   tts_voice_id: z.string().refine((voiceId) => STORY_TTS_VOICES.some((voice) => voice.id === voiceId), {
     message: "Choose a supported British Chirp 3: HD voice",
   }),
+  tts_speaking_rate: z.number().min(0.25).max(2),
 });
 
 function configureRuntimeEnv(context: APIContext) {
@@ -40,7 +42,7 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
 
   const { data, error } = await db
     .from("story_settings")
-    .select("encrypted_api_key, model, prompt, tts_voice_id")
+    .select("encrypted_api_key, model, prompt, tts_voice_id, tts_speaking_rate")
     .eq("user_id", userId)
     .single();
   if (error || !data) throw ApiErrors.internal("Failed to load story settings");
@@ -50,6 +52,7 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
     model: data.model || DEFAULT_STORY_MODEL,
     prompt: data.prompt || DEFAULT_STORY_PROMPT,
     tts_voice_id: data.tts_voice_id || DEFAULT_STORY_TTS_VOICE,
+    tts_speaking_rate: data.tts_speaking_rate || DEFAULT_STORY_TTS_SPEAKING_RATE,
   });
 });
 
@@ -66,12 +69,14 @@ export const PUT: APIRoute = withErrorHandling(async (context: APIContext) => {
   const update: {
     model: string;
     prompt: string;
+    tts_speaking_rate: number;
     tts_voice_id: string;
     updated_at: string;
     encrypted_api_key?: string;
   } = {
     model: body.model,
     prompt: body.prompt,
+    tts_speaking_rate: body.tts_speaking_rate,
     tts_voice_id: body.tts_voice_id,
     updated_at: new Date().toISOString(),
   };
@@ -81,7 +86,7 @@ export const PUT: APIRoute = withErrorHandling(async (context: APIContext) => {
     .from("story_settings")
     .update(update)
     .eq("user_id", userId)
-    .select("encrypted_api_key, model, prompt, tts_voice_id")
+    .select("encrypted_api_key, model, prompt, tts_voice_id, tts_speaking_rate")
     .single();
   if (error || !data) throw ApiErrors.internal("Failed to save story settings");
 
@@ -90,5 +95,6 @@ export const PUT: APIRoute = withErrorHandling(async (context: APIContext) => {
     model: data.model,
     prompt: data.prompt,
     tts_voice_id: data.tts_voice_id,
+    tts_speaking_rate: data.tts_speaking_rate,
   });
 });

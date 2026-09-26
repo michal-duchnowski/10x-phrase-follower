@@ -332,6 +332,7 @@ export interface Database {
           encrypted_api_key: string | null;
           model: string;
           prompt: string;
+          tts_speaking_rate: number;
           tts_voice_id: string;
           updated_at: string;
           user_id: string;
@@ -341,6 +342,7 @@ export interface Database {
           encrypted_api_key?: string | null;
           model?: string;
           prompt?: string;
+          tts_speaking_rate?: number;
           tts_voice_id?: string;
           updated_at?: string;
           user_id: string;
@@ -350,6 +352,7 @@ export interface Database {
           encrypted_api_key?: string | null;
           model?: string;
           prompt?: string;
+          tts_speaking_rate?: number;
           tts_voice_id?: string;
           updated_at?: string;
           user_id?: string;

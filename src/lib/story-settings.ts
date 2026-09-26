@@ -1,5 +1,6 @@
 export const DEFAULT_STORY_MODEL = "deepseek-v4-flash";
 export const DEFAULT_STORY_TTS_VOICE = "en-GB-Chirp3-HD-Kore";
+export const DEFAULT_STORY_TTS_SPEAKING_RATE = 1.0;
 export const STORY_AUDIO_CACHE_TTL_MS = 60 * 60 * 1000;
 
 // Chirp 3: HD English (UK) voices listed by Google Cloud. Keep this allowlist

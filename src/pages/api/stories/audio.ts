@@ -6,6 +6,7 @@ import type { LocalsWithAuth } from "../../../lib/types";
 import { ApiErrors, requireAuth, withErrorHandling } from "../../../lib/errors";
 import {
   DEFAULT_STORY_TTS_VOICE,
+  DEFAULT_STORY_TTS_SPEAKING_RATE,
   getStoryNarrationText,
   STORY_AUDIO_CACHE_TTL_MS,
   STORY_TTS_VOICES,
@@ -55,16 +56,17 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
   const db = getSupabaseClient(context);
   const { data: settings, error: settingsError } = await db
     .from("story_settings")
-    .select("tts_voice_id")
+    .select("tts_voice_id, tts_speaking_rate")
     .eq("user_id", userId)
     .single();
   if (settingsError || !settings) throw ApiErrors.validationError("Configure story settings before playing audio");
   const voiceId = settings.tts_voice_id || DEFAULT_STORY_TTS_VOICE;
+  const speakingRate = settings.tts_speaking_rate || DEFAULT_STORY_TTS_SPEAKING_RATE;
   if (!STORY_TTS_VOICES.some((voice) => voice.id === voiceId)) {
     throw ApiErrors.validationError("Choose a supported British Chirp 3: HD voice in Settings");
   }
 
-  const contentHash = await sha256(narrationText);
+  const contentHash = await sha256(JSON.stringify({ narrationText, speakingRate }));
   const now = new Date();
   const { data: cached, error: cacheError } = await db
     .from("story_audio_cache")
@@ -101,8 +103,7 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
     body: JSON.stringify({
       input: { text: narrationText },
       voice: { languageCode: "en-GB", name: voiceId },
-      // Chirp 3: HD doesn't support SSML, speakingRate, or pitch.
-      audioConfig: { audioEncoding: "MP3" },
+      audioConfig: { audioEncoding: "MP3", speakingRate },
     }),
   });
   if (!response.ok) {

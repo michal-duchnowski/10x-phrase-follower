@@ -6,6 +6,7 @@ interface StorySettings {
   is_configured: boolean;
   model: string;
   prompt: string;
+  tts_speaking_rate: number;
   tts_voice_id: string;
 }
 
@@ -18,6 +19,14 @@ const STORY_TTS_VOICES = [
   { id: "en-GB-Chirp3-HD-Umbriel", label: "Umbriel — male" },
 ] as const;
 
+const STORY_TTS_SPEEDS = [
+  { value: 0.75, label: "0.75× — slow" },
+  { value: 0.9, label: "0.9× — slightly slow" },
+  { value: 1, label: "1× — normal" },
+  { value: 1.1, label: "1.1× — slightly fast" },
+  { value: 1.25, label: "1.25× — fast" },
+] as const;
+
 export default function StorySettingsForm() {
   const { apiCall } = useApi();
   const [settings, setSettings] = useState<StorySettings | null>(null);
@@ -25,6 +34,7 @@ export default function StorySettingsForm() {
   const [model, setModel] = useState("");
   const [prompt, setPrompt] = useState("");
   const [ttsVoiceId, setTtsVoiceId] = useState("en-GB-Chirp3-HD-Kore");
+  const [ttsSpeakingRate, setTtsSpeakingRate] = useState(1);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -35,6 +45,7 @@ export default function StorySettingsForm() {
         setModel(data.model);
         setPrompt(data.prompt);
         setTtsVoiceId(data.tts_voice_id);
+        setTtsSpeakingRate(data.tts_speaking_rate);
       })
       .catch((error) =>
         setMessage({ type: "error", text: error instanceof Error ? error.message : "Could not load settings." })
@@ -47,7 +58,13 @@ export default function StorySettingsForm() {
     try {
       const result = await apiCall<StorySettings>("/api/stories/settings", {
         method: "PUT",
-        body: JSON.stringify({ api_key: apiKey || undefined, model, prompt, tts_voice_id: ttsVoiceId }),
+        body: JSON.stringify({
+          api_key: apiKey || undefined,
+          model,
+          prompt,
+          tts_voice_id: ttsVoiceId,
+          tts_speaking_rate: ttsSpeakingRate,
+        }),
       });
       setSettings(result);
       setApiKey("");
@@ -113,6 +130,23 @@ export default function StorySettingsForm() {
           ))}
         </select>
         <p className="mt-1 text-xs text-muted-foreground">Used when you select the speaker on a generated story.</p>
+      </div>
+      <div>
+        <label htmlFor="story-tts-speed" className="mb-2 block text-sm font-medium text-foreground">
+          Narration speed
+        </label>
+        <select
+          id="story-tts-speed"
+          value={ttsSpeakingRate}
+          onChange={(event) => setTtsSpeakingRate(Number(event.target.value))}
+          className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
+        >
+          {STORY_TTS_SPEEDS.map((speed) => (
+            <option key={speed.value} value={speed.value}>
+              {speed.label}
+            </option>
+          ))}
+        </select>
       </div>
       <div>
         <label htmlFor="story-prompt" className="mb-2 block text-sm font-medium text-foreground">
