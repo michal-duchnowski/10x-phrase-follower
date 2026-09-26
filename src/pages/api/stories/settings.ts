@@ -1,7 +1,12 @@
 import type { APIRoute, APIContext } from "astro";
 import { z } from "zod";
 import { ApiErrors, requireAuth, withErrorHandling } from "../../../lib/errors";
-import { DEFAULT_STORY_MODEL, DEFAULT_STORY_PROMPT } from "../../../lib/story-settings";
+import {
+  DEFAULT_STORY_MODEL,
+  DEFAULT_STORY_PROMPT,
+  DEFAULT_STORY_TTS_VOICE,
+  STORY_TTS_VOICES,
+} from "../../../lib/story-settings";
 import { encrypt, setRuntimeEnv } from "../../../lib/tts-encryption";
 import { ensureUserExists, getSupabaseClient } from "../../../lib/utils";
 
@@ -11,6 +16,9 @@ const StorySettingsSchema = z.object({
   api_key: z.string().trim().min(1, "API key cannot be empty").max(1000).optional(),
   model: z.string().trim().min(1, "Model is required").max(200),
   prompt: z.string().trim().min(1, "Prompt is required").max(12000),
+  tts_voice_id: z.string().refine((voiceId) => STORY_TTS_VOICES.some((voice) => voice.id === voiceId), {
+    message: "Choose a supported British Chirp 3: HD voice",
+  }),
 });
 
 function configureRuntimeEnv(context: APIContext) {
@@ -32,7 +40,7 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
 
   const { data, error } = await db
     .from("story_settings")
-    .select("encrypted_api_key, model, prompt")
+    .select("encrypted_api_key, model, prompt, tts_voice_id")
     .eq("user_id", userId)
     .single();
   if (error || !data) throw ApiErrors.internal("Failed to load story settings");
@@ -41,6 +49,7 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
     is_configured: Boolean(data.encrypted_api_key),
     model: data.model || DEFAULT_STORY_MODEL,
     prompt: data.prompt || DEFAULT_STORY_PROMPT,
+    tts_voice_id: data.tts_voice_id || DEFAULT_STORY_TTS_VOICE,
   });
 });
 
@@ -54,9 +63,16 @@ export const PUT: APIRoute = withErrorHandling(async (context: APIContext) => {
   if (!parsedBody.success) throw ApiErrors.validationError("Invalid story settings", parsedBody.error.flatten());
   const body = parsedBody.data;
 
-  const update: { model: string; prompt: string; updated_at: string; encrypted_api_key?: string } = {
+  const update: {
+    model: string;
+    prompt: string;
+    tts_voice_id: string;
+    updated_at: string;
+    encrypted_api_key?: string;
+  } = {
     model: body.model,
     prompt: body.prompt,
+    tts_voice_id: body.tts_voice_id,
     updated_at: new Date().toISOString(),
   };
   if (body.api_key) update.encrypted_api_key = await toBase64(body.api_key);
@@ -65,9 +81,14 @@ export const PUT: APIRoute = withErrorHandling(async (context: APIContext) => {
     .from("story_settings")
     .update(update)
     .eq("user_id", userId)
-    .select("encrypted_api_key, model, prompt")
+    .select("encrypted_api_key, model, prompt, tts_voice_id")
     .single();
   if (error || !data) throw ApiErrors.internal("Failed to save story settings");
 
-  return Response.json({ is_configured: Boolean(data.encrypted_api_key), model: data.model, prompt: data.prompt });
+  return Response.json({
+    is_configured: Boolean(data.encrypted_api_key),
+    model: data.model,
+    prompt: data.prompt,
+    tts_voice_id: data.tts_voice_id,
+  });
 });

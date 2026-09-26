@@ -6,7 +6,17 @@ interface StorySettings {
   is_configured: boolean;
   model: string;
   prompt: string;
+  tts_voice_id: string;
 }
+
+const STORY_TTS_VOICES = [
+  { id: "en-GB-Chirp3-HD-Aoede", label: "Aoede — female" },
+  { id: "en-GB-Chirp3-HD-Charon", label: "Charon — male" },
+  { id: "en-GB-Chirp3-HD-Kore", label: "Kore — female" },
+  { id: "en-GB-Chirp3-HD-Puck", label: "Puck — male" },
+  { id: "en-GB-Chirp3-HD-Sulafat", label: "Sulafat — female" },
+  { id: "en-GB-Chirp3-HD-Umbriel", label: "Umbriel — male" },
+] as const;
 
 export default function StorySettingsForm() {
   const { apiCall } = useApi();
@@ -14,6 +24,7 @@ export default function StorySettingsForm() {
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [ttsVoiceId, setTtsVoiceId] = useState("en-GB-Chirp3-HD-Kore");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -23,6 +34,7 @@ export default function StorySettingsForm() {
         setSettings(data);
         setModel(data.model);
         setPrompt(data.prompt);
+        setTtsVoiceId(data.tts_voice_id);
       })
       .catch((error) =>
         setMessage({ type: "error", text: error instanceof Error ? error.message : "Could not load settings." })
@@ -35,7 +47,7 @@ export default function StorySettingsForm() {
     try {
       const result = await apiCall<StorySettings>("/api/stories/settings", {
         method: "PUT",
-        body: JSON.stringify({ api_key: apiKey || undefined, model, prompt }),
+        body: JSON.stringify({ api_key: apiKey || undefined, model, prompt, tts_voice_id: ttsVoiceId }),
       });
       setSettings(result);
       setApiKey("");
@@ -83,6 +95,24 @@ export default function StorySettingsForm() {
           placeholder="deepseek-v4-flash"
           className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
         />
+      </div>
+      <div>
+        <label htmlFor="story-tts-voice" className="mb-2 block text-sm font-medium text-foreground">
+          Story narration voice
+        </label>
+        <select
+          id="story-tts-voice"
+          value={ttsVoiceId}
+          onChange={(event) => setTtsVoiceId(event.target.value)}
+          className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
+        >
+          {STORY_TTS_VOICES.map((voice) => (
+            <option key={voice.id} value={voice.id}>
+              {voice.label} (British English, Chirp 3: HD)
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-xs text-muted-foreground">Used when you select the speaker on a generated story.</p>
       </div>
       <div>
         <label htmlFor="story-prompt" className="mb-2 block text-sm font-medium text-foreground">

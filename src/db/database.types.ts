@@ -332,6 +332,7 @@ export interface Database {
           encrypted_api_key: string | null;
           model: string;
           prompt: string;
+          tts_voice_id: string;
           updated_at: string;
           user_id: string;
         };
@@ -340,6 +341,7 @@ export interface Database {
           encrypted_api_key?: string | null;
           model?: string;
           prompt?: string;
+          tts_voice_id?: string;
           updated_at?: string;
           user_id: string;
         };
@@ -348,6 +350,7 @@ export interface Database {
           encrypted_api_key?: string | null;
           model?: string;
           prompt?: string;
+          tts_voice_id?: string;
           updated_at?: string;
           user_id?: string;
         };
@@ -356,6 +359,47 @@ export interface Database {
             foreignKeyName: "story_settings_user_id_fkey";
             columns: ["user_id"];
             isOneToOne: true;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      story_audio_cache: {
+        Row: {
+          content_hash: string;
+          created_at: string;
+          expires_at: string;
+          id: string;
+          path: string;
+          updated_at: string;
+          user_id: string;
+          voice_id: string;
+        };
+        Insert: {
+          content_hash: string;
+          created_at?: string;
+          expires_at: string;
+          id: string;
+          path: string;
+          updated_at?: string;
+          user_id: string;
+          voice_id: string;
+        };
+        Update: {
+          content_hash?: string;
+          created_at?: string;
+          expires_at?: string;
+          id?: string;
+          path?: string;
+          updated_at?: string;
+          user_id?: string;
+          voice_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "story_audio_cache_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
             referencedRelation: "users";
             referencedColumns: ["id"];
           },

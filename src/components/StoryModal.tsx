@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { LoaderCircle, RefreshCw, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { LoaderCircle, RefreshCw, Volume2, X } from "lucide-react";
 import { parseMarkdownToHtml } from "../lib/utils";
 import { useApi } from "../lib/hooks/useApi";
 import { Button } from "./ui/button";
@@ -18,6 +18,8 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   const [story, setStory] = useState<StoryContent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [audioLoading, setAudioLoading] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const generate = useCallback(async () => {
     setLoading(true);
@@ -35,12 +37,35 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
     }
   }, [apiCall, phraseIds]);
 
+  const playStory = useCallback(async () => {
+    if (!story) return;
+    setAudioLoading(true);
+    setError(null);
+    try {
+      const result = await apiCall<{ url: string }>("/api/stories/audio", {
+        method: "POST",
+        body: JSON.stringify({ content: story.content }),
+      });
+      audioRef.current?.pause();
+      const nextAudio = new Audio(result.url);
+      audioRef.current = nextAudio;
+      await nextAudio.play();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not play story audio.");
+    } finally {
+      setAudioLoading(false);
+    }
+  }, [apiCall, story]);
+
   useEffect(() => {
     if (!open) return;
     setStory(null);
     setError(null);
+    audioRef.current?.pause();
     void generate();
   }, [generate, open]);
+
+  useEffect(() => () => audioRef.current?.pause(), []);
 
   useEffect(() => {
     if (!open) return;
@@ -96,8 +121,12 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
           )}
         </main>
         <footer className="flex justify-end gap-2 border-t border-border px-4 py-3">
-          <Button onClick={onClose} disabled={loading}>
+          <Button onClick={onClose} disabled={loading || audioLoading}>
             Close
+          </Button>
+          <Button onClick={() => void playStory()} disabled={loading || audioLoading || !story} variant="secondary">
+            {audioLoading ? <LoaderCircle className="size-4 animate-spin" /> : <Volume2 className="size-4" />}
+            Play English story
           </Button>
           <Button onClick={() => void generate()} disabled={loading}>
             <RefreshCw className="size-4" /> Generate another
