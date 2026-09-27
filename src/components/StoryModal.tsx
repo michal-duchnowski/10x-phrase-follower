@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Copy, Languages, LoaderCircle, RefreshCw, Volume2, X } from "lucide-react";
+import { Languages, LoaderCircle, RefreshCw, Volume2, X } from "lucide-react";
 import { parseMarkdownToHtml } from "../lib/utils";
 import { useApi } from "../lib/hooks/useApi";
 import { Button } from "./ui/button";
@@ -27,13 +27,13 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   const [audioLoading, setAudioLoading] = useState(false);
   const [retryPlaybackRequired, setRetryPlaybackRequired] = useState(false);
   const [selectedText, setSelectedText] = useState("");
-  const [selectionCopied, setSelectionCopied] = useState(false);
   const [selectionPosition, setSelectionPosition] = useState<{ top: number; left: number } | null>(null);
   const [translation, setTranslation] = useState<string | null>(null);
   const [translationLoading, setTranslationLoading] = useState(false);
   const [translationError, setTranslationError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const storyContentRef = useRef<HTMLDivElement | null>(null);
+  const translateButtonRef = useRef<HTMLButtonElement | null>(null);
   const isOpenRef = useRef(open);
 
   const stopAudio = useCallback(() => {
@@ -114,82 +114,59 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
 
   const clearTranslation = useCallback(() => {
     setSelectedText("");
-    setSelectionCopied(false);
     setSelectionPosition(null);
     setTranslation(null);
     setTranslationError(null);
   }, []);
 
-  const captureSelection = useCallback(() => {
+  const getStorySelection = useCallback(() => {
     const selection = window.getSelection();
     const storyContent = storyContentRef.current;
-    if (!selection || selection.rangeCount === 0 || !storyContent) {
-      clearTranslation();
-      return;
-    }
+    if (!selection || selection.rangeCount === 0 || !storyContent) return null;
 
     const range = selection.getRangeAt(0);
-    if (!storyContent.contains(range.commonAncestorContainer)) {
-      clearTranslation();
-      return;
-    }
+    if (!storyContent.contains(range.commonAncestorContainer)) return null;
     const text = selection.toString().trim();
-    if (!text) {
-      clearTranslation();
-      return;
-    }
+    if (!text) return null;
 
     const rect = range.getBoundingClientRect();
-    setSelectedText(text);
-    setSelectionCopied(false);
-    setTranslation(null);
-    setTranslationError(null);
-    setSelectionPosition({ top: Math.max(12, rect.top - 44), left: Math.max(12, rect.left + rect.width / 2) });
-  }, [clearTranslation]);
+    return { text, position: { top: Math.max(12, rect.top - 44), left: Math.max(12, rect.left + rect.width / 2) } };
+  }, []);
 
-  const copySelectedText = useCallback(async () => {
-    if (!selectedText) return;
-    try {
-      await navigator.clipboard.writeText(selectedText);
-      setSelectionCopied(true);
-    } catch {
-      const fallback = document.createElement("textarea");
-      fallback.value = selectedText;
-      fallback.setAttribute("readonly", "");
-      fallback.style.position = "fixed";
-      fallback.style.opacity = "0";
-      document.body.appendChild(fallback);
-      fallback.select();
-      const copied = document.execCommand("copy");
-      document.body.removeChild(fallback);
-      setSelectionCopied(copied);
-    }
-  }, [selectedText]);
+  const translateText = useCallback(
+    async (text: string) => {
+      if (text.length > MAX_TRANSLATION_SELECTION_LENGTH) {
+        setTranslationError(
+          `Select up to ${MAX_TRANSLATION_SELECTION_LENGTH.toLocaleString("en-US")} characters at a time.`
+        );
+        return;
+      }
 
-  const translateSelection = useCallback(async () => {
-    if (!selectedText) return;
-    if (selectedText.length > MAX_TRANSLATION_SELECTION_LENGTH) {
-      setTranslationError(
-        `Select up to ${MAX_TRANSLATION_SELECTION_LENGTH.toLocaleString("en-US")} characters at a time.`
-      );
-      return;
-    }
+      setTranslationLoading(true);
+      setTranslationError(null);
+      setTranslation(null);
+      try {
+        const result = await apiCall<TranslationResult>("/api/stories/translate", {
+          method: "POST",
+          body: JSON.stringify({ text }),
+        });
+        setTranslation(result.translation);
+      } catch (err) {
+        setTranslationError(err instanceof Error ? err.message : "Could not translate the selected text.");
+      } finally {
+        setTranslationLoading(false);
+      }
+    },
+    [apiCall]
+  );
 
-    setTranslationLoading(true);
-    setTranslationError(null);
-    setTranslation(null);
-    try {
-      const result = await apiCall<TranslationResult>("/api/stories/translate", {
-        method: "POST",
-        body: JSON.stringify({ text: selectedText }),
-      });
-      setTranslation(result.translation);
-    } catch (err) {
-      setTranslationError(err instanceof Error ? err.message : "Could not translate the selected text.");
-    } finally {
-      setTranslationLoading(false);
-    }
-  }, [apiCall, selectedText]);
+  const startTranslation = useCallback(() => {
+    const selection = getStorySelection();
+    if (!selection) return;
+    setSelectedText(selection.text);
+    setSelectionPosition(selection.position);
+    void translateText(selection.text);
+  }, [getStorySelection, translateText]);
 
   useEffect(() => {
     isOpenRef.current = open;
@@ -208,20 +185,14 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
 
   useEffect(() => {
     if (!open || !story) return;
-    const storyContent = storyContentRef.current;
-    if (!storyContent) return;
-
-    // iOS emits selectionchange continuously while the user drags selection
-    // handles. Updating React state there resets the native selection, so wait
-    // until the touch or mouse gesture has finished.
-    const captureAfterGesture = () => window.setTimeout(captureSelection, 0);
-    storyContent.addEventListener("mouseup", captureAfterGesture);
-    storyContent.addEventListener("touchend", captureAfterGesture, { passive: true });
-    return () => {
-      storyContent.removeEventListener("mouseup", captureAfterGesture);
-      storyContent.removeEventListener("touchend", captureAfterGesture);
+    const syncTranslateButton = () => {
+      const button = translateButtonRef.current;
+      if (button) button.disabled = !getStorySelection();
     };
-  }, [captureSelection, open, story]);
+    document.addEventListener("selectionchange", syncTranslateButton);
+    syncTranslateButton();
+    return () => document.removeEventListener("selectionchange", syncTranslateButton);
+  }, [getStorySelection, open, story]);
 
   useEffect(() => {
     if (!open) return;
@@ -285,51 +256,6 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
             />
           )}
         </main>
-        {selectedText && selectionPosition && !translation && !translationLoading && !translationError && (
-          <div
-            className="fixed z-[60] hidden -translate-x-1/2 items-center gap-1 rounded-full bg-primary p-1 shadow-lg sm:flex"
-            style={{ top: selectionPosition.top, left: selectionPosition.left }}
-          >
-            <button
-              type="button"
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={() => void translateSelection()}
-              className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-sm font-medium text-primary-foreground"
-            >
-              <Languages className="size-4" /> Translate
-            </button>
-            <button
-              type="button"
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={() => void copySelectedText()}
-              className="rounded-full p-1.5 text-primary-foreground hover:bg-primary-foreground/15"
-              aria-label="Copy selected text"
-              title="Copy selected text"
-            >
-              <Copy className="size-4" />
-            </button>
-          </div>
-        )}
-        {selectedText && selectionPosition && !translation && !translationLoading && !translationError && (
-          <div className="fixed inset-x-4 bottom-4 z-[60] flex gap-2 sm:hidden">
-            <button
-              type="button"
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={() => void copySelectedText()}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 py-3 text-sm font-medium text-foreground shadow-xl"
-            >
-              <Copy className="size-4" /> {selectionCopied ? "Copied" : "Copy"}
-            </button>
-            <button
-              type="button"
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={() => void translateSelection()}
-              className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground shadow-xl"
-            >
-              <Languages className="size-4" /> Translate selection
-            </button>
-          </div>
-        )}
         {(translationLoading || translation || translationError) && (
           <div
             className="fixed inset-x-0 bottom-0 z-[60] max-h-[55dvh] overflow-y-auto rounded-t-xl border border-border bg-card p-4 shadow-2xl sm:inset-x-auto sm:bottom-auto sm:max-h-72 sm:w-[min(28rem,calc(100vw-2rem))] sm:rounded-xl"
@@ -356,7 +282,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
             {translationError && (
               <div className="flex items-start justify-between gap-3">
                 <p className="text-sm text-destructive">{translationError}</p>
-                <Button size="sm" variant="outline" onClick={() => void translateSelection()}>
+                <Button size="sm" variant="outline" onClick={() => void translateText(selectedText)}>
                   Retry
                 </Button>
               </div>
@@ -368,6 +294,18 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
           <Button onClick={closeStory} disabled={loading || audioLoading}>
             Close
           </Button>
+          <button
+            ref={translateButtonRef}
+            type="button"
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={startTranslation}
+            disabled
+            className="inline-flex size-9 shrink-0 items-center justify-center rounded-md bg-secondary text-secondary-foreground transition-all hover:bg-secondary/80 disabled:pointer-events-none disabled:opacity-50"
+            aria-label="Translate selected text into Polish"
+            title="Translate selected text into Polish"
+          >
+            <Languages className="size-4" />
+          </button>
           <Button
             onClick={() => (retryPlaybackRequired ? playPreparedStory() : void playStory())}
             disabled={loading || audioLoading || !story}
