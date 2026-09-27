@@ -25,6 +25,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
+  const [retryPlaybackRequired, setRetryPlaybackRequired] = useState(false);
   const [selectedText, setSelectedText] = useState("");
   const [selectionPosition, setSelectionPosition] = useState<{ top: number; left: number } | null>(null);
   const [translation, setTranslation] = useState<string | null>(null);
@@ -36,6 +37,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
 
   const stopAudio = useCallback(() => {
     const audio = audioRef.current;
+    setRetryPlaybackRequired(false);
     if (!audio) return;
     audio.pause();
     audio.currentTime = 0;
@@ -50,6 +52,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   const generate = useCallback(async () => {
     setLoading(true);
     setError(null);
+    stopAudio();
     try {
       const result = await apiCall<StoryContent>("/api/stories/generate", {
         method: "POST",
@@ -61,28 +64,52 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
     } finally {
       setLoading(false);
     }
-  }, [apiCall, phraseIds]);
+  }, [apiCall, phraseIds, stopAudio]);
 
   const playStory = useCallback(async () => {
     if (!story) return;
     setAudioLoading(true);
     setError(null);
+    stopAudio();
     try {
       const result = await apiCall<{ url: string }>("/api/stories/audio", {
         method: "POST",
         body: JSON.stringify({ content: story.content }),
       });
-      stopAudio();
       const nextAudio = new Audio(result.url);
-      audioRef.current = nextAudio;
       if (!isOpenRef.current) return;
-      await nextAudio.play();
+      nextAudio.preload = "auto";
+      audioRef.current = nextAudio;
+      try {
+        await nextAudio.play();
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "NotAllowedError") {
+          setRetryPlaybackRequired(true);
+          setError("Audio is ready. Tap the speaker again to play it.");
+          return;
+        }
+        stopAudio();
+        throw err;
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not play story audio.");
     } finally {
       setAudioLoading(false);
     }
   }, [apiCall, stopAudio, story]);
+
+  const playPreparedStory = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    setError(null);
+    setRetryPlaybackRequired(false);
+    // Call play synchronously in the click handler. Browser autoplay policies,
+    // especially on iOS, can reject playback after an awaited API request.
+    void audio.play().catch((err: unknown) => {
+      setRetryPlaybackRequired(true);
+      setError(err instanceof Error ? err.message : "Could not play story audio.");
+    });
+  }, []);
 
   const clearTranslation = useCallback(() => {
     setSelectedText("");
@@ -276,11 +303,11 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
             Close
           </Button>
           <Button
-            onClick={() => void playStory()}
+            onClick={() => (retryPlaybackRequired ? playPreparedStory() : void playStory())}
             disabled={loading || audioLoading || !story}
             size="icon"
             aria-label="Play English story"
-            title="Play English story"
+            title={retryPlaybackRequired ? "Tap again to play the prepared story audio" : "Play English story"}
           >
             {audioLoading ? <LoaderCircle className="size-4 animate-spin" /> : <Volume2 className="size-4" />}
           </Button>
