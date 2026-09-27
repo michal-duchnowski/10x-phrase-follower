@@ -94,24 +94,35 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   const captureSelection = useCallback(() => {
     const selection = window.getSelection();
     const storyContent = storyContentRef.current;
-    if (!selection || selection.rangeCount === 0 || !storyContent) return;
+    if (!selection || selection.rangeCount === 0 || !storyContent) {
+      clearTranslation();
+      return;
+    }
 
     const range = selection.getRangeAt(0);
-    if (!storyContent.contains(range.commonAncestorContainer)) return;
+    if (!storyContent.contains(range.commonAncestorContainer)) {
+      clearTranslation();
+      return;
+    }
     const text = selection.toString().trim();
-    if (!text) return;
+    if (!text) {
+      clearTranslation();
+      return;
+    }
 
     const rect = range.getBoundingClientRect();
     setSelectedText(text);
     setTranslation(null);
     setTranslationError(null);
     setSelectionPosition({ top: Math.max(12, rect.top - 44), left: Math.max(12, rect.left + rect.width / 2) });
-  }, []);
+  }, [clearTranslation]);
 
   const translateSelection = useCallback(async () => {
     if (!selectedText) return;
     if (selectedText.length > MAX_TRANSLATION_SELECTION_LENGTH) {
-      setTranslationError(`Select up to ${MAX_TRANSLATION_SELECTION_LENGTH.toLocaleString("en-US")} characters at a time.`);
+      setTranslationError(
+        `Select up to ${MAX_TRANSLATION_SELECTION_LENGTH.toLocaleString("en-US")} characters at a time.`
+      );
       return;
     }
 
@@ -145,6 +156,12 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   }, [clearTranslation, generate, open, stopAudio]);
 
   useEffect(() => () => stopAudio(), [stopAudio]);
+
+  useEffect(() => {
+    if (!open || !story) return;
+    document.addEventListener("selectionchange", captureSelection);
+    return () => document.removeEventListener("selectionchange", captureSelection);
+  }, [captureSelection, open, story]);
 
   useEffect(() => {
     if (!open) return;
@@ -203,8 +220,6 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
           {!loading && story && (
             <div
               ref={storyContentRef}
-              onMouseUp={captureSelection}
-              onTouchEnd={captureSelection}
               className="markdown-content text-base leading-7 text-foreground sm:text-sm"
               dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(story.content) }}
             />
@@ -228,12 +243,23 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
             style={translationPanelStyle}
           >
             <div className="mb-2 flex items-center justify-between gap-3">
-              <span className="inline-flex items-center gap-1.5 text-sm font-medium"><Languages className="size-4" /> Polish translation</span>
-              <button type="button" onClick={clearTranslation} className="rounded p-1 text-muted-foreground hover:bg-muted" aria-label="Close translation">
+              <span className="inline-flex items-center gap-1.5 text-sm font-medium">
+                <Languages className="size-4" /> Polish translation
+              </span>
+              <button
+                type="button"
+                onClick={clearTranslation}
+                className="rounded p-1 text-muted-foreground hover:bg-muted"
+                aria-label="Close translation"
+              >
                 <X className="size-4" />
               </button>
             </div>
-            {translationLoading && <p className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" /> Translating...</p>}
+            {translationLoading && (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <LoaderCircle className="size-4 animate-spin" /> Translating...
+              </p>
+            )}
             {translationError && (
               <div className="flex items-start justify-between gap-3">
                 <p className="text-sm text-destructive">{translationError}</p>
