@@ -247,7 +247,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
           {!loading && story && (
             <div
               ref={storyContentRef}
-              className="markdown-content text-base leading-7 text-foreground sm:text-sm"
+              className="markdown-content select-text text-base leading-7 text-foreground [-webkit-user-select:text] sm:text-sm"
               dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(story.content) }}
             />
           )}
@@ -255,13 +255,23 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
         {selectedText && selectionPosition && !translation && !translationLoading && !translationError && (
           <button
             type="button"
-            onMouseDown={(event) => event.preventDefault()}
+            onPointerDown={(event) => event.preventDefault()}
             onClick={() => void translateSelection()}
-            className="fixed z-[60] inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-lg sm:py-1.5"
+            className="fixed z-[60] hidden -translate-x-1/2 items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-lg sm:inline-flex"
             style={{ top: selectionPosition.top, left: selectionPosition.left }}
             aria-label="Translate selected text into Polish"
           >
             <Languages className="size-4" /> Translate
+          </button>
+        )}
+        {selectedText && selectionPosition && !translation && !translationLoading && !translationError && (
+          <button
+            type="button"
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={() => void translateSelection()}
+            className="fixed inset-x-4 bottom-4 z-[60] inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground shadow-xl sm:hidden"
+          >
+            <Languages className="size-4" /> Translate selection
           </button>
         )}
         {(translationLoading || translation || translationError) && (
