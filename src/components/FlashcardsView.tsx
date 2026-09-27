@@ -8,6 +8,7 @@ import {
   Play,
   Plus,
   Settings2,
+  Dices,
   Volume2,
   XCircle,
   Sparkles,
@@ -89,6 +90,8 @@ function FlashcardsContent() {
   const [difficultPool, setDifficultPool] = useState<DifficultCardPool>("recent_again");
   const [editingDifficultHint, setEditingDifficultHint] = useState<DifficultCard | null>(null);
   const [storyOpen, setStoryOpen] = useState(false);
+  const [storyPhraseIds, setStoryPhraseIds] = useState<string[]>([]);
+  const [randomStoryLoading, setRandomStoryLoading] = useState(false);
   const current = cards[index];
   const loadOverview = async () => {
     try {
@@ -111,6 +114,29 @@ function FlashcardsContent() {
       });
     } finally {
       setDifficultLoading(false);
+    }
+  };
+  const generateRandomStory = async () => {
+    setRandomStoryLoading(true);
+    try {
+      const difficult = await apiCall<{ items: DifficultCard[] }>(
+        "/api/flashcards/difficult?pool=most_difficult&limit=10"
+      );
+      const difficultPhraseIds = [...new Set(difficult.items.map((card) => card.phrase_id))];
+      const random = await apiCall<{ phrase_ids: string[] }>("/api/flashcards/random-story", {
+        method: "POST",
+        body: JSON.stringify({ exclude_phrase_ids: difficultPhraseIds }),
+      });
+      setStoryPhraseIds([...difficultPhraseIds, ...random.phrase_ids].slice(0, 20));
+      setStoryOpen(true);
+    } catch (error) {
+      addToast({
+        type: "error",
+        title: "Could not create a random story",
+        description: error instanceof Error ? error.message : "Try again",
+      });
+    } finally {
+      setRandomStoryLoading(false);
     }
   };
   const archiveFlashcard = async (flashcardId: string) => {
@@ -618,6 +644,17 @@ function FlashcardsContent() {
           <Button
             variant="secondary"
             size="icon"
+            className="bg-violet-500 text-white hover:bg-violet-400"
+            onClick={() => void generateRandomStory()}
+            disabled={randomStoryLoading}
+            title="Generate a random story from difficult and older flashcards"
+            aria-label="Generate a random story"
+          >
+            {randomStoryLoading ? <LoaderCircle className="animate-spin" /> : <Dices />}
+          </Button>
+          <Button
+            variant="secondary"
+            size="icon"
             className="bg-sky-400 text-black hover:bg-sky-300"
             onClick={() => setSettingsOpen(!settingsOpen)}
             title="Flashcard settings"
@@ -710,7 +747,10 @@ function FlashcardsContent() {
               {difficultCards.length > 0 && (
                 <>
                   <Button
-                    onClick={() => setStoryOpen(true)}
+                    onClick={() => {
+                      setStoryPhraseIds(difficultCards.map((card) => card.phrase_id));
+                      setStoryOpen(true);
+                    }}
                     disabled={difficultCards.length < 3}
                     title="At least 3 difficult flashcards are needed to create a story"
                   >
@@ -803,8 +843,11 @@ function FlashcardsContent() {
       </div>
       <StoryModal
         open={storyOpen}
-        phraseIds={difficultCards.map((card) => card.phrase_id)}
-        onClose={() => setStoryOpen(false)}
+        phraseIds={storyPhraseIds}
+        onClose={() => {
+          setStoryOpen(false);
+          setStoryPhraseIds([]);
+        }}
       />
       <PhraseLearningHintModal
         open={Boolean(editingDifficultHint)}

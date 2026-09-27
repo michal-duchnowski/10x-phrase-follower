@@ -10,7 +10,8 @@ const RECENT_INCORRECT_WINDOW_DAYS = 90;
 export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
   const userId = (context.locals as LocalsWithAuth).userId;
   requireAuth(userId);
-  const pool = new URL(context.request.url).searchParams.get("pool") ?? "most_difficult";
+  const params = new URL(context.request.url).searchParams;
+  const pool = params.get("pool") ?? "most_difficult";
   if (pool !== "most_difficult" && pool !== "recent_again" && pool !== "frequent_lapses") {
     return new Response(JSON.stringify({ error: "Invalid difficult-card pool" }), { status: 400 });
   }
@@ -20,7 +21,11 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
     .select("difficult_cards_per_training")
     .eq("user_id", userId)
     .maybeSingle();
-  const limit = settings?.difficult_cards_per_training ?? 10;
+  const requestedLimit = params.get("limit");
+  if (requestedLimit && (!/^\d+$/.test(requestedLimit) || Number(requestedLimit) < 1 || Number(requestedLimit) > 10)) {
+    return new Response(JSON.stringify({ error: "limit must be between 1 and 10" }), { status: 400 });
+  }
+  const limit = requestedLimit ? Number(requestedLimit) : (settings?.difficult_cards_per_training ?? 10);
 
   if (pool === "recent_again") {
     const recentSince = new Date(Date.now() - RECENT_INCORRECT_WINDOW_DAYS * 86400000).toISOString();
