@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Languages, LoaderCircle, RefreshCw, Volume2, X } from "lucide-react";
+import { Copy, Languages, LoaderCircle, RefreshCw, Volume2, X } from "lucide-react";
 import { parseMarkdownToHtml } from "../lib/utils";
 import { useApi } from "../lib/hooks/useApi";
 import { Button } from "./ui/button";
@@ -27,6 +27,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   const [audioLoading, setAudioLoading] = useState(false);
   const [retryPlaybackRequired, setRetryPlaybackRequired] = useState(false);
   const [selectedText, setSelectedText] = useState("");
+  const [selectionCopied, setSelectionCopied] = useState(false);
   const [selectionPosition, setSelectionPosition] = useState<{ top: number; left: number } | null>(null);
   const [translation, setTranslation] = useState<string | null>(null);
   const [translationLoading, setTranslationLoading] = useState(false);
@@ -113,6 +114,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
 
   const clearTranslation = useCallback(() => {
     setSelectedText("");
+    setSelectionCopied(false);
     setSelectionPosition(null);
     setTranslation(null);
     setTranslationError(null);
@@ -139,10 +141,30 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
 
     const rect = range.getBoundingClientRect();
     setSelectedText(text);
+    setSelectionCopied(false);
     setTranslation(null);
     setTranslationError(null);
     setSelectionPosition({ top: Math.max(12, rect.top - 44), left: Math.max(12, rect.left + rect.width / 2) });
   }, [clearTranslation]);
+
+  const copySelectedText = useCallback(async () => {
+    if (!selectedText) return;
+    try {
+      await navigator.clipboard.writeText(selectedText);
+      setSelectionCopied(true);
+    } catch {
+      const fallback = document.createElement("textarea");
+      fallback.value = selectedText;
+      fallback.setAttribute("readonly", "");
+      fallback.style.position = "fixed";
+      fallback.style.opacity = "0";
+      document.body.appendChild(fallback);
+      fallback.select();
+      const copied = document.execCommand("copy");
+      document.body.removeChild(fallback);
+      setSelectionCopied(copied);
+    }
+  }, [selectedText]);
 
   const translateSelection = useCallback(async () => {
     if (!selectedText) return;
@@ -186,8 +208,19 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
 
   useEffect(() => {
     if (!open || !story) return;
-    document.addEventListener("selectionchange", captureSelection);
-    return () => document.removeEventListener("selectionchange", captureSelection);
+    const storyContent = storyContentRef.current;
+    if (!storyContent) return;
+
+    // iOS emits selectionchange continuously while the user drags selection
+    // handles. Updating React state there resets the native selection, so wait
+    // until the touch or mouse gesture has finished.
+    const captureAfterGesture = () => window.setTimeout(captureSelection, 0);
+    storyContent.addEventListener("mouseup", captureAfterGesture);
+    storyContent.addEventListener("touchend", captureAfterGesture, { passive: true });
+    return () => {
+      storyContent.removeEventListener("mouseup", captureAfterGesture);
+      storyContent.removeEventListener("touchend", captureAfterGesture);
+    };
   }, [captureSelection, open, story]);
 
   useEffect(() => {
@@ -253,26 +286,49 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
           )}
         </main>
         {selectedText && selectionPosition && !translation && !translationLoading && !translationError && (
-          <button
-            type="button"
-            onPointerDown={(event) => event.preventDefault()}
-            onClick={() => void translateSelection()}
-            className="fixed z-[60] hidden -translate-x-1/2 items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-lg sm:inline-flex"
+          <div
+            className="fixed z-[60] hidden -translate-x-1/2 items-center gap-1 rounded-full bg-primary p-1 shadow-lg sm:flex"
             style={{ top: selectionPosition.top, left: selectionPosition.left }}
-            aria-label="Translate selected text into Polish"
           >
-            <Languages className="size-4" /> Translate
-          </button>
+            <button
+              type="button"
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={() => void translateSelection()}
+              className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-sm font-medium text-primary-foreground"
+            >
+              <Languages className="size-4" /> Translate
+            </button>
+            <button
+              type="button"
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={() => void copySelectedText()}
+              className="rounded-full p-1.5 text-primary-foreground hover:bg-primary-foreground/15"
+              aria-label="Copy selected text"
+              title="Copy selected text"
+            >
+              <Copy className="size-4" />
+            </button>
+          </div>
         )}
         {selectedText && selectionPosition && !translation && !translationLoading && !translationError && (
-          <button
-            type="button"
-            onPointerDown={(event) => event.preventDefault()}
-            onClick={() => void translateSelection()}
-            className="fixed inset-x-4 bottom-4 z-[60] inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground shadow-xl sm:hidden"
-          >
-            <Languages className="size-4" /> Translate selection
-          </button>
+          <div className="fixed inset-x-4 bottom-4 z-[60] flex gap-2 sm:hidden">
+            <button
+              type="button"
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={() => void copySelectedText()}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 py-3 text-sm font-medium text-foreground shadow-xl"
+            >
+              <Copy className="size-4" /> {selectionCopied ? "Copied" : "Copy"}
+            </button>
+            <button
+              type="button"
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={() => void translateSelection()}
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground shadow-xl"
+            >
+              <Languages className="size-4" /> Translate selection
+            </button>
+          </div>
         )}
         {(translationLoading || translation || translationError) && (
           <div
