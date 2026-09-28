@@ -26,6 +26,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   const [loading, setLoading] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
   const [retryPlaybackRequired, setRetryPlaybackRequired] = useState(false);
+  const [hasStorySelection, setHasStorySelection] = useState(false);
   const [selectedText, setSelectedText] = useState("");
   const [selectionPosition, setSelectionPosition] = useState<{ top: number; left: number } | null>(null);
   const [translation, setTranslation] = useState<string | null>(null);
@@ -33,7 +34,6 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   const [translationError, setTranslationError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const storyContentRef = useRef<HTMLDivElement | null>(null);
-  const translateButtonRef = useRef<HTMLButtonElement | null>(null);
   const isOpenRef = useRef(open);
 
   const stopAudio = useCallback(() => {
@@ -172,9 +172,11 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
     isOpenRef.current = open;
     if (!open) {
       stopAudio();
+      setHasStorySelection(false);
       return;
     }
     setStory(null);
+    setHasStorySelection(false);
     setError(null);
     clearTranslation();
     stopAudio();
@@ -185,13 +187,13 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
 
   useEffect(() => {
     if (!open || !story) return;
-    const syncTranslateButton = () => {
-      const button = translateButtonRef.current;
-      if (button) button.disabled = !getStorySelection();
+    const syncAfterInput = () => window.setTimeout(() => setHasStorySelection(Boolean(getStorySelection())), 0);
+    document.addEventListener("mouseup", syncAfterInput);
+    document.addEventListener("keyup", syncAfterInput);
+    return () => {
+      document.removeEventListener("mouseup", syncAfterInput);
+      document.removeEventListener("keyup", syncAfterInput);
     };
-    document.addEventListener("selectionchange", syncTranslateButton);
-    syncTranslateButton();
-    return () => document.removeEventListener("selectionchange", syncTranslateButton);
   }, [getStorySelection, open, story]);
 
   useEffect(() => {
@@ -295,11 +297,10 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
             Close
           </Button>
           <button
-            ref={translateButtonRef}
             type="button"
             onPointerDown={(event) => event.preventDefault()}
             onClick={startTranslation}
-            disabled
+            disabled={!hasStorySelection}
             className="inline-flex size-9 shrink-0 items-center justify-center rounded-md bg-secondary text-secondary-foreground transition-all hover:bg-secondary/80 disabled:pointer-events-none disabled:opacity-50"
             aria-label="Translate selected text into Polish"
             title="Translate selected text into Polish"
