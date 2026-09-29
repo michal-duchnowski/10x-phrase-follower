@@ -3,7 +3,10 @@ import { z } from "zod";
 import { ApiErrors, requireAuth, withErrorHandling } from "../../../lib/errors";
 import {
   DEFAULT_STORY_MODEL,
+  DEFAULT_STORY_MAX_TOKENS,
   DEFAULT_STORY_PROMPT,
+  DEFAULT_STORY_TEMPERATURE,
+  DEFAULT_STORY_THINKING_ENABLED,
   DEFAULT_STORY_TTS_SPEAKING_RATE,
   DEFAULT_STORY_TTS_VOICE,
   STORY_TTS_VOICES,
@@ -17,6 +20,9 @@ const StorySettingsSchema = z.object({
   api_key: z.string().trim().min(1, "API key cannot be empty").max(1000).optional(),
   model: z.string().trim().min(1, "Model is required").max(200),
   prompt: z.string().trim().min(1, "Prompt is required").max(12000),
+  temperature: z.number().min(0).max(2),
+  max_tokens: z.number().int().min(100).max(4000),
+  thinking_enabled: z.boolean(),
   tts_voice_id: z.string().refine((voiceId) => STORY_TTS_VOICES.some((voice) => voice.id === voiceId), {
     message: "Choose a supported British Chirp 3: HD voice",
   }),
@@ -42,7 +48,9 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
 
   const { data, error } = await db
     .from("story_settings")
-    .select("encrypted_api_key, model, prompt, tts_voice_id, tts_speaking_rate")
+    .select(
+      "encrypted_api_key, model, prompt, temperature, max_tokens, thinking_enabled, tts_voice_id, tts_speaking_rate"
+    )
     .eq("user_id", userId)
     .single();
   if (error || !data) throw ApiErrors.internal("Failed to load story settings");
@@ -51,6 +59,9 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
     is_configured: Boolean(data.encrypted_api_key),
     model: data.model || DEFAULT_STORY_MODEL,
     prompt: data.prompt || DEFAULT_STORY_PROMPT,
+    temperature: data.temperature ?? DEFAULT_STORY_TEMPERATURE,
+    max_tokens: data.max_tokens ?? DEFAULT_STORY_MAX_TOKENS,
+    thinking_enabled: data.thinking_enabled ?? DEFAULT_STORY_THINKING_ENABLED,
     tts_voice_id: data.tts_voice_id || DEFAULT_STORY_TTS_VOICE,
     tts_speaking_rate: data.tts_speaking_rate || DEFAULT_STORY_TTS_SPEAKING_RATE,
   });
@@ -69,6 +80,9 @@ export const PUT: APIRoute = withErrorHandling(async (context: APIContext) => {
   const update: {
     model: string;
     prompt: string;
+    temperature: number;
+    max_tokens: number;
+    thinking_enabled: boolean;
     tts_speaking_rate: number;
     tts_voice_id: string;
     updated_at: string;
@@ -76,6 +90,9 @@ export const PUT: APIRoute = withErrorHandling(async (context: APIContext) => {
   } = {
     model: body.model,
     prompt: body.prompt,
+    temperature: body.temperature,
+    max_tokens: body.max_tokens,
+    thinking_enabled: body.thinking_enabled,
     tts_speaking_rate: body.tts_speaking_rate,
     tts_voice_id: body.tts_voice_id,
     updated_at: new Date().toISOString(),
@@ -86,7 +103,9 @@ export const PUT: APIRoute = withErrorHandling(async (context: APIContext) => {
     .from("story_settings")
     .update(update)
     .eq("user_id", userId)
-    .select("encrypted_api_key, model, prompt, tts_voice_id, tts_speaking_rate")
+    .select(
+      "encrypted_api_key, model, prompt, temperature, max_tokens, thinking_enabled, tts_voice_id, tts_speaking_rate"
+    )
     .single();
   if (error || !data) throw ApiErrors.internal("Failed to save story settings");
 
@@ -94,6 +113,9 @@ export const PUT: APIRoute = withErrorHandling(async (context: APIContext) => {
     is_configured: Boolean(data.encrypted_api_key),
     model: data.model,
     prompt: data.prompt,
+    temperature: data.temperature,
+    max_tokens: data.max_tokens,
+    thinking_enabled: data.thinking_enabled,
     tts_voice_id: data.tts_voice_id,
     tts_speaking_rate: data.tts_speaking_rate,
   });

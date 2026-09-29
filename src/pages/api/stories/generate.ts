@@ -46,7 +46,7 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
   if (locals.runtime?.env) setRuntimeEnv(locals.runtime.env);
   const { data: settings, error: settingsError } = await db
     .from("story_settings")
-    .select("encrypted_api_key, model, prompt")
+    .select("encrypted_api_key, model, prompt, temperature, max_tokens, thinking_enabled")
     .eq("user_id", userId)
     .single();
   if (settingsError || !settings)
@@ -74,9 +74,9 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
       model: settings.model,
-      temperature: 0.8,
-      max_tokens: 800,
-      thinking: { type: "disabled" },
+      temperature: settings.temperature,
+      max_tokens: settings.max_tokens,
+      thinking: { type: settings.thinking_enabled ? "enabled" : "disabled" },
       messages: [
         {
           role: "system",

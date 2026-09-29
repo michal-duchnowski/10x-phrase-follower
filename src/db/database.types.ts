@@ -331,7 +331,10 @@ export interface Database {
           created_at: string;
           encrypted_api_key: string | null;
           model: string;
+          max_tokens: number;
           prompt: string;
+          temperature: number;
+          thinking_enabled: boolean;
           tts_speaking_rate: number;
           tts_voice_id: string;
           updated_at: string;
@@ -341,7 +344,10 @@ export interface Database {
           created_at?: string;
           encrypted_api_key?: string | null;
           model?: string;
+          max_tokens?: number;
           prompt?: string;
+          temperature?: number;
+          thinking_enabled?: boolean;
           tts_speaking_rate?: number;
           tts_voice_id?: string;
           updated_at?: string;
@@ -351,7 +357,10 @@ export interface Database {
           created_at?: string;
           encrypted_api_key?: string | null;
           model?: string;
+          max_tokens?: number;
           prompt?: string;
+          temperature?: number;
+          thinking_enabled?: boolean;
           tts_speaking_rate?: number;
           tts_voice_id?: string;
           updated_at?: string;
