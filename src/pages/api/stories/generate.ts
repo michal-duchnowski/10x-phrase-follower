@@ -2,7 +2,7 @@
 import type { APIRoute, APIContext } from "astro";
 import type { LocalsWithAuth } from "../../../lib/types";
 import { ApiErrors, requireAuth, withErrorHandling } from "../../../lib/errors";
-import { DEFAULT_STORY_THINKING_EFFORT, STORY_VOCABULARY_MESSAGE } from "../../../lib/story-settings";
+import { DEFAULT_STORY_THINKING_EFFORT, STORY_PROMPT_SUFFIX } from "../../../lib/story-settings";
 import { decrypt, setRuntimeEnv } from "../../../lib/tts-encryption";
 import { getSupabaseClient } from "../../../lib/utils";
 
@@ -85,7 +85,7 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
         },
         {
           role: "user",
-          content: `${STORY_VOCABULARY_MESSAGE}\n\n<vocabulary-data>\n${vocabulary}\n</vocabulary-data>`,
+          content: `${STORY_PROMPT_SUFFIX}\n\n<vocabulary-data>\n${vocabulary}\n</vocabulary-data>`,
         },
       ],
     }),
