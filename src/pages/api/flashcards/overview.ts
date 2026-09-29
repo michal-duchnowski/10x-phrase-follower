@@ -16,7 +16,7 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
   const [directionsResult, settingsResult, introductionsResult] = await Promise.all([
     db
       .from("flashcard_directions")
-      .select("fsrs_state,due_at,reps,flashcards!inner(phrase_id,user_id,status)")
+      .select("fsrs_state,due_at,reps,flashcards!inner(id,phrase_id,user_id,status)")
       .eq("flashcards.user_id", userId)
       .eq("flashcards.status", "active"),
     db.from("flashcard_settings").select("*").eq("user_id", userId).maybeSingle(),
@@ -41,6 +41,14 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
       })
       .filter(Boolean)
   );
+  const activeFlashcardIds = new Set(
+    (directions ?? [])
+      .map((direction: any) => {
+        const flashcard = Array.isArray(direction.flashcards) ? direction.flashcards[0] : direction.flashcards;
+        return flashcard?.id;
+      })
+      .filter(Boolean)
+  );
   const introducedPhraseIds = new Set((introductions ?? []).map((item: any) => item.phrase_id));
   const introductionDateByPhrase = new Map(
     (introductions ?? []).map((item: any) => [item.phrase_id, item.introduced_on])
@@ -60,6 +68,7 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
     due_reviews: due,
     overdue_reviews: overdue,
     new_phrases: newPhraseIds.size,
+    active_flashcards: activeFlashcardIds.size,
     new_phrases_today: newToday,
     can_add_new_phrases:
       newToday > 0 &&

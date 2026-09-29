@@ -37,6 +37,7 @@ interface Overview {
   due_reviews: number;
   overdue_reviews: number;
   new_phrases: number;
+  active_flashcards: number;
   new_phrases_today: number;
   can_add_new_phrases: boolean;
   settings: {
@@ -825,10 +826,11 @@ function FlashcardsContent() {
           )}
         </section>
       )}
-      <div className="mt-10 grid gap-6 sm:grid-cols-3">
+      <div className="mt-10 grid gap-6 sm:grid-cols-4">
         <Metric label="Due now" value={overview?.due_reviews ?? 0} />
         <Metric label="Overdue" value={overview?.overdue_reviews ?? 0} />
         <Metric label="New phrases" value={overview?.new_phrases ?? 0} />
+        <Metric label="Active flashcards" value={overview?.active_flashcards ?? 0} />
       </div>
       <div className="mt-10 flex flex-wrap gap-2">
         <Button onClick={() => void start()} disabled={busy}>
