@@ -191,6 +191,9 @@ jobs:
             docker compose pull
             docker compose up -d
             docker compose ps
+            # Keep the image used by the running container, but remove old
+            # unreferenced images left behind by prior deployments.
+            docker image prune -af
             echo "Deployment completed for branch: ${BRANCH_NAME}"
 
   # Cloudflare Pages deployment - disabled by default
