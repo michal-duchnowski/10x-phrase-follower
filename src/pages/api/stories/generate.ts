@@ -2,7 +2,7 @@
 import type { APIRoute, APIContext } from "astro";
 import type { LocalsWithAuth } from "../../../lib/types";
 import { ApiErrors, requireAuth, withErrorHandling } from "../../../lib/errors";
-import { STORY_VOCABULARY_MESSAGE } from "../../../lib/story-settings";
+import { DEFAULT_STORY_THINKING_EFFORT, STORY_VOCABULARY_MESSAGE } from "../../../lib/story-settings";
 import { decrypt, setRuntimeEnv } from "../../../lib/tts-encryption";
 import { getSupabaseClient } from "../../../lib/utils";
 
@@ -46,7 +46,7 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
   if (locals.runtime?.env) setRuntimeEnv(locals.runtime.env);
   const { data: settings, error: settingsError } = await db
     .from("story_settings")
-    .select("encrypted_api_key, model, prompt, temperature, max_tokens, thinking_enabled")
+    .select("encrypted_api_key, model, prompt, temperature, max_tokens, thinking_enabled, thinking_effort")
     .eq("user_id", userId)
     .single();
   if (settingsError || !settings)
@@ -77,6 +77,7 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
       temperature: settings.temperature,
       max_tokens: settings.max_tokens,
       thinking: { type: settings.thinking_enabled ? "enabled" : "disabled" },
+      ...(settings.thinking_enabled && { reasoning_effort: settings.thinking_effort || DEFAULT_STORY_THINKING_EFFORT }),
       messages: [
         {
           role: "system",

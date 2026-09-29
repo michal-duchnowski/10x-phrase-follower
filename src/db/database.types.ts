@@ -335,6 +335,7 @@ export interface Database {
           prompt: string;
           temperature: number;
           thinking_enabled: boolean;
+          thinking_effort: "low" | "high" | "max";
           tts_speaking_rate: number;
           tts_voice_id: string;
           updated_at: string;
@@ -348,6 +349,7 @@ export interface Database {
           prompt?: string;
           temperature?: number;
           thinking_enabled?: boolean;
+          thinking_effort?: "low" | "high" | "max";
           tts_speaking_rate?: number;
           tts_voice_id?: string;
           updated_at?: string;
@@ -361,6 +363,7 @@ export interface Database {
           prompt?: string;
           temperature?: number;
           thinking_enabled?: boolean;
+          thinking_effort?: "low" | "high" | "max";
           tts_speaking_rate?: number;
           tts_voice_id?: string;
           updated_at?: string;

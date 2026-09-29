@@ -9,6 +9,7 @@ interface StorySettings {
   temperature: number;
   max_tokens: number;
   thinking_enabled: boolean;
+  thinking_effort: "low" | "high" | "max";
   tts_speaking_rate: number;
   tts_voice_id: string;
 }
@@ -39,6 +40,7 @@ export default function StorySettingsForm() {
   const [temperature, setTemperature] = useState("0.8");
   const [maxTokens, setMaxTokens] = useState("800");
   const [thinkingEnabled, setThinkingEnabled] = useState(false);
+  const [thinkingEffort, setThinkingEffort] = useState<StorySettings["thinking_effort"]>("low");
   const [ttsVoiceId, setTtsVoiceId] = useState("en-GB-Chirp3-HD-Kore");
   const [ttsSpeakingRate, setTtsSpeakingRate] = useState(1);
   const [saving, setSaving] = useState(false);
@@ -53,6 +55,7 @@ export default function StorySettingsForm() {
         setTemperature(String(data.temperature));
         setMaxTokens(String(data.max_tokens));
         setThinkingEnabled(data.thinking_enabled);
+        setThinkingEffort(data.thinking_effort);
         setTtsVoiceId(data.tts_voice_id);
         setTtsSpeakingRate(data.tts_speaking_rate);
       })
@@ -80,6 +83,7 @@ export default function StorySettingsForm() {
           temperature: parsedTemperature,
           max_tokens: parsedMaxTokens,
           thinking_enabled: thinkingEnabled,
+          thinking_effort: thinkingEffort,
           tts_voice_id: ttsVoiceId,
           tts_speaking_rate: ttsSpeakingRate,
         }),
@@ -161,6 +165,23 @@ export default function StorySettingsForm() {
             The model can plan how to use the selected expressions before writing.
           </span>
         </label>
+      </div>
+      <div>
+        <label htmlFor="story-thinking-effort" className="mb-2 block text-sm font-medium text-foreground">
+          Thinking effort
+        </label>
+        <select
+          id="story-thinking-effort"
+          value={thinkingEffort}
+          disabled={!thinkingEnabled}
+          onChange={(event) => setThinkingEffort(event.target.value as StorySettings["thinking_effort"])}
+          className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <option value="low">Low — faster, lower token use</option>
+          <option value="high">High — more planning</option>
+          <option value="max">Max — slowest, highest token use</option>
+        </select>
+        <p className="mt-1 text-xs text-muted-foreground">Used only when thinking is enabled.</p>
       </div>
       <div>
         <label htmlFor="story-model" className="mb-2 block text-sm font-medium text-foreground">
