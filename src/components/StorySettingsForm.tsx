@@ -144,20 +144,21 @@ export default function StorySettingsForm() {
           />
         </label>
       </div>
-      <label className="flex items-start gap-3 rounded-md border border-border p-3 text-sm text-foreground">
+      <div className="flex items-start gap-3 rounded-md border border-border p-3 text-sm text-foreground">
         <input
+          id="story-thinking"
           type="checkbox"
           checked={thinkingEnabled}
           onChange={(event) => setThinkingEnabled(event.target.checked)}
           className="mt-0.5 size-4"
         />
-        <span>
+        <label htmlFor="story-thinking">
           <span className="block font-medium">Enable thinking</span>
           <span className="block text-xs text-muted-foreground">
             The model can plan how to use the selected expressions before writing.
           </span>
-        </span>
-      </label>
+        </label>
+      </div>
       <div>
         <label htmlFor="story-model" className="mb-2 block text-sm font-medium text-foreground">
           Model
