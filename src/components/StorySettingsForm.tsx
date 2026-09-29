@@ -36,8 +36,8 @@ export default function StorySettingsForm() {
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("");
   const [prompt, setPrompt] = useState("");
-  const [temperature, setTemperature] = useState(0.8);
-  const [maxTokens, setMaxTokens] = useState(800);
+  const [temperature, setTemperature] = useState("0.8");
+  const [maxTokens, setMaxTokens] = useState("800");
   const [thinkingEnabled, setThinkingEnabled] = useState(false);
   const [ttsVoiceId, setTtsVoiceId] = useState("en-GB-Chirp3-HD-Kore");
   const [ttsSpeakingRate, setTtsSpeakingRate] = useState(1);
@@ -50,8 +50,8 @@ export default function StorySettingsForm() {
         setSettings(data);
         setModel(data.model);
         setPrompt(data.prompt);
-        setTemperature(data.temperature);
-        setMaxTokens(data.max_tokens);
+        setTemperature(String(data.temperature));
+        setMaxTokens(String(data.max_tokens));
         setThinkingEnabled(data.thinking_enabled);
         setTtsVoiceId(data.tts_voice_id);
         setTtsSpeakingRate(data.tts_speaking_rate);
@@ -61,7 +61,13 @@ export default function StorySettingsForm() {
       );
   }, [apiCall]);
 
+  const parsedTemperature = Number(temperature.replace(",", "."));
+  const parsedMaxTokens = Number(maxTokens);
+  const hasValidTemperature = Number.isFinite(parsedTemperature) && parsedTemperature >= 0 && parsedTemperature <= 2;
+  const hasValidMaxTokens = Number.isInteger(parsedMaxTokens) && parsedMaxTokens >= 100 && parsedMaxTokens <= 64_000;
+
   const save = async () => {
+    if (!hasValidTemperature || !hasValidMaxTokens) return;
     setSaving(true);
     setMessage(null);
     try {
@@ -71,8 +77,8 @@ export default function StorySettingsForm() {
           api_key: apiKey || undefined,
           model,
           prompt,
-          temperature,
-          max_tokens: maxTokens,
+          temperature: parsedTemperature,
+          max_tokens: parsedMaxTokens,
           thinking_enabled: thinkingEnabled,
           tts_voice_id: ttsVoiceId,
           tts_speaking_rate: ttsSpeakingRate,
@@ -118,30 +124,27 @@ export default function StorySettingsForm() {
           Temperature
           <input
             id="story-temperature"
-            type="number"
-            min="0"
-            max="2"
-            step="0.1"
+            type="text"
+            inputMode="decimal"
             value={temperature}
-            onChange={(event) => setTemperature(Number(event.target.value))}
+            onChange={(event) => setTemperature(event.target.value)}
             className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
           />
           <span className="mt-1 block text-xs font-normal text-muted-foreground">
-            Lower values make word usage more consistent.
+            Lower values make word usage more consistent. You can use a dot or comma.
           </span>
         </label>
         <label className="text-sm font-medium text-foreground" htmlFor="story-max-tokens">
           Max tokens
           <input
             id="story-max-tokens"
-            type="number"
-            min="100"
-            max="4000"
-            step="50"
+            type="text"
+            inputMode="numeric"
             value={maxTokens}
-            onChange={(event) => setMaxTokens(Number(event.target.value))}
+            onChange={(event) => setMaxTokens(event.target.value)}
             className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
           />
+          <span className="mt-1 block text-xs font-normal text-muted-foreground">From 100 to 64,000.</span>
         </label>
       </div>
       <div className="flex items-start gap-3 rounded-md border border-border p-3 text-sm text-foreground">
@@ -231,7 +234,10 @@ export default function StorySettingsForm() {
           {message.text}
         </p>
       )}
-      <Button onClick={() => void save()} disabled={saving || !model.trim() || !prompt.trim()}>
+      <Button
+        onClick={() => void save()}
+        disabled={saving || !model.trim() || !prompt.trim() || !hasValidTemperature || !hasValidMaxTokens}
+      >
         {saving ? "Saving..." : "Save story settings"}
       </Button>
     </div>

@@ -21,7 +21,7 @@ const StorySettingsSchema = z.object({
   model: z.string().trim().min(1, "Model is required").max(200),
   prompt: z.string().trim().min(1, "Prompt is required").max(12000),
   temperature: z.number().min(0).max(2),
-  max_tokens: z.number().int().min(100).max(4000),
+  max_tokens: z.number().int().min(100).max(64_000),
   thinking_enabled: z.boolean(),
   tts_voice_id: z.string().refine((voiceId) => STORY_TTS_VOICES.some((voice) => voice.id === voiceId), {
     message: "Choose a supported British Chirp 3: HD voice",
