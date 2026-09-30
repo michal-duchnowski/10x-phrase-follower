@@ -838,22 +838,18 @@ function FlashcardsContent() {
                     >
                       <Info />
                     </Button>
-                    {difficultPool === "most_difficult" && (
-                      <Button
-                        variant={card.phrase_difficulty === "hard" ? "default" : "secondary"}
-                        size="icon"
-                        className={
-                          card.phrase_difficulty === "hard"
-                            ? "hidden bg-amber-500 text-black hover:bg-amber-400 sm:inline-flex"
-                            : "hidden sm:inline-flex"
-                        }
-                        onClick={() => void toggleDifficultCardHard(card)}
-                        title={card.phrase_difficulty === "hard" ? "Remove hard mark" : "Mark as hard"}
-                        aria-label={card.phrase_difficulty === "hard" ? "Remove hard mark" : "Mark as hard"}
-                      >
-                        <BadgeAlert />
-                      </Button>
-                    )}
+                    <Button
+                      variant={card.phrase_difficulty === "hard" ? "default" : "secondary"}
+                      size="icon"
+                      className={
+                        card.phrase_difficulty === "hard" ? "bg-amber-500 text-black hover:bg-amber-400" : undefined
+                      }
+                      onClick={() => void toggleDifficultCardHard(card)}
+                      title={card.phrase_difficulty === "hard" ? "Remove hard mark" : "Mark as hard"}
+                      aria-label={card.phrase_difficulty === "hard" ? "Remove hard mark" : "Mark as hard"}
+                    >
+                      <BadgeAlert />
+                    </Button>
                     <Button
                       variant="secondary"
                       size="icon"
