@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ArchiveX,
-  BadgeAlert,
+  Flag,
   CheckCircle2,
   Flame,
   Info,
@@ -842,13 +842,15 @@ function FlashcardsContent() {
                       variant={card.phrase_difficulty === "hard" ? "default" : "secondary"}
                       size="icon"
                       className={
-                        card.phrase_difficulty === "hard" ? "bg-amber-500 text-black hover:bg-amber-400" : undefined
+                        card.phrase_difficulty === "hard"
+                          ? "hidden bg-emerald-500 text-black hover:bg-emerald-400 landscape:inline-flex sm:inline-flex"
+                          : "hidden landscape:inline-flex sm:inline-flex"
                       }
                       onClick={() => void toggleDifficultCardHard(card)}
                       title={card.phrase_difficulty === "hard" ? "Remove hard mark" : "Mark as hard"}
                       aria-label={card.phrase_difficulty === "hard" ? "Remove hard mark" : "Mark as hard"}
                     >
-                      <BadgeAlert />
+                      <Flag />
                     </Button>
                     <Button
                       variant="secondary"
