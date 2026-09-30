@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ArchiveX,
+  BadgeAlert,
   CheckCircle2,
   Flame,
   Info,
@@ -58,6 +59,7 @@ interface DifficultCard {
   en_text: string;
   pl_text: string;
   learning_hint_markdown: string | null;
+  phrase_difficulty: "easy" | "medium" | "hard" | null;
   score: number;
   lapses: number;
   stability: number;
@@ -155,6 +157,33 @@ function FlashcardsContent() {
       addToast({
         type: "error",
         title: "Could not remove flashcard",
+        description: error instanceof Error ? error.message : "Try again",
+      });
+    }
+  };
+  const toggleDifficultCardHard = async (card: DifficultCard) => {
+    const difficulty = card.phrase_difficulty === "hard" ? null : "hard";
+    try {
+      const updated = await apiCall<{ difficulty: "easy" | "medium" | "hard" | null }>(
+        `/api/phrases/${card.phrase_id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ difficulty }),
+        }
+      );
+      setDifficultCards((previous) =>
+        previous.map((item) =>
+          item.phrase_id === card.phrase_id ? { ...item, phrase_difficulty: updated.difficulty } : item
+        )
+      );
+      addToast({
+        type: "success",
+        title: difficulty === "hard" ? "Marked as hard" : "Hard mark removed",
+      });
+    } catch (error) {
+      addToast({
+        type: "error",
+        title: "Could not update difficulty",
         description: error instanceof Error ? error.message : "Try again",
       });
     }
@@ -809,6 +838,22 @@ function FlashcardsContent() {
                     >
                       <Info />
                     </Button>
+                    {difficultPool === "most_difficult" && (
+                      <Button
+                        variant={card.phrase_difficulty === "hard" ? "default" : "secondary"}
+                        size="icon"
+                        className={
+                          card.phrase_difficulty === "hard"
+                            ? "hidden bg-amber-500 text-black hover:bg-amber-400 sm:inline-flex"
+                            : "hidden sm:inline-flex"
+                        }
+                        onClick={() => void toggleDifficultCardHard(card)}
+                        title={card.phrase_difficulty === "hard" ? "Remove hard mark" : "Mark as hard"}
+                        aria-label={card.phrase_difficulty === "hard" ? "Remove hard mark" : "Mark as hard"}
+                      >
+                        <BadgeAlert />
+                      </Button>
+                    )}
                     <Button
                       variant="secondary"
                       size="icon"
