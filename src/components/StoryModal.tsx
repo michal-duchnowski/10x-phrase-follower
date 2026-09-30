@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Languages, LoaderCircle, RefreshCw, Volume2, X } from "lucide-react";
+import { Copy, Languages, LoaderCircle, RefreshCw, Volume2, X } from "lucide-react";
 import { parseMarkdownToHtml } from "../lib/utils";
 import { useApi } from "../lib/hooks/useApi";
 import { Button } from "./ui/button";
@@ -66,6 +66,15 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
       setLoading(false);
     }
   }, [apiCall, phraseIds, stopAudio]);
+
+  const copyStory = useCallback(async () => {
+    if (!story) return;
+    try {
+      await navigator.clipboard.writeText(storyContentRef.current?.innerText ?? story.content);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not copy the story.");
+    }
+  }, [story]);
 
   const playStory = useCallback(async () => {
     if (!story) return;
@@ -316,8 +325,23 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
           >
             {audioLoading ? <LoaderCircle className="size-4 animate-spin" /> : <Volume2 className="size-4" />}
           </Button>
-          <Button onClick={() => void generate()} disabled={loading}>
-            <RefreshCw className="size-4" /> Generate another
+          <Button
+            onClick={() => void copyStory()}
+            disabled={loading || !story}
+            size="icon"
+            aria-label="Copy story to clipboard"
+            title="Copy story to clipboard"
+          >
+            <Copy className="size-4" />
+          </Button>
+          <Button
+            onClick={() => void generate()}
+            disabled={loading}
+            size="icon"
+            aria-label="Generate another story"
+            title="Generate another story"
+          >
+            <RefreshCw className="size-4" />
           </Button>
         </footer>
       </section>

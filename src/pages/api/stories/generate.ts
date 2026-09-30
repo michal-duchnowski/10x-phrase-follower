@@ -12,6 +12,15 @@ const MAX_PHRASES = 30;
 const MAX_PHRASE_LENGTH = 500;
 const MAX_VOCABULARY_LENGTH = 6000;
 
+function shuffle<T>(items: T[]): T[] {
+  const shuffled = [...items];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[index]];
+  }
+  return shuffled;
+}
+
 export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
   const userId = (context.locals as LocalsWithAuth).userId;
   requireAuth(userId);
@@ -62,9 +71,9 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
     throw ApiErrors.internal("Could not read your AI story credentials. Save the API key again in Settings.");
   }
 
-  const orderedPhrases = phraseIds.map((id) => phrases.find((phrase: any) => phrase.id === id));
+  const shuffledPhrases = shuffle(phrases);
   const vocabulary = JSON.stringify(
-    orderedPhrases.map((phrase: any) => ({ english: phrase.en_text, polishMeaning: phrase.pl_text }))
+    shuffledPhrases.map((phrase: any) => ({ english: phrase.en_text, polishMeaning: phrase.pl_text }))
   );
   if (vocabulary.length > MAX_VOCABULARY_LENGTH) {
     throw ApiErrors.validationError("The selected phrases are too long to create one story");
