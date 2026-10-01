@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Copy, Languages, LoaderCircle, RefreshCw, Volume2, X } from "lucide-react";
+import { Copy, Languages, LoaderCircle, RefreshCw, Square, Volume2, Waves, X } from "lucide-react";
 import { parseMarkdownToHtml } from "../lib/utils";
 import { useApi } from "../lib/hooks/useApi";
+import { PcmStreamPlayer } from "../lib/pcm-stream-player";
+import { LIVE_AUDIO_CONTENT_TYPE, LIVE_AUDIO_FRAME, LiveAudioFrameDecoder } from "../lib/story-live-audio";
 import { Button } from "./ui/button";
 
 interface StoryModalProps {
@@ -19,12 +21,24 @@ interface TranslationResult {
 
 const MAX_TRANSLATION_SELECTION_LENGTH = 4_000;
 
+async function responseError(response: Response): Promise<Error> {
+  const fallback = `Live audio request failed (HTTP ${response.status})`;
+  try {
+    const payload = (await response.json()) as { error?: { code?: string; message?: string } };
+    const message = payload.error?.message ?? fallback;
+    return new Error(payload.error?.code ? `${message} (${payload.error.code})` : message);
+  } catch {
+    return new Error(response.statusText || fallback);
+  }
+}
+
 export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps) {
-  const { apiCall } = useApi();
+  const { apiCall, apiFetch } = useApi();
   const [story, setStory] = useState<StoryContent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
+  const [liveAudioState, setLiveAudioState] = useState<"idle" | "connecting" | "playing">("idle");
   const [retryPlaybackRequired, setRetryPlaybackRequired] = useState(false);
   const [hasStorySelection, setHasStorySelection] = useState(false);
   const [selectedText, setSelectedText] = useState("");
@@ -33,10 +47,14 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   const [translationLoading, setTranslationLoading] = useState(false);
   const [translationError, setTranslationError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const liveAudioRef = useRef<HTMLAudioElement | null>(null);
+  const liveAbortRef = useRef<AbortController | null>(null);
+  const liveContextRef = useRef<AudioContext | null>(null);
+  const livePlayerRef = useRef<PcmStreamPlayer | null>(null);
   const storyContentRef = useRef<HTMLDivElement | null>(null);
   const isOpenRef = useRef(open);
 
-  const stopAudio = useCallback(() => {
+  const stopStoryAudio = useCallback(() => {
     const audio = audioRef.current;
     setRetryPlaybackRequired(false);
     if (!audio) return;
@@ -45,15 +63,37 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
     audioRef.current = null;
   }, []);
 
+  const stopLiveAudio = useCallback(() => {
+    liveAbortRef.current?.abort();
+    liveAbortRef.current = null;
+    const audio = liveAudioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+      liveAudioRef.current = null;
+    }
+    livePlayerRef.current?.stop();
+    livePlayerRef.current = null;
+    const context = liveContextRef.current;
+    liveContextRef.current = null;
+    if (context && context.state !== "closed") void context.close().catch(() => undefined);
+    setLiveAudioState("idle");
+  }, []);
+
+  const stopAllAudio = useCallback(() => {
+    stopStoryAudio();
+    stopLiveAudio();
+  }, [stopLiveAudio, stopStoryAudio]);
+
   const closeStory = useCallback(() => {
-    stopAudio();
+    stopAllAudio();
     onClose();
-  }, [onClose, stopAudio]);
+  }, [onClose, stopAllAudio]);
 
   const generate = useCallback(async () => {
     setLoading(true);
     setError(null);
-    stopAudio();
+    stopAllAudio();
     try {
       const result = await apiCall<StoryContent>("/api/stories/generate", {
         method: "POST",
@@ -65,7 +105,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
     } finally {
       setLoading(false);
     }
-  }, [apiCall, phraseIds, stopAudio]);
+  }, [apiCall, phraseIds, stopAllAudio]);
 
   const copyStory = useCallback(async () => {
     if (!story) return;
@@ -80,7 +120,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
     if (!story) return;
     setAudioLoading(true);
     setError(null);
-    stopAudio();
+    stopAllAudio();
     try {
       const result = await apiCall<{ url: string }>("/api/stories/audio", {
         method: "POST",
@@ -98,7 +138,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
           setError("Audio is ready. Tap the speaker again to play it.");
           return;
         }
-        stopAudio();
+        stopStoryAudio();
         throw err;
       }
     } catch (err) {
@@ -106,7 +146,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
     } finally {
       setAudioLoading(false);
     }
-  }, [apiCall, stopAudio, story]);
+  }, [apiCall, stopAllAudio, stopStoryAudio, story]);
 
   const playPreparedStory = useCallback(() => {
     const audio = audioRef.current;
@@ -120,6 +160,107 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
       setError(err instanceof Error ? err.message : "Could not play story audio.");
     });
   }, []);
+
+  const playLiveStory = useCallback(async () => {
+    if (!story) return;
+    if (liveAudioState !== "idle") {
+      stopLiveAudio();
+      return;
+    }
+
+    stopAllAudio();
+    setError(null);
+    setLiveAudioState("connecting");
+
+    const AudioContextConstructor = window.AudioContext;
+    if (!AudioContextConstructor || typeof ReadableStream === "undefined") {
+      setError("Live audio is not supported by this browser (WEB_AUDIO_UNAVAILABLE).");
+      setLiveAudioState("idle");
+      return;
+    }
+
+    const abortController = new AbortController();
+    const audioContext = new AudioContextConstructor();
+    liveAbortRef.current = abortController;
+    liveContextRef.current = audioContext;
+    void audioContext.resume();
+    let keepCachedAudio = false;
+
+    try {
+      const response = await apiFetch("/api/stories/audio/stream", {
+        method: "POST",
+        body: JSON.stringify({ content: story.content }),
+        headers: { Accept: `${LIVE_AUDIO_CONTENT_TYPE}, application/json` },
+        signal: abortController.signal,
+      });
+      if (!response.ok) throw await responseError(response);
+      if (!isOpenRef.current || abortController.signal.aborted) return;
+
+      const contentType = response.headers.get("content-type") ?? "";
+      if (contentType.includes("application/json")) {
+        const payload = (await response.json()) as { mode?: string; url?: string };
+        if (payload.mode !== "cached" || !payload.url)
+          throw new Error("Live audio cache returned an invalid response.");
+
+        await audioContext.close();
+        liveContextRef.current = null;
+        const audio = new Audio(payload.url);
+        liveAudioRef.current = audio;
+        audio.onended = stopLiveAudio;
+        audio.onerror = () => {
+          setError("The cached story audio could not be played (CACHED_AUDIO_FAILED).");
+          stopLiveAudio();
+        };
+        await audio.play();
+        if (abortController.signal.aborted) return;
+        keepCachedAudio = true;
+        setLiveAudioState("playing");
+        return;
+      }
+
+      if (!contentType.includes(LIVE_AUDIO_CONTENT_TYPE) || !response.body) {
+        throw new Error("Live audio returned an unsupported response (INVALID_STREAM_RESPONSE).");
+      }
+
+      await audioContext.resume();
+      const player = new PcmStreamPlayer(audioContext);
+      const decoder = new LiveAudioFrameDecoder();
+      const reader = response.body.getReader();
+      livePlayerRef.current = player;
+      let receivedAudio = false;
+      let receivedEnd = false;
+
+      while (!receivedEnd) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        for (const frame of decoder.push(value)) {
+          if (frame.type === LIVE_AUDIO_FRAME.audio) {
+            player.push(frame.payload);
+            if (!receivedAudio) {
+              receivedAudio = true;
+              setLiveAudioState("playing");
+            }
+          } else if (frame.type === LIVE_AUDIO_FRAME.error) {
+            const detail = JSON.parse(new TextDecoder().decode(frame.payload)) as { code?: string; message?: string };
+            throw new Error(`${detail.message ?? "Google TTS streaming failed."} (${detail.code ?? "STREAM_FAILED"})`);
+          } else if (frame.type === LIVE_AUDIO_FRAME.end) {
+            receivedEnd = true;
+          }
+        }
+      }
+
+      decoder.finish();
+      if (!receivedAudio) throw new Error("Google TTS returned no live audio (EMPTY_STREAM).");
+      if (!receivedEnd) throw new Error("The live audio connection ended unexpectedly (INCOMPLETE_STREAM).");
+      await player.finish();
+    } catch (err) {
+      if (!abortController.signal.aborted) {
+        setError(err instanceof Error ? err.message : "Could not play live story audio (STREAM_FAILED).");
+      }
+    } finally {
+      if (!keepCachedAudio && liveAbortRef.current === abortController) stopLiveAudio();
+    }
+  }, [apiFetch, liveAudioState, stopAllAudio, stopLiveAudio, story]);
 
   const clearTranslation = useCallback(() => {
     setSelectedText("");
@@ -180,7 +321,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   useEffect(() => {
     isOpenRef.current = open;
     if (!open) {
-      stopAudio();
+      stopAllAudio();
       setHasStorySelection(false);
       return;
     }
@@ -188,11 +329,11 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
     setHasStorySelection(false);
     setError(null);
     clearTranslation();
-    stopAudio();
+    stopAllAudio();
     void generate();
-  }, [clearTranslation, generate, open, stopAudio]);
+  }, [clearTranslation, generate, open, stopAllAudio]);
 
-  useEffect(() => () => stopAudio(), [stopAudio]);
+  useEffect(() => () => stopAllAudio(), [stopAllAudio]);
 
   useEffect(() => {
     if (!open || !story) return;
@@ -302,7 +443,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
           </div>
         )}
         <footer className="flex justify-end gap-2 border-t border-border px-4 py-3">
-          <Button onClick={closeStory} disabled={loading || audioLoading}>
+          <Button onClick={closeStory} disabled={loading}>
             Close
           </Button>
           <button
@@ -318,12 +459,32 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
           </button>
           <Button
             onClick={() => (retryPlaybackRequired ? playPreparedStory() : void playStory())}
-            disabled={loading || audioLoading || !story}
+            disabled={loading || audioLoading || liveAudioState === "connecting" || !story}
             size="icon"
             aria-label="Play English story"
             title={retryPlaybackRequired ? "Tap again to play the prepared story audio" : "Play English story"}
           >
             {audioLoading ? <LoaderCircle className="size-4 animate-spin" /> : <Volume2 className="size-4" />}
+          </Button>
+          <Button
+            onClick={() => void playLiveStory()}
+            disabled={loading || audioLoading || !story}
+            variant="outline"
+            aria-label={liveAudioState === "idle" ? "Play live English story audio (beta)" : "Stop live audio"}
+            title={liveAudioState === "idle" ? "Live audio (beta)" : "Stop live audio"}
+            className="gap-1.5 px-2"
+          >
+            {liveAudioState === "connecting" ? (
+              <LoaderCircle className="size-4 animate-spin" />
+            ) : liveAudioState === "playing" ? (
+              <Square className="size-3.5" />
+            ) : (
+              <Waves className="size-4" />
+            )}
+            <span className="text-xs sm:hidden">{liveAudioState === "idle" ? "Live β" : "Stop"}</span>
+            <span className="hidden text-xs sm:inline">
+              {liveAudioState === "idle" ? "Live audio (beta)" : "Stop live"}
+            </span>
           </Button>
           <Button
             onClick={() => void copyStory()}

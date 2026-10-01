@@ -87,41 +87,32 @@ export function useApi() {
   const effectiveToken = token || supabaseAccessToken || getTokenFromStorage();
   const effectiveIsAuthenticated = isAuthenticated || !!effectiveToken;
 
-  const apiCall = useCallback(
-    async <T>(endpoint: string, options: ApiOptions = {}): Promise<T> => {
+  const apiFetch = useCallback(
+    async (endpoint: string, options: ApiOptions = {}): Promise<Response> => {
       const { requireAuth = true, headers = {}, ...restOptions } = options;
+      let requestToken = effectiveToken;
 
-      // Check authentication requirement
-      if (requireAuth && !effectiveIsAuthenticated) {
-        // One more chance: ask Supabase for the persisted session (auto-refresh capable).
+      if (requireAuth && !requestToken) {
         const { data, error } = await supabaseClient.auth.getSession();
-        if (error || !data.session) {
-          throw new Error("Authentication required");
-        }
+        if (error || !data.session) throw new Error("Authentication required");
+        requestToken = data.session.access_token;
       }
 
-      // Prepare headers
       const requestHeaders: Record<string, string> = {
         "Content-Type": "application/json",
         Accept: "application/json",
         ...(headers as Record<string, string>),
       };
+      if (requestToken) requestHeaders.Authorization = `Bearer ${requestToken}`;
 
-      // Add authorization header if token is available
-      if (effectiveToken) {
-        requestHeaders["Authorization"] = `Bearer ${effectiveToken}`;
-      } else if (requireAuth) {
-        const { data, error } = await supabaseClient.auth.getSession();
-        if (!error && data.session?.access_token) {
-          requestHeaders["Authorization"] = `Bearer ${data.session.access_token}`;
-        }
-      }
+      return fetch(endpoint, { ...restOptions, headers: requestHeaders });
+    },
+    [effectiveToken]
+  );
 
-      // Make the request
-      const response = await fetch(endpoint, {
-        ...restOptions,
-        headers: requestHeaders,
-      });
+  const apiCall = useCallback(
+    async <T>(endpoint: string, options: ApiOptions = {}): Promise<T> => {
+      const response = await apiFetch(endpoint, options);
 
       // Handle response
       if (!response.ok) {
@@ -148,11 +139,11 @@ export function useApi() {
       // Return text for non-JSON responses
       return response.text() as unknown as T;
     },
-    [effectiveToken, effectiveIsAuthenticated]
+    [apiFetch]
   );
 
   return useMemo(
-    () => ({ apiCall, isAuthenticated: effectiveIsAuthenticated, token: effectiveToken, userId }),
-    [apiCall, effectiveIsAuthenticated, effectiveToken, userId]
+    () => ({ apiCall, apiFetch, isAuthenticated: effectiveIsAuthenticated, token: effectiveToken, userId }),
+    [apiCall, apiFetch, effectiveIsAuthenticated, effectiveToken, userId]
   );
 }
