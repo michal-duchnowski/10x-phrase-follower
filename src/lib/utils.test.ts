@@ -6,5 +6,8 @@ describe("markdown preview", () => {
     expect(parseMarkdownToHtml("*italic*")).toBe("<p><em>italic</em></p>");
     expect(parseMarkdownToHtml("**bold**")).toBe("<p><strong>bold</strong></p>");
     expect(parseMarkdownToHtml("***both***")).toBe("<p><strong><em>both</em></strong></p>");
+    expect(parseMarkdownToHtml("*Polski tekst z **pogrubionym fragmentem**.*")).toBe(
+      "<p><em>Polski tekst z <strong>pogrubionym fragmentem</strong>.</em></p>"
+    );
   });
 });

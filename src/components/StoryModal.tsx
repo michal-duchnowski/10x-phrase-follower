@@ -22,8 +22,6 @@ interface TranslationResult {
   translation: string;
 }
 
-const MAX_TRANSLATION_SELECTION_LENGTH = 4_000;
-
 interface AudioSessionLike {
   type: string;
 }
@@ -57,9 +55,6 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   const [audioLoading, setAudioLoading] = useState(false);
   const [liveAudioState, setLiveAudioState] = useState<"idle" | "connecting" | "playing">("idle");
   const [retryPlaybackRequired, setRetryPlaybackRequired] = useState(false);
-  const [hasStorySelection, setHasStorySelection] = useState(false);
-  const [selectedText, setSelectedText] = useState("");
-  const [selectionPosition, setSelectionPosition] = useState<{ top: number; left: number } | null>(null);
   const [translation, setTranslation] = useState<string | null>(null);
   const [translationLoading, setTranslationLoading] = useState(false);
   const [translationError, setTranslationError] = useState<string | null>(null);
@@ -166,6 +161,8 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   const generate = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setTranslation(null);
+    setTranslationError(null);
     stopAllAudio();
     try {
       const result = await apiCall<StoryContent>("/api/stories/generate", {
@@ -402,76 +399,36 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
     }
   }, [apiFetch, liveAudioState, startNativePcmAudio, stopAllAudio, stopLiveAudio, story]);
 
-  const clearTranslation = useCallback(() => {
-    setSelectedText("");
-    setSelectionPosition(null);
-    setTranslation(null);
+  const translateStory = useCallback(async () => {
+    if (!story) return;
+    setTranslationLoading(true);
     setTranslationError(null);
-  }, []);
-
-  const getStorySelection = useCallback(() => {
-    const selection = window.getSelection();
-    const storyContent = storyContentRef.current;
-    if (!selection || selection.rangeCount === 0 || !storyContent) return null;
-
-    const range = selection.getRangeAt(0);
-    if (!storyContent.contains(range.commonAncestorContainer)) return null;
-    const text = selection.toString().trim();
-    if (!text) return null;
-
-    const rect = range.getBoundingClientRect();
-    return { text, position: { top: Math.max(12, rect.top - 44), left: Math.max(12, rect.left + rect.width / 2) } };
-  }, []);
-
-  const translateText = useCallback(
-    async (text: string) => {
-      if (text.length > MAX_TRANSLATION_SELECTION_LENGTH) {
-        setTranslationError(
-          `Select up to ${MAX_TRANSLATION_SELECTION_LENGTH.toLocaleString("en-US")} characters at a time.`
-        );
-        return;
-      }
-
-      setTranslationLoading(true);
-      setTranslationError(null);
-      setTranslation(null);
-      try {
-        const result = await apiCall<TranslationResult>("/api/stories/translate", {
-          method: "POST",
-          body: JSON.stringify({ text }),
-        });
-        setTranslation(result.translation);
-      } catch (err) {
-        setTranslationError(err instanceof Error ? err.message : "Could not translate the selected text.");
-      } finally {
-        setTranslationLoading(false);
-      }
-    },
-    [apiCall]
-  );
-
-  const startTranslation = useCallback(() => {
-    const selection = getStorySelection();
-    if (!selection) return;
-    setSelectedText(selection.text);
-    setSelectionPosition(selection.position);
-    void translateText(selection.text);
-  }, [getStorySelection, translateText]);
+    try {
+      const result = await apiCall<TranslationResult>("/api/stories/translate", {
+        method: "POST",
+        body: JSON.stringify({ content: story.content, phrase_ids: phraseIds }),
+      });
+      setTranslation(result.translation);
+    } catch (err) {
+      setTranslationError(err instanceof Error ? err.message : "Could not translate the story.");
+    } finally {
+      setTranslationLoading(false);
+    }
+  }, [apiCall, phraseIds, story]);
 
   useEffect(() => {
     isOpenRef.current = open;
     if (!open) {
       stopAllAudio();
-      setHasStorySelection(false);
       return;
     }
     setStory(null);
-    setHasStorySelection(false);
     setError(null);
-    clearTranslation();
+    setTranslation(null);
+    setTranslationError(null);
     stopAllAudio();
     void generate();
-  }, [clearTranslation, generate, open, stopAllAudio]);
+  }, [generate, open, stopAllAudio]);
 
   useEffect(() => () => stopAllAudio(), [stopAllAudio]);
 
@@ -491,17 +448,6 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   }, []);
 
   useEffect(() => {
-    if (!open || !story) return;
-    const syncAfterInput = () => window.setTimeout(() => setHasStorySelection(Boolean(getStorySelection())), 0);
-    document.addEventListener("mouseup", syncAfterInput);
-    document.addEventListener("keyup", syncAfterInput);
-    return () => {
-      document.removeEventListener("mouseup", syncAfterInput);
-      document.removeEventListener("keyup", syncAfterInput);
-    };
-  }, [getStorySelection, open, story]);
-
-  useEffect(() => {
     if (!open) return;
     const handleKeyDown = (event: KeyboardEvent) => event.key === "Escape" && !loading && closeStory();
     window.addEventListener("keydown", handleKeyDown);
@@ -509,13 +455,6 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   }, [closeStory, loading, open]);
 
   if (!open) return null;
-  const translationPanelStyle =
-    typeof window !== "undefined" && window.innerWidth >= 640 && selectionPosition
-      ? {
-          top: Math.min(selectionPosition.top + 42, window.innerHeight - 310),
-          left: Math.min(Math.max(16, selectionPosition.left - 180), window.innerWidth - 464),
-        }
-      : undefined;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-background/80 px-0 backdrop-blur-sm sm:items-center sm:px-4 sm:py-4">
@@ -555,63 +494,35 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
               {error}
             </p>
           )}
+          {translationError && (
+            <div className="mb-4 flex items-start justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/10 p-3">
+              <p className="text-sm text-destructive">{translationError}</p>
+              <Button size="sm" variant="outline" onClick={() => void translateStory()}>
+                Retry
+              </Button>
+            </div>
+          )}
           {!loading && story && (
             <div
               ref={storyContentRef}
               className="markdown-content select-text text-base leading-7 text-foreground [-webkit-user-select:text] sm:text-sm"
-              dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(story.content) }}
+              dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(translation ?? story.content) }}
             />
           )}
         </main>
-        {(translationLoading || translation || translationError) && (
-          <div
-            className="fixed inset-x-0 bottom-0 z-[60] max-h-[55dvh] overflow-y-auto rounded-t-xl border border-border bg-card p-4 shadow-2xl sm:inset-x-auto sm:bottom-auto sm:max-h-72 sm:w-[min(28rem,calc(100vw-2rem))] sm:rounded-xl"
-            style={translationPanelStyle}
-          >
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <span className="inline-flex items-center gap-1.5 text-sm font-medium">
-                <Languages className="size-4" /> Polish translation
-              </span>
-              <button
-                type="button"
-                onClick={clearTranslation}
-                className="rounded p-1 text-muted-foreground hover:bg-muted"
-                aria-label="Close translation"
-              >
-                <X className="size-4" />
-              </button>
-            </div>
-            {translationLoading && (
-              <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                <LoaderCircle className="size-4 animate-spin" /> Translating...
-              </p>
-            )}
-            {translationError && (
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-sm text-destructive">{translationError}</p>
-                <Button size="sm" variant="outline" onClick={() => void translateText(selectedText)}>
-                  Retry
-                </Button>
-              </div>
-            )}
-            {translation && <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{translation}</p>}
-          </div>
-        )}
         <footer className="flex justify-end gap-2 border-t border-border px-4 py-3">
           <Button onClick={closeStory} disabled={loading}>
             Close
           </Button>
-          <button
-            type="button"
-            onPointerDown={(event) => event.preventDefault()}
-            onClick={startTranslation}
-            disabled={!hasStorySelection}
-            className="inline-flex size-9 shrink-0 items-center justify-center rounded-md bg-secondary text-secondary-foreground transition-all hover:bg-secondary/80 disabled:pointer-events-none disabled:opacity-50"
-            aria-label="Translate selected text into Polish"
-            title="Translate selected text into Polish"
+          <Button
+            onClick={() => void translateStory()}
+            disabled={loading || translationLoading || !story}
+            size="icon"
+            aria-label="Translate the whole story into Polish"
+            title="Translate the whole story into Polish"
           >
-            <Languages className="size-4" />
-          </button>
+            {translationLoading ? <LoaderCircle className="size-4 animate-spin" /> : <Languages className="size-4" />}
+          </Button>
           <Button
             onClick={() => (retryPlaybackRequired ? playPreparedStory() : void playStory())}
             disabled={loading || audioLoading || liveAudioState === "connecting" || !story}
