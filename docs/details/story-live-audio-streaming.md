@@ -48,7 +48,7 @@ Backend używa istniejącego, zaszyfrowanego klucza TTS użytkownika z ustawień
 
 Streaming Chirp 3 nie zwraca MP3. Dostępne formaty to PCM, ALAW, MULAW i OGG Opus.
 
-Beta używa surowego PCM 16-bit little-endian, mono, 24 kHz. Backend opakowuje porcje PCM w prosty protokół ramek aplikacyjnych, który rozróżnia audio, bezpieczny błąd i koniec streamu. Przeglądarka odtwarza próbki przez Web Audio API po zebraniu około 250 ms bufora. Rozwiązanie nie zależy od obsługi porcjowanego kontenera OGG przez `MediaSource`.
+tBeta używa streamingowego `audio_encoding=PCM`: surowego PCM 16-bit little-endian, mono, 24 kHz. Nie należy używać `LINEAR16`, ponieważ w Google Cloud TTS oznacza ono wariant opakowany nagłówkiem WAV i nie jest obsługiwane przez `StreamingAudioConfig`. Backend opakowuje porcje PCM w prosty protokół ramek aplikacyjnych, który rozróżnia audio, bezpieczny błąd i koniec streamu. Przeglądarka odtwarza próbki przez Web Audio API po zebraniu około 250 ms bufora. Rozwiązanie nie zależy od obsługi porcjowanego kontenera OGG przez `MediaSource`.
 
 Backend łączy się z `StreamingSynthesize` przez oficjalnego klienta Google Cloud i przekazuje istniejący klucz API wyłącznie jako dane uwierzytelniające gRPC. Jeżeli Google odrzuci klucz dla tej metody, klient otrzymuje bezpieczny kod `PERMISSION_DENIED` albo `UNAUTHENTICATED`; decyzja o dodaniu konta usługi pozostaje poza zakresem tej bety.
 

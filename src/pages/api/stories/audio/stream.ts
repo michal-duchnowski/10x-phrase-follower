@@ -176,7 +176,9 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
         rpcStream.write({
           streamingConfig: {
             voice: { languageCode: "en-GB", name: voiceId },
-            streamingAudioConfig: { audioEncoding: "LINEAR16", sampleRateHertz: 24_000, speakingRate },
+            // Streaming accepts raw PCM, not the WAV-wrapped LINEAR16 encoding.
+            // Google currently returns headerless 16-bit little-endian PCM at 24 kHz.
+            streamingAudioConfig: { audioEncoding: "PCM", speakingRate },
           },
         });
         for (const text of splitTextForStreaming(narrationText)) rpcStream.write({ input: { text } });
