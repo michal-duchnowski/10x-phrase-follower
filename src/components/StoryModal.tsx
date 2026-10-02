@@ -3,6 +3,7 @@ import { Copy, Languages, LoaderCircle, RefreshCw, Square, Volume2, Waves, X } f
 import { parseMarkdownToHtml } from "../lib/utils";
 import { useApi } from "../lib/hooks/useApi";
 import { PcmStreamPlayer } from "../lib/pcm-stream-player";
+import { createPcmWavBlob, getPcmDurationSeconds } from "../lib/pcm-wav";
 import { LIVE_AUDIO_CONTENT_TYPE, LIVE_AUDIO_FRAME, LiveAudioFrameDecoder } from "../lib/story-live-audio";
 import { storyLiveAudioCache } from "../lib/story-live-audio-cache";
 import liveAudioKeepAliveUrl from "../assets/silence-800ms.mp3?url";
@@ -68,6 +69,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   const liveContextRef = useRef<AudioContext | null>(null);
   const livePlayerRef = useRef<PcmStreamPlayer | null>(null);
   const liveKeepAliveRef = useRef<HTMLAudioElement | null>(null);
+  const liveAudioObjectUrlRef = useRef<string | null>(null);
   const previousAudioSessionTypeRef = useRef<string | null>(null);
   const storyContentRef = useRef<HTMLDivElement | null>(null);
   const isOpenRef = useRef(open);
@@ -89,6 +91,10 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
       audio.pause();
       audio.currentTime = 0;
       liveAudioRef.current = null;
+    }
+    if (liveAudioObjectUrlRef.current) {
+      URL.revokeObjectURL(liveAudioObjectUrlRef.current);
+      liveAudioObjectUrlRef.current = null;
     }
     livePlayerRef.current?.stop();
     livePlayerRef.current = null;
@@ -117,6 +123,40 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
     stopStoryAudio();
     stopLiveAudio();
   }, [stopLiveAudio, stopStoryAudio]);
+
+  const startNativePcmAudio = useCallback(
+    async (pcm: Uint8Array, startAtSeconds: number | (() => number)) => {
+      const audio = liveKeepAliveRef.current ?? new Audio();
+      liveKeepAliveRef.current = null;
+      audio.loop = false;
+      audio.preload = "auto";
+      audio.setAttribute("playsinline", "");
+
+      if (liveAudioObjectUrlRef.current) URL.revokeObjectURL(liveAudioObjectUrlRef.current);
+      const objectUrl = URL.createObjectURL(createPcmWavBlob(pcm));
+      liveAudioObjectUrlRef.current = objectUrl;
+      liveAudioRef.current = audio;
+
+      const metadataReady = new Promise<void>((resolve, reject) => {
+        audio.addEventListener("loadedmetadata", () => resolve(), { once: true });
+        audio.addEventListener("error", () => reject(new Error("iPhone could not prepare live audio controls.")), {
+          once: true,
+        });
+      });
+      audio.src = objectUrl;
+      audio.load();
+      await metadataReady;
+      const requestedPosition = typeof startAtSeconds === "function" ? startAtSeconds() : startAtSeconds;
+      audio.currentTime = Math.min(Math.max(0, requestedPosition), Math.max(0, audio.duration - 0.05));
+      audio.onended = stopLiveAudio;
+      audio.onerror = () => {
+        setError("The live story audio could not be played (NATIVE_AUDIO_FAILED).");
+        stopLiveAudio();
+      };
+      await audio.play();
+    },
+    [stopLiveAudio]
+  );
 
   const closeStory = useCallback(() => {
     stopAllAudio();
@@ -252,6 +292,14 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
       }
       const browserCachedAudio = storyLiveAudioCache.get(story.content);
       if (browserCachedAudio) {
+        if (isIosDevice()) {
+          await startNativePcmAudio(browserCachedAudio, 0);
+          await audioContext.close();
+          liveContextRef.current = null;
+          keepCachedAudio = true;
+          setLiveAudioState("playing");
+          return;
+        }
         const player = new PcmStreamPlayer(audioContext);
         livePlayerRef.current = player;
         setLiveAudioState("playing");
@@ -277,7 +325,10 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
 
         await audioContext.close();
         liveContextRef.current = null;
-        const audio = new Audio(payload.url);
+        const audio = liveKeepAliveRef.current ?? new Audio();
+        liveKeepAliveRef.current = null;
+        audio.loop = false;
+        audio.src = payload.url;
         liveAudioRef.current = audio;
         audio.onended = stopLiveAudio;
         audio.onerror = () => {
@@ -328,6 +379,19 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
       if (!receivedAudio) throw new Error("Google TTS returned no live audio (EMPTY_STREAM).");
       if (!receivedEnd) throw new Error("The live audio connection ended unexpectedly (INCOMPLETE_STREAM).");
       storyLiveAudioCache.set(story.content, receivedChunks);
+      const completedPcm = storyLiveAudioCache.get(story.content);
+      if (isIosDevice() && completedPcm) {
+        const position = player.getPositionSeconds();
+        if (position + 0.1 < getPcmDurationSeconds(completedPcm)) {
+          await startNativePcmAudio(completedPcm, () => player.getPositionSeconds());
+          player.stop();
+          livePlayerRef.current = null;
+          await audioContext.close();
+          liveContextRef.current = null;
+          keepCachedAudio = true;
+          return;
+        }
+      }
       await player.finish();
     } catch (err) {
       if (!abortController.signal.aborted) {
@@ -336,7 +400,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
     } finally {
       if (!keepCachedAudio && liveAbortRef.current === abortController) stopLiveAudio();
     }
-  }, [apiFetch, liveAudioState, stopAllAudio, stopLiveAudio, story]);
+  }, [apiFetch, liveAudioState, startNativePcmAudio, stopAllAudio, stopLiveAudio, story]);
 
   const clearTranslation = useCallback(() => {
     setSelectedText("");

@@ -8,6 +8,8 @@ export class PcmStreamPlayer {
   private readonly sources = new Set<AudioBufferSourceNode>();
   private queuedSamples = 0;
   private nextStartTime = 0;
+  private firstStartTime: number | null = null;
+  private scheduledSamples = 0;
   private started = false;
   private stopped = false;
   private oddByte: number | null = null;
@@ -75,6 +77,12 @@ export class PcmStreamPlayer {
     this.queued.length = 0;
   }
 
+  getPositionSeconds(): number {
+    if (this.firstStartTime === null) return 0;
+    const scheduledDuration = this.scheduledSamples / this.sampleRate;
+    return Math.min(scheduledDuration, Math.max(0, this.context.currentTime - this.firstStartTime));
+  }
+
   private flushQueue(): void {
     if (this.started || this.queuedSamples === 0) return;
     const samples = new Float32Array(this.queuedSamples);
@@ -98,7 +106,9 @@ export class PcmStreamPlayer {
     source.connect(this.context.destination);
     const earliestStart = this.context.currentTime + SCHEDULE_LEAD_SECONDS;
     const startAt = Math.max(this.nextStartTime, earliestStart);
+    if (this.firstStartTime === null) this.firstStartTime = startAt;
     source.start(startAt);
+    this.scheduledSamples += samples.length;
     this.nextStartTime = startAt + buffer.duration;
     this.lastSource = source;
     this.sources.add(source);
