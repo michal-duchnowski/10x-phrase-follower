@@ -36,6 +36,98 @@ function isIosDevice(): boolean {
   );
 }
 
+function attachNativeMediaSession(audio: HTMLAudioElement, onStop: () => void): () => void {
+  if (!("mediaSession" in navigator)) return () => undefined;
+  const mediaSession = navigator.mediaSession;
+
+  try {
+    mediaSession.metadata = new MediaMetadata({
+      title: "English story",
+      artist: "10x Phrase Follower",
+    });
+  } catch {
+    // Metadata is optional and older WebKit versions can reject it.
+  }
+
+  const safeSetAction = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => {
+    try {
+      mediaSession.setActionHandler(action, handler);
+    } catch {
+      // Ignore individual actions that this WebKit version does not support.
+    }
+  };
+  const seekTo = (position: number, fastSeek = false) => {
+    if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+    const nextPosition = Math.min(Math.max(0, position), audio.duration);
+    if (fastSeek && typeof audio.fastSeek === "function") audio.fastSeek(nextPosition);
+    else audio.currentTime = nextPosition;
+  };
+  const updatePositionState = () => {
+    try {
+      if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+      mediaSession.setPositionState({
+        duration: audio.duration,
+        playbackRate: audio.playbackRate || 1,
+        position: Math.min(Math.max(0, audio.currentTime), audio.duration),
+      });
+    } catch {
+      // Native audio still works when position state is unavailable.
+    }
+  };
+  const updatePlayingState = () => {
+    try {
+      mediaSession.playbackState = "playing";
+      updatePositionState();
+    } catch {
+      // Ignore partial Media Session implementations.
+    }
+  };
+  const updatePausedState = () => {
+    try {
+      mediaSession.playbackState = audio.ended ? "none" : "paused";
+      updatePositionState();
+    } catch {
+      // Ignore partial Media Session implementations.
+    }
+  };
+
+  safeSetAction("play", () => void audio.play().catch(() => undefined));
+  safeSetAction("pause", () => audio.pause());
+  safeSetAction("stop", onStop);
+  safeSetAction("seekto", (details) => {
+    if (typeof details.seekTime === "number") seekTo(details.seekTime, details.fastSeek);
+  });
+  safeSetAction("seekbackward", (details) => seekTo(audio.currentTime - (details.seekOffset ?? 10)));
+  safeSetAction("seekforward", (details) => seekTo(audio.currentTime + (details.seekOffset ?? 10)));
+
+  const positionEvents: (keyof HTMLMediaElementEventMap)[] = ["durationchange", "ratechange", "timeupdate", "seeked"];
+  positionEvents.forEach((eventName) => audio.addEventListener(eventName, updatePositionState));
+  audio.addEventListener("playing", updatePlayingState);
+  audio.addEventListener("pause", updatePausedState);
+  audio.addEventListener("ended", updatePausedState);
+  updatePositionState();
+
+  return () => {
+    positionEvents.forEach((eventName) => audio.removeEventListener(eventName, updatePositionState));
+    audio.removeEventListener("playing", updatePlayingState);
+    audio.removeEventListener("pause", updatePausedState);
+    audio.removeEventListener("ended", updatePausedState);
+    safeSetAction("play", null);
+    safeSetAction("pause", null);
+    safeSetAction("stop", null);
+    safeSetAction("seekto", null);
+    safeSetAction("seekbackward", null);
+    safeSetAction("seekforward", null);
+    try {
+      mediaSession.setPositionState();
+      mediaSession.playbackState = "none";
+      mediaSession.metadata = null;
+    } catch {
+      // Cleanup is best-effort for older WebKit versions.
+    }
+  };
+}
+
 async function responseError(response: Response): Promise<Error> {
   const fallback = `Live audio request failed (HTTP ${response.status})`;
   try {
@@ -65,6 +157,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   const livePlayerRef = useRef<PcmStreamPlayer | null>(null);
   const liveKeepAliveRef = useRef<HTMLAudioElement | null>(null);
   const liveAudioObjectUrlRef = useRef<string | null>(null);
+  const liveMediaSessionCleanupRef = useRef<(() => void) | null>(null);
   const previousAudioSessionTypeRef = useRef<string | null>(null);
   const storyContentRef = useRef<HTMLDivElement | null>(null);
   const isOpenRef = useRef(open);
@@ -81,6 +174,8 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   const stopLiveAudio = useCallback(() => {
     liveAbortRef.current?.abort();
     liveAbortRef.current = null;
+    liveMediaSessionCleanupRef.current?.();
+    liveMediaSessionCleanupRef.current = null;
     const audio = liveAudioRef.current;
     if (audio) {
       audio.pause();
@@ -139,6 +234,8 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
         });
       });
       audio.src = objectUrl;
+      liveMediaSessionCleanupRef.current?.();
+      liveMediaSessionCleanupRef.current = attachNativeMediaSession(audio, stopLiveAudio);
       audio.load();
       await metadataReady;
       const requestedPosition = typeof startAtSeconds === "function" ? startAtSeconds() : startAtSeconds;
@@ -327,6 +424,8 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
         audio.loop = false;
         audio.src = payload.url;
         liveAudioRef.current = audio;
+        liveMediaSessionCleanupRef.current?.();
+        liveMediaSessionCleanupRef.current = attachNativeMediaSession(audio, stopLiveAudio);
         audio.onended = stopLiveAudio;
         audio.onerror = () => {
           setError("The cached story audio could not be played (CACHED_AUDIO_FAILED).");
