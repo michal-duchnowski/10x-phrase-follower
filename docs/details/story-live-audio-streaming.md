@@ -48,7 +48,9 @@ Backend używa istniejącego, zaszyfrowanego klucza TTS użytkownika z ustawień
 
 Streaming Chirp 3 nie zwraca MP3. Dostępne formaty to PCM, ALAW, MULAW i OGG Opus.
 
-tBeta używa streamingowego `audio_encoding=PCM`: surowego PCM 16-bit little-endian, mono, 24 kHz. Nie należy używać `LINEAR16`, ponieważ w Google Cloud TTS oznacza ono wariant opakowany nagłówkiem WAV i nie jest obsługiwane przez `StreamingAudioConfig`. Backend opakowuje porcje PCM w prosty protokół ramek aplikacyjnych, który rozróżnia audio, bezpieczny błąd i koniec streamu. Przeglądarka odtwarza próbki przez Web Audio API po zebraniu około 250 ms bufora. Rozwiązanie nie zależy od obsługi porcjowanego kontenera OGG przez `MediaSource`.
+Beta używa streamingowego `audio_encoding=PCM`: surowego PCM 16-bit little-endian, mono, 24 kHz. Nie należy używać `LINEAR16`, ponieważ w Google Cloud TTS oznacza ono wariant opakowany nagłówkiem WAV i nie jest obsługiwane przez `StreamingAudioConfig`. Backend opakowuje porcje PCM w prosty protokół ramek aplikacyjnych, który rozróżnia audio, bezpieczny błąd i koniec streamu. Przeglądarka odtwarza próbki przez Web Audio API po zebraniu około 250 ms bufora. Rozwiązanie nie zależy od obsługi porcjowanego kontenera OGG przez `MediaSource`.
+
+Na iOS wszystkie przeglądarki korzystają z WebKit. Pierwszy tap `Live audio (beta)` synchronicznie odblokowuje `AudioContext`, ustawia wspieraną sesję audio na `playback` i uruchamia zapętlony, cichy element audio na czas streamu. Zapobiega to cichemu pierwszemu odtworzeniu oraz przełączaniu sesji na przyciszony tryb po zablokowaniu ekranu. Po zatrzymaniu lub zamknięciu modala poprzedni typ sesji jest przywracany, a element podtrzymujący jest zwalniany.
 
 Backend łączy się z `StreamingSynthesize` przez oficjalnego klienta Google Cloud i przekazuje istniejący klucz API wyłącznie jako dane uwierzytelniające gRPC. Jeżeli Google odrzuci klucz dla tej metody, klient otrzymuje bezpieczny kod `PERMISSION_DENIED` albo `UNAUTHENTICATED`; decyzja o dodaniu konta usługi pozostaje poza zakresem tej bety.
 
@@ -65,7 +67,7 @@ Przy cache hit endpoint zwraca JSON z podpisanym URL istniejącego MP3. Przy cac
 
 ### Przeglądarka
 
-Cache w przeglądarce jest opcjonalny i nie zastępuje cache'a serwerowego. Pełne audio można po zakończeniu odtworzenia zachować w Cache Storage albo IndexedDB, pod kluczem zależnym od treści, głosu i tempa. Działa tylko na tym samym urządzeniu i może zostać usunięty przez przeglądarkę.
+Po odebraniu kompletnego streamu przeglądarka przechowuje surowe PCM przez 10 minut w pamięci bieżącej karty, maksymalnie dla trzech historii. Ponowne użycie `Live audio (beta)` dla tej samej treści nie wykonuje requestu do endpointu ani Google. Przerwany lub błędny stream nie jest zapisywany. Cache znika po odświeżeniu strony i jest czyszczony po zapisaniu ustawień story, dzięki czemu zmiana głosu lub tempa nie odtwarza starego wariantu.
 
 ## Kryteria akceptacji bety
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { useApi } from "../lib/hooks/useApi";
+import { storyLiveAudioCache } from "../lib/story-live-audio-cache";
 
 interface StorySettings {
   is_configured: boolean;
@@ -88,6 +89,7 @@ export default function StorySettingsForm() {
           tts_speaking_rate: ttsSpeakingRate,
         }),
       });
+      storyLiveAudioCache.clear();
       setSettings(result);
       setApiKey("");
       setMessage({ type: "success", text: "Story settings saved." });

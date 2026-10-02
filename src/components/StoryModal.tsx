@@ -4,6 +4,8 @@ import { parseMarkdownToHtml } from "../lib/utils";
 import { useApi } from "../lib/hooks/useApi";
 import { PcmStreamPlayer } from "../lib/pcm-stream-player";
 import { LIVE_AUDIO_CONTENT_TYPE, LIVE_AUDIO_FRAME, LiveAudioFrameDecoder } from "../lib/story-live-audio";
+import { storyLiveAudioCache } from "../lib/story-live-audio-cache";
+import liveAudioKeepAliveUrl from "../assets/silence-800ms.mp3?url";
 import { Button } from "./ui/button";
 
 interface StoryModalProps {
@@ -20,6 +22,20 @@ interface TranslationResult {
 }
 
 const MAX_TRANSLATION_SELECTION_LENGTH = 4_000;
+
+interface AudioSessionLike {
+  type: string;
+}
+
+function getAudioSession(): AudioSessionLike | null {
+  return (navigator as Navigator & { audioSession?: AudioSessionLike }).audioSession ?? null;
+}
+
+function isIosDevice(): boolean {
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
 
 async function responseError(response: Response): Promise<Error> {
   const fallback = `Live audio request failed (HTTP ${response.status})`;
@@ -51,6 +67,8 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   const liveAbortRef = useRef<AbortController | null>(null);
   const liveContextRef = useRef<AudioContext | null>(null);
   const livePlayerRef = useRef<PcmStreamPlayer | null>(null);
+  const liveKeepAliveRef = useRef<HTMLAudioElement | null>(null);
+  const previousAudioSessionTypeRef = useRef<string | null>(null);
   const storyContentRef = useRef<HTMLDivElement | null>(null);
   const isOpenRef = useRef(open);
 
@@ -74,6 +92,21 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
     }
     livePlayerRef.current?.stop();
     livePlayerRef.current = null;
+    const keepAlive = liveKeepAliveRef.current;
+    if (keepAlive) {
+      keepAlive.pause();
+      keepAlive.currentTime = 0;
+      liveKeepAliveRef.current = null;
+    }
+    const audioSession = getAudioSession();
+    if (audioSession && previousAudioSessionTypeRef.current) {
+      try {
+        audioSession.type = previousAudioSessionTypeRef.current;
+      } catch {
+        // Older WebKit versions expose a read-only or partial Audio Session API.
+      }
+    }
+    previousAudioSessionTypeRef.current = null;
     const context = liveContextRef.current;
     liveContextRef.current = null;
     if (context && context.state !== "closed") void context.close().catch(() => undefined);
@@ -183,10 +216,50 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
     const audioContext = new AudioContextConstructor();
     liveAbortRef.current = abortController;
     liveContextRef.current = audioContext;
-    void audioContext.resume();
+    const audioResumePromise = audioContext.resume();
+
+    // iOS WebKit requires audio to be started directly inside the tap handler.
+    // A silent buffer unlocks Web Audio; a looping silent media element keeps the
+    // native playback session alive while the screen is locked or Chrome is backgrounded.
+    const unlockSource = audioContext.createBufferSource();
+    unlockSource.buffer = audioContext.createBuffer(1, 1, audioContext.sampleRate);
+    unlockSource.connect(audioContext.destination);
+    unlockSource.start();
+
+    if (isIosDevice()) {
+      const audioSession = getAudioSession();
+      if (audioSession) {
+        previousAudioSessionTypeRef.current = audioSession.type;
+        try {
+          audioSession.type = "playback";
+        } catch {
+          // The silent media element below is the fallback for older iOS versions.
+        }
+      }
+      const keepAlive = new Audio(liveAudioKeepAliveUrl);
+      keepAlive.loop = true;
+      keepAlive.preload = "auto";
+      keepAlive.setAttribute("playsinline", "");
+      liveKeepAliveRef.current = keepAlive;
+      void keepAlive.play().catch(() => undefined);
+    }
     let keepCachedAudio = false;
 
     try {
+      await audioResumePromise;
+      if (audioContext.state !== "running") {
+        throw new Error("iOS did not start the live audio session. Tap Live audio again (AUDIO_CONTEXT_SUSPENDED).");
+      }
+      const browserCachedAudio = storyLiveAudioCache.get(story.content);
+      if (browserCachedAudio) {
+        const player = new PcmStreamPlayer(audioContext);
+        livePlayerRef.current = player;
+        setLiveAudioState("playing");
+        player.push(browserCachedAudio);
+        await player.finish();
+        return;
+      }
+
       const response = await apiFetch("/api/stories/audio/stream", {
         method: "POST",
         body: JSON.stringify({ content: story.content }),
@@ -229,6 +302,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
       livePlayerRef.current = player;
       let receivedAudio = false;
       let receivedEnd = false;
+      const receivedChunks: Uint8Array[] = [];
 
       while (!receivedEnd) {
         const { done, value } = await reader.read();
@@ -236,6 +310,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
         for (const frame of decoder.push(value)) {
           if (frame.type === LIVE_AUDIO_FRAME.audio) {
             player.push(frame.payload);
+            receivedChunks.push(frame.payload);
             if (!receivedAudio) {
               receivedAudio = true;
               setLiveAudioState("playing");
@@ -252,6 +327,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
       decoder.finish();
       if (!receivedAudio) throw new Error("Google TTS returned no live audio (EMPTY_STREAM).");
       if (!receivedEnd) throw new Error("The live audio connection ended unexpectedly (INCOMPLETE_STREAM).");
+      storyLiveAudioCache.set(story.content, receivedChunks);
       await player.finish();
     } catch (err) {
       if (!abortController.signal.aborted) {
@@ -334,6 +410,21 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   }, [clearTranslation, generate, open, stopAllAudio]);
 
   useEffect(() => () => stopAllAudio(), [stopAllAudio]);
+
+  useEffect(() => {
+    const resumeLiveAudio = () => {
+      const context = liveContextRef.current;
+      if (document.visibilityState === "visible" && context?.state === "suspended") {
+        void context.resume().catch(() => undefined);
+      }
+    };
+    document.addEventListener("visibilitychange", resumeLiveAudio);
+    window.addEventListener("pageshow", resumeLiveAudio);
+    return () => {
+      document.removeEventListener("visibilitychange", resumeLiveAudio);
+      window.removeEventListener("pageshow", resumeLiveAudio);
+    };
+  }, []);
 
   useEffect(() => {
     if (!open || !story) return;
@@ -469,7 +560,6 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
           <Button
             onClick={() => void playLiveStory()}
             disabled={loading || audioLoading || !story}
-            variant="outline"
             aria-label={liveAudioState === "idle" ? "Play live English story audio (beta)" : "Stop live audio"}
             title={liveAudioState === "idle" ? "Live audio (beta)" : "Stop live audio"}
             className="gap-1.5 px-2"
