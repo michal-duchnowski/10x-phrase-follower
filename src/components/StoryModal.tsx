@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Copy, Languages, LoaderCircle, RefreshCw, Square, Volume2, X } from "lucide-react";
+import { Copy, Languages, LoaderCircle, RefreshCw, Square, Volume2 } from "lucide-react";
 import { parseMarkdownToHtml } from "../lib/utils";
 import { useApi } from "../lib/hooks/useApi";
 import { PcmStreamPlayer } from "../lib/pcm-stream-player";
@@ -501,7 +501,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
         aria-label="AI exercise"
         className="flex h-[100dvh] w-full flex-col overflow-hidden bg-card shadow-lg sm:h-auto sm:max-h-[80vh] sm:max-w-2xl sm:rounded-lg sm:border sm:border-border"
       >
-        <header className="hidden border-b border-border px-4 py-3 sm:block">
+        <header className="hidden items-start justify-between gap-4 border-b border-border px-4 py-3 sm:flex">
           <div>
             <h2 id="story-title" className="text-base font-semibold">
               Your AI exercise
@@ -510,6 +510,9 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
               Generated from {phraseIds.length} selected expressions.
             </p>
           </div>
+          <Button type="button" onClick={closeStory} size="sm">
+            Close
+          </Button>
         </header>
         <main className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
           {loading && (
@@ -538,7 +541,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
             />
           )}
         </main>
-        <footer className="flex items-center gap-2 border-t border-border px-4 py-3">
+        <footer className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
           <Button
             onClick={() => void playLiveStory()}
             disabled={loading || !story}
@@ -581,8 +584,8 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
           >
             <RefreshCw className="size-4" />
           </Button>
-          <Button onClick={closeStory} size="icon" className="ml-auto sm:ml-4" aria-label="Close" title="Close">
-            <X className="size-4" />
+          <Button onClick={closeStory} className="ml-4 sm:hidden">
+            Close
           </Button>
         </footer>
       </section>
