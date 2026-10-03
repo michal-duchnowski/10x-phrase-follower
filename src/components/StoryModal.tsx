@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Copy, Languages, LoaderCircle, RefreshCw, Square, Volume2, Waves, X } from "lucide-react";
+import { Copy, Languages, LoaderCircle, RefreshCw, Square, Volume2, X } from "lucide-react";
 import { parseMarkdownToHtml } from "../lib/utils";
 import { useApi } from "../lib/hooks/useApi";
 import { PcmStreamPlayer } from "../lib/pcm-stream-player";
@@ -144,13 +144,10 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   const [story, setStory] = useState<StoryContent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [audioLoading, setAudioLoading] = useState(false);
   const [liveAudioState, setLiveAudioState] = useState<"idle" | "connecting" | "playing">("idle");
-  const [retryPlaybackRequired, setRetryPlaybackRequired] = useState(false);
   const [translation, setTranslation] = useState<string | null>(null);
   const [translationLoading, setTranslationLoading] = useState(false);
   const [translationError, setTranslationError] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const liveAudioRef = useRef<HTMLAudioElement | null>(null);
   const liveAbortRef = useRef<AbortController | null>(null);
   const liveContextRef = useRef<AudioContext | null>(null);
@@ -161,15 +158,6 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   const previousAudioSessionTypeRef = useRef<string | null>(null);
   const storyContentRef = useRef<HTMLDivElement | null>(null);
   const isOpenRef = useRef(open);
-
-  const stopStoryAudio = useCallback(() => {
-    const audio = audioRef.current;
-    setRetryPlaybackRequired(false);
-    if (!audio) return;
-    audio.pause();
-    audio.currentTime = 0;
-    audioRef.current = null;
-  }, []);
 
   const stopLiveAudio = useCallback(() => {
     liveAbortRef.current?.abort();
@@ -209,11 +197,6 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
     setLiveAudioState("idle");
   }, []);
 
-  const stopAllAudio = useCallback(() => {
-    stopStoryAudio();
-    stopLiveAudio();
-  }, [stopLiveAudio, stopStoryAudio]);
-
   const startNativePcmAudio = useCallback(
     async (pcm: Uint8Array, startAtSeconds: number | (() => number)) => {
       const audio = liveKeepAliveRef.current ?? new Audio();
@@ -251,16 +234,16 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   );
 
   const closeStory = useCallback(() => {
-    stopAllAudio();
+    stopLiveAudio();
     onClose();
-  }, [onClose, stopAllAudio]);
+  }, [onClose, stopLiveAudio]);
 
   const generate = useCallback(async () => {
     setLoading(true);
     setError(null);
     setTranslation(null);
     setTranslationError(null);
-    stopAllAudio();
+    stopLiveAudio();
     try {
       const result = await apiCall<StoryContent>("/api/stories/generate", {
         method: "POST",
@@ -272,7 +255,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
     } finally {
       setLoading(false);
     }
-  }, [apiCall, phraseIds, stopAllAudio]);
+  }, [apiCall, phraseIds, stopLiveAudio]);
 
   const copyStory = useCallback(async () => {
     if (!story) return;
@@ -283,51 +266,6 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
     }
   }, [story]);
 
-  const playStory = useCallback(async () => {
-    if (!story) return;
-    setAudioLoading(true);
-    setError(null);
-    stopAllAudio();
-    try {
-      const result = await apiCall<{ url: string }>("/api/stories/audio", {
-        method: "POST",
-        body: JSON.stringify({ content: story.content }),
-      });
-      const nextAudio = new Audio(result.url);
-      if (!isOpenRef.current) return;
-      nextAudio.preload = "auto";
-      audioRef.current = nextAudio;
-      try {
-        await nextAudio.play();
-      } catch (err) {
-        if (err instanceof DOMException && err.name === "NotAllowedError") {
-          setRetryPlaybackRequired(true);
-          setError("Audio is ready. Tap the speaker again to play it.");
-          return;
-        }
-        stopStoryAudio();
-        throw err;
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not play story audio.");
-    } finally {
-      setAudioLoading(false);
-    }
-  }, [apiCall, stopAllAudio, stopStoryAudio, story]);
-
-  const playPreparedStory = useCallback(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    setError(null);
-    setRetryPlaybackRequired(false);
-    // Call play synchronously in the click handler. Browser autoplay policies,
-    // especially on iOS, can reject playback after an awaited API request.
-    void audio.play().catch((err: unknown) => {
-      setRetryPlaybackRequired(true);
-      setError(err instanceof Error ? err.message : "Could not play story audio.");
-    });
-  }, []);
-
   const playLiveStory = useCallback(async () => {
     if (!story) return;
     if (liveAudioState !== "idle") {
@@ -335,7 +273,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
       return;
     }
 
-    stopAllAudio();
+    stopLiveAudio();
     setError(null);
     setLiveAudioState("connecting");
 
@@ -496,7 +434,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
     } finally {
       if (!keepCachedAudio && liveAbortRef.current === abortController) stopLiveAudio();
     }
-  }, [apiFetch, liveAudioState, startNativePcmAudio, stopAllAudio, stopLiveAudio, story]);
+  }, [apiFetch, liveAudioState, startNativePcmAudio, stopLiveAudio, story]);
 
   const translateStory = useCallback(async () => {
     if (!story) return;
@@ -518,18 +456,18 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
   useEffect(() => {
     isOpenRef.current = open;
     if (!open) {
-      stopAllAudio();
+      stopLiveAudio();
       return;
     }
     setStory(null);
     setError(null);
     setTranslation(null);
     setTranslationError(null);
-    stopAllAudio();
+    stopLiveAudio();
     void generate();
-  }, [generate, open, stopAllAudio]);
+  }, [generate, open, stopLiveAudio]);
 
-  useEffect(() => () => stopAllAudio(), [stopAllAudio]);
+  useEffect(() => () => stopLiveAudio(), [stopLiveAudio]);
 
   useEffect(() => {
     const resumeLiveAudio = () => {
@@ -548,10 +486,10 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
 
   useEffect(() => {
     if (!open) return;
-    const handleKeyDown = (event: KeyboardEvent) => event.key === "Escape" && !loading && closeStory();
+    const handleKeyDown = (event: KeyboardEvent) => event.key === "Escape" && closeStory();
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeStory, loading, open]);
+  }, [closeStory, open]);
 
   if (!open) return null;
 
@@ -563,7 +501,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
         aria-label="AI exercise"
         className="flex h-[100dvh] w-full flex-col overflow-hidden bg-card shadow-lg sm:h-auto sm:max-h-[80vh] sm:max-w-2xl sm:rounded-lg sm:border sm:border-border"
       >
-        <header className="hidden items-start justify-between gap-4 border-b border-border px-4 py-3 sm:flex">
+        <header className="hidden border-b border-border px-4 py-3 sm:block">
           <div>
             <h2 id="story-title" className="text-base font-semibold">
               Your AI exercise
@@ -572,15 +510,6 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
               Generated from {phraseIds.length} selected expressions.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={closeStory}
-            disabled={loading}
-            className="rounded-md p-1 text-muted-foreground hover:bg-muted"
-            aria-label="Close"
-          >
-            <X className="size-4" />
-          </button>
         </header>
         <main className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
           {loading && (
@@ -609,9 +538,21 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
             />
           )}
         </main>
-        <footer className="flex justify-end gap-2 border-t border-border px-4 py-3">
-          <Button onClick={closeStory} disabled={loading}>
-            Close
+        <footer className="flex items-center gap-2 border-t border-border px-4 py-3">
+          <Button
+            onClick={() => void playLiveStory()}
+            disabled={loading || !story}
+            size="icon"
+            aria-label={liveAudioState === "idle" ? "Play English story audio" : "Stop story audio"}
+            title={liveAudioState === "idle" ? "Play English story audio" : "Stop story audio"}
+          >
+            {liveAudioState === "connecting" ? (
+              <LoaderCircle className="size-4 animate-spin" />
+            ) : liveAudioState === "playing" ? (
+              <Square className="size-3.5" />
+            ) : (
+              <Volume2 className="size-4" />
+            )}
           </Button>
           <Button
             onClick={() => void translateStory()}
@@ -621,34 +562,6 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
             title="Translate the whole story into Polish"
           >
             {translationLoading ? <LoaderCircle className="size-4 animate-spin" /> : <Languages className="size-4" />}
-          </Button>
-          <Button
-            onClick={() => (retryPlaybackRequired ? playPreparedStory() : void playStory())}
-            disabled={loading || audioLoading || liveAudioState === "connecting" || !story}
-            size="icon"
-            aria-label="Play English story"
-            title={retryPlaybackRequired ? "Tap again to play the prepared story audio" : "Play English story"}
-          >
-            {audioLoading ? <LoaderCircle className="size-4 animate-spin" /> : <Volume2 className="size-4" />}
-          </Button>
-          <Button
-            onClick={() => void playLiveStory()}
-            disabled={loading || audioLoading || !story}
-            aria-label={liveAudioState === "idle" ? "Play live English story audio (beta)" : "Stop live audio"}
-            title={liveAudioState === "idle" ? "Live audio (beta)" : "Stop live audio"}
-            className="gap-1.5 px-2"
-          >
-            {liveAudioState === "connecting" ? (
-              <LoaderCircle className="size-4 animate-spin" />
-            ) : liveAudioState === "playing" ? (
-              <Square className="size-3.5" />
-            ) : (
-              <Waves className="size-4" />
-            )}
-            <span className="text-xs sm:hidden">{liveAudioState === "idle" ? "Live β" : "Stop"}</span>
-            <span className="hidden text-xs sm:inline">
-              {liveAudioState === "idle" ? "Live audio (beta)" : "Stop live"}
-            </span>
           </Button>
           <Button
             onClick={() => void copyStory()}
@@ -667,6 +580,9 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
             title="Generate another story"
           >
             <RefreshCw className="size-4" />
+          </Button>
+          <Button onClick={closeStory} size="icon" className="ml-auto sm:ml-4" aria-label="Close" title="Close">
+            <X className="size-4" />
           </Button>
         </footer>
       </section>
