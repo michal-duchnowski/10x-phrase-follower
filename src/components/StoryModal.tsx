@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Copy, Languages, LoaderCircle, RefreshCw, Square, Volume2 } from "lucide-react";
+import { Copy, Languages, LoaderCircle, RefreshCw, Square, Volume2, X } from "lucide-react";
 import { parseMarkdownToHtml } from "../lib/utils";
 import { useApi } from "../lib/hooks/useApi";
 import { PcmStreamPlayer } from "../lib/pcm-stream-player";
@@ -510,9 +510,14 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
               Generated from {phraseIds.length} selected expressions.
             </p>
           </div>
-          <Button type="button" onClick={closeStory} size="sm">
-            Close
-          </Button>
+          <button
+            type="button"
+            onClick={closeStory}
+            className="rounded-md p-1 text-muted-foreground hover:bg-muted"
+            aria-label="Close"
+          >
+            <X className="size-4" />
+          </button>
         </header>
         <main className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
           {loading && (
