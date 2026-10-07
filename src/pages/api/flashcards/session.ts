@@ -17,26 +17,30 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
   const today = getFlashcardsDay();
   const { data: settings } = await db.from("flashcard_settings").select("*").eq("user_id", userId).maybeSingle();
   const config = settings ?? { new_phrases_per_batch: 5, review_cards_per_batch: 50 };
-  const { data: flashcards, error } = await db
-    .from("flashcards")
-    .select("id, phrase_id, phrases!inner(id,en_text,pl_text,learning_hint_markdown,tokens)")
-    .eq("user_id", userId)
-    .eq("status", "active");
-  if (error) throw ApiErrors.internal("Failed to build session");
-  const cards = flashcards ?? [];
-  const ids = cards.map((card: any) => card.id);
-  if (!ids.length) return Response.json({ cards: [] });
+  const { data: directions, error: directionError } = await db
+    .from("flashcard_directions")
+    .select("*, flashcards!inner(id,phrase_id,user_id,status,phrases!inner(id,en_text,pl_text,learning_hint_markdown))")
+    .eq("flashcards.user_id", userId)
+    .eq("flashcards.status", "active")
+    .order("due_at");
+  if (directionError) {
+    // eslint-disable-next-line no-console
+    console.error("[flashcards/session] Failed to load active directions:", directionError);
+    throw ApiErrors.internal("Failed to build session");
+  }
+  if (!directions?.length) return Response.json({ cards: [] });
   const { data: introductions, error: introductionError } = await db
     .from("flashcard_phrase_introductions")
     .select("phrase_id,introduced_on")
     .eq("user_id", userId);
-  if (introductionError) throw ApiErrors.internal("Failed to read introduced phrases");
-  const { data: directions, error: directionError } = await db
-    .from("flashcard_directions")
-    .select("*")
-    .in("flashcard_id", ids)
-    .order("due_at");
-  if (directionError) throw ApiErrors.internal("Failed to build session");
+  if (introductionError) {
+    // eslint-disable-next-line no-console
+    console.error("[flashcards/session] Failed to load phrase introductions:", introductionError);
+    throw ApiErrors.internal("Failed to read introduced phrases");
+  }
+  const cards = (directions ?? []).map((direction: any) =>
+    Array.isArray(direction.flashcards) ? direction.flashcards[0] : direction.flashcards
+  );
   const byFlashcard = new Map(cards.map((card: any) => [card.id, card]));
   const makeCard = (direction: any) => {
     const card = byFlashcard.get(direction.flashcard_id);
@@ -89,7 +93,11 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
         const { error: insertError } = await db
           .from("flashcard_phrase_introductions")
           .insert(groups.map(([phraseId]) => ({ user_id: userId, phrase_id: phraseId, introduced_on: today })));
-        if (insertError) throw ApiErrors.internal("Failed to introduce new phrases");
+        if (insertError) {
+          // eslint-disable-next-line no-console
+          console.error("[flashcards/session] Failed to introduce new phrases:", insertError);
+          throw ApiErrors.internal("Failed to introduce new phrases");
+        }
         groups.forEach(([, group]) => selected.push(...group));
       }
     }
