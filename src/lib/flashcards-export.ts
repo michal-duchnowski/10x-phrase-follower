@@ -26,18 +26,29 @@ function formatDate(value: string | null): string {
     .replace(/\.\d{3}Z$/, " UTC");
 }
 
-export function buildFlashcardsMarkdown(rows: FlashcardExportRow[], generatedAt = new Date()): string {
+export function buildFlashcardsMarkdown(
+  rows: FlashcardExportRow[],
+  generatedAt = new Date(),
+  mode: "all" | "difficult" = "all"
+): string {
   const sortedRows = [...rows].sort(
     (a, b) => b.score - a.score || b.lapses - a.lapses || a.enText.localeCompare(b.enText, "en")
   );
   const lines = [
-    "# Eksport fiszek",
+    mode === "difficult" ? "# Trudne fiszki — Again / Hard" : "# Eksport fiszek",
     "",
     `Wygenerowano: ${formatDate(generatedAt.toISOString())}`,
     `Liczba fiszek (kierunków): ${sortedRows.length}`,
     "",
-    "| Front | Back | Kierunek | Score | Stan | Powtórki | Błędy | Stabilność | Ostatnia powtórka | Następna powtórka | Status |",
-    "| --- | --- | --- | ---: | --- | ---: | ---: | ---: | --- | --- | --- |",
+    ...(mode === "difficult"
+      ? [
+          "| Front | Back | Kierunek | Score | Powtórki | Błędy | Stabilność |",
+          "| --- | --- | --- | ---: | ---: | ---: | ---: |",
+        ]
+      : [
+          "| Front | Back | Kierunek | Score | Stan | Powtórki | Błędy | Stabilność | Ostatnia powtórka | Następna powtórka | Status |",
+          "| --- | --- | --- | ---: | --- | ---: | ---: | ---: | --- | --- | --- |",
+        ]),
   ];
 
   for (const row of sortedRows) {
@@ -45,7 +56,9 @@ export function buildFlashcardsMarkdown(rows: FlashcardExportRow[], generatedAt 
     const back = row.direction === "en_to_pl" ? row.plText : row.enText;
     const direction = row.direction === "en_to_pl" ? "EN → PL" : "PL → EN";
     lines.push(
-      `| ${escapeCell(front)} | ${escapeCell(back)} | ${direction} | ${row.score} | ${row.state} | ${row.reps} | ${row.lapses} | ${row.stability.toFixed(1)} | ${formatDate(row.lastReviewAt)} | ${formatDate(row.dueAt)} | ${row.status} |`
+      mode === "difficult"
+        ? `| ${escapeCell(front)} | ${escapeCell(back)} | ${direction} | ${row.score} | ${row.reps} | ${row.lapses} | ${row.stability.toFixed(1)} |`
+        : `| ${escapeCell(front)} | ${escapeCell(back)} | ${direction} | ${row.score} | ${row.state} | ${row.reps} | ${row.lapses} | ${row.stability.toFixed(1)} | ${formatDate(row.lastReviewAt)} | ${formatDate(row.dueAt)} | ${row.status} |`
     );
   }
 

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { APIRoute, APIContext } from "astro";
 import type { LocalsWithAuth } from "../../../lib/types";
-import { requireAuth, withErrorHandling } from "../../../lib/errors";
+import { ApiErrors, requireAuth, withErrorHandling } from "../../../lib/errors";
 import { getSupabaseClient } from "../../../lib/utils";
 import { buildFlashcardsMarkdown, type FlashcardExportRow } from "../../../lib/flashcards-export";
 
@@ -44,6 +44,25 @@ function calculateScore(direction: any, history: any[], now: number): number {
 export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
   const userId = (context.locals as LocalsWithAuth).userId;
   requireAuth(userId);
+  const mode = context.url.searchParams.get("mode") ?? "all";
+  if (mode !== "all" && mode !== "difficult") {
+    throw ApiErrors.validationError("Mode must be all or difficult");
+  }
+  const limitText = context.url.searchParams.get("limit") ?? "20";
+  const limit = Number(limitText);
+  if (mode === "difficult" && (!/^\d+$/.test(limitText) || !Number.isSafeInteger(limit) || limit < 1 || limit > 1000)) {
+    throw ApiErrors.validationError("Limit must be an integer between 1 and 1000");
+  }
+  const selectedDirection = context.url.searchParams.get("direction") ?? "all";
+  const period = context.url.searchParams.get("period") ?? "all";
+  if (mode === "difficult") {
+    if (!["all", "pl_to_en", "en_to_pl"].includes(selectedDirection)) {
+      throw ApiErrors.validationError("Direction must be all, pl_to_en or en_to_pl");
+    }
+    if (!["all", "7", "30"].includes(period)) {
+      throw ApiErrors.validationError("Period must be all, 7 or 30 days");
+    }
+  }
   const db: any = getSupabaseClient(context);
   const [directions, reviews] = await Promise.all([
     fetchAll(
@@ -53,6 +72,7 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
           "id, direction, fsrs_state, stability, difficulty, reps, lapses, due_at, last_review_at, flashcards!inner(status, user_id, phrases!inner(en_text, pl_text))"
         )
         .eq("flashcards.user_id", userId)
+        .order("id", { ascending: true })
     ),
     fetchAll(
       db
@@ -60,6 +80,7 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
         .select("flashcard_direction_id, fsrs_rating, reviewed_at")
         .eq("user_id", userId)
         .order("reviewed_at", { ascending: false })
+        .order("id", { ascending: true })
     ),
   ]);
   const historyByDirection = new Map<string, any[]>();
@@ -70,7 +91,24 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
     historyByDirection.set(review.flashcard_direction_id, history);
   }
   const now = Date.now();
-  const rows: FlashcardExportRow[] = directions.map((direction) => {
+  const cutoff = period === "all" ? -Infinity : now - Number(period) * 86400000;
+  const exportDirections =
+    mode === "difficult"
+      ? directions.filter((direction) => {
+          const flashcard = Array.isArray(direction.flashcards) ? direction.flashcards[0] : direction.flashcards;
+          return (
+            flashcard.status === "active" &&
+            (selectedDirection === "all" || direction.direction === selectedDirection) &&
+            (historyByDirection.get(direction.id) ?? []).some(
+              (review) =>
+                (review.fsrs_rating === "Again" || review.fsrs_rating === "Hard") &&
+                new Date(review.reviewed_at).getTime() >= cutoff &&
+                new Date(review.reviewed_at).getTime() <= now
+            )
+          );
+        })
+      : directions;
+  const rows: FlashcardExportRow[] = exportDirections.map((direction) => {
     const flashcard = Array.isArray(direction.flashcards) ? direction.flashcards[0] : direction.flashcards;
     const phrase = Array.isArray(flashcard.phrases) ? flashcard.phrases[0] : flashcard.phrases;
     return {
@@ -87,11 +125,15 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
       status: flashcard.status,
     };
   });
-  const markdown = buildFlashcardsMarkdown(rows);
+  rows.sort((a, b) => b.score - a.score || b.lapses - a.lapses || a.enText.localeCompare(b.enText, "en"));
+  const selectedRows = mode === "difficult" ? rows.slice(0, limit) : rows;
+  const markdown = buildFlashcardsMarkdown(selectedRows, new Date(now), mode);
   return new Response(markdown, {
     headers: {
       "Content-Type": "text/markdown; charset=utf-8",
-      "Content-Disposition": 'attachment; filename="flashcards.md"',
+      "Content-Disposition": `attachment; filename="${mode === "difficult" ? "flashcards-difficult" : "flashcards"}.md"`,
+      "X-Flashcard-Count": String(selectedRows.length),
+      "Cache-Control": "no-store",
     },
   });
 });

@@ -9,7 +9,7 @@ import {
   Play,
   Plus,
   Settings2,
-  Dices,
+  Download,
   Volume2,
   XCircle,
   Sparkles,
@@ -22,7 +22,6 @@ import { FlashcardAudioCache } from "../lib/flashcard-audio-cache";
 import PhraseLearningHintModal from "./PhraseLearningHintModal";
 import StoryModal from "./StoryModal";
 import { parseMarkdownToHtml } from "../lib/utils";
-import ExportFlashcardsButton from "./ExportFlashcardsButton";
 
 interface SessionCard {
   direction_id: string;
@@ -94,7 +93,6 @@ function FlashcardsContent() {
   const [editingDifficultHint, setEditingDifficultHint] = useState<DifficultCard | null>(null);
   const [storyOpen, setStoryOpen] = useState(false);
   const [storyPhraseIds, setStoryPhraseIds] = useState<string[]>([]);
-  const [randomStoryLoading, setRandomStoryLoading] = useState(false);
   const current = cards[index];
   const loadOverview = async () => {
     try {
@@ -117,29 +115,6 @@ function FlashcardsContent() {
       });
     } finally {
       setDifficultLoading(false);
-    }
-  };
-  const generateRandomStory = async () => {
-    setRandomStoryLoading(true);
-    try {
-      const difficult = await apiCall<{ items: DifficultCard[] }>(
-        "/api/flashcards/difficult?pool=most_difficult&limit=10"
-      );
-      const difficultPhraseIds = [...new Set(difficult.items.map((card) => card.phrase_id))];
-      const random = await apiCall<{ phrase_ids: string[] }>("/api/flashcards/random-story", {
-        method: "POST",
-        body: JSON.stringify({ exclude_phrase_ids: difficultPhraseIds }),
-      });
-      setStoryPhraseIds([...difficultPhraseIds, ...random.phrase_ids].slice(0, 20));
-      setStoryOpen(true);
-    } catch (error) {
-      addToast({
-        type: "error",
-        title: "Could not create a random story",
-        description: error instanceof Error ? error.message : "Try again",
-      });
-    } finally {
-      setRandomStoryLoading(false);
     }
   };
   const archiveFlashcard = async (flashcardId: string) => {
@@ -671,16 +646,10 @@ function FlashcardsContent() {
           >
             {difficultLoading ? <LoaderCircle className="animate-spin" /> : <Flame />}
           </Button>
-          <Button
-            variant="secondary"
-            size="icon"
-            className="bg-violet-500 text-white hover:bg-violet-400"
-            onClick={() => void generateRandomStory()}
-            disabled={randomStoryLoading}
-            title="Generate a random story from difficult and older flashcards"
-            aria-label="Generate a random story"
-          >
-            {randomStoryLoading ? <LoaderCircle className="animate-spin" /> : <Dices />}
+          <Button variant="secondary" size="icon" className="bg-violet-500 text-white hover:bg-violet-400" asChild>
+            <a href="/flashcards/export" title="Export flashcards" aria-label="Export flashcards">
+              <Download />
+            </a>
           </Button>
           <Button
             variant="secondary"
@@ -746,7 +715,6 @@ function FlashcardsContent() {
             <Button type="submit" disabled={busy} className="bg-primary text-primary-foreground">
               Save settings
             </Button>
-            <ExportFlashcardsButton showLabel />
           </div>
         </form>
       )}

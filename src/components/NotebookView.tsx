@@ -7,7 +7,7 @@ import ExportZipButton from "./ExportZipButton";
 import MobileActionMenu from "./MobileActionMenu";
 import PhraseLearningHintModal from "./PhraseLearningHintModal";
 import StoryModal from "./StoryModal";
-import { Info, Trash2, Minimize2, Plus, Layers, Sparkles } from "lucide-react";
+import { Info, Trash2, Minimize2, Plus, Layers, Sparkles, Download } from "lucide-react";
 import DifficultyBadge from "./DifficultyBadge";
 import type {
   PhraseDTO,
@@ -348,6 +348,26 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
 
     loadData();
   }, [notebookId, isAuthenticated, apiCall, difficultyFilter, onlyPinned, selectedNotebookIds, isVirtual]);
+
+  const handleExportSelected = () => {
+    const phrases = state.phrases.filter((phrase) => selectedPhraseIds.has(phrase.id));
+    if (phrases.length === 0) return;
+    const singleLine = (text: string) => text.replace(/[\r\n]+/g, " ").trim();
+    const markdown = `${phrases.map((phrase) => `${singleLine(phrase.en_text)}:::${singleLine(phrase.pl_text)}`).join("\n")}\n`;
+    const blobUrl = URL.createObjectURL(new Blob([markdown], { type: "text/markdown;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = "selected-phrases.md";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    addToast({
+      type: "success",
+      title: "Export completed",
+      description: `${phrases.length} phrases exported to Markdown.`,
+    });
+  };
 
   // Handle snapshot creation
   const handleCreateSnapshot = async () => {
@@ -1123,15 +1143,10 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
 
             {/* Bulk actions - for both regular and virtual notebooks */}
             {selectedPhraseIds.size > 0 && (
-              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-                <div className="hidden md:flex items-center gap-2 flex-wrap">
-                  <span className="text-sm text-muted-foreground">{selectedPhraseIds.size} selected:</span>
-                  <Button
-                    asChild
-                    variant="default"
-                    size="sm"
-                    className="bg-primary text-primary-foreground hover:bg-primary/90"
-                  >
+              <div className="space-y-3">
+                <div className="text-sm text-muted-foreground">{selectedPhraseIds.size} selected</div>
+                <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center">
+                  <Button asChild variant="default" size="sm">
                     <a
                       href={`/player/${notebookId}?phrase_ids=${Array.from(selectedPhraseIds).join(",")}${difficultyFilter !== "all" ? `&difficulty=${difficultyFilter}` : ""}`}
                       title="Open Player with selected phrases"
@@ -1139,12 +1154,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                       Player
                     </a>
                   </Button>
-                  <Button
-                    asChild
-                    variant="default"
-                    size="sm"
-                    className="bg-primary text-primary-foreground hover:bg-primary/90"
-                  >
+                  <Button asChild variant="default" size="sm">
                     <a
                       href={`/notebooks/${notebookId}/learn?phrase_ids=${Array.from(selectedPhraseIds).join(",")}${difficultyFilter !== "all" ? `&difficulty=${difficultyFilter}` : ""}`}
                       title="Open Learn Mode with selected phrases"
@@ -1155,21 +1165,6 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                   <Button variant="default" size="sm" onClick={handleAddToFlashcards}>
                     <Layers className="size-4" /> Add to Flashcards
                   </Button>
-                  <Button variant="default" size="sm" onClick={() => handleBulkUpdateDifficulty("easy")}>
-                    Mark Easy
-                  </Button>
-                  <Button variant="default" size="sm" onClick={() => handleBulkUpdateDifficulty("medium")}>
-                    Mark Medium
-                  </Button>
-                  <Button variant="default" size="sm" onClick={() => handleBulkUpdateDifficulty("hard")}>
-                    Mark Hard
-                  </Button>
-                  <Button variant="default" size="sm" onClick={() => handleBulkUpdateDifficulty(null)}>
-                    Clear
-                  </Button>
-                  <Button variant="default" size="sm" onClick={handleCreateSnapshot} disabled={isCreatingSnapshot}>
-                    {isCreatingSnapshot ? "Creating..." : "Snapshot selected"}
-                  </Button>
                   <Button
                     variant="default"
                     size="sm"
@@ -1177,118 +1172,69 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                     disabled={selectedPhraseIds.size < 3}
                     title="Select at least 3 phrases to create a story"
                   >
-                    <Sparkles className="size-4" /> Create story
+                    <Sparkles className="size-4" /> Create Story
                   </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleExportSelected}
+                    title="Export selected phrases as EN:::PL Markdown"
+                  >
+                    <Download className="size-4" /> Export
+                  </Button>
+                  <MobileActionMenu
+                    triggerLabel="Mark / Clear"
+                    triggerIcon={false}
+                    triggerVariant="secondary"
+                    triggerSize="sm"
+                    className="w-full md:w-auto"
+                    triggerClassName="w-full"
+                  >
+                    {({ close }) => (
+                      <>
+                        <div className="px-2 py-1 text-xs text-muted-foreground">Difficulty of selected phrases</div>
+                        {(["easy", "medium", "hard"] as const).map((difficulty) => (
+                          <Button
+                            key={difficulty}
+                            role="menuitem"
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-start"
+                            onClick={() => {
+                              close();
+                              void handleBulkUpdateDifficulty(difficulty);
+                            }}
+                          >
+                            Mark {difficulty === "easy" ? "Easy" : difficulty === "medium" ? "Medium" : "Hard"}
+                          </Button>
+                        ))}
+                        <div role="separator" className="my-1 border-t border-border" />
+                        <Button
+                          role="menuitem"
+                          variant="ghost"
+                          size="sm"
+                          className="w-full justify-start"
+                          onClick={() => {
+                            close();
+                            void handleBulkUpdateDifficulty(null);
+                          }}
+                        >
+                          Clear difficulty
+                        </Button>
+                      </>
+                    )}
+                  </MobileActionMenu>
+                  <Button variant="secondary" size="sm" onClick={handleCreateSnapshot} disabled={isCreatingSnapshot}>
+                    {isCreatingSnapshot ? "Creating..." : "Snapshot Selected"}
+                  </Button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
                   {!isVirtualNotebook(notebookId) && (
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                      onClick={handleBulkDeletePhrases}
-                    >
+                    <Button variant="destructive" size="sm" onClick={handleBulkDeletePhrases}>
                       Delete selected
                     </Button>
                   )}
                   <Button variant="ghost" size="sm" onClick={() => setSelectedPhraseIds(new Set())}>
-                    Deselect All
-                  </Button>
-                </div>
-
-                <div className="md:hidden w-full space-y-2">
-                  <div className="text-sm text-muted-foreground">{selectedPhraseIds.size} selected</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button
-                      asChild
-                      variant="default"
-                      size="sm"
-                      className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-                    >
-                      <a
-                        href={`/player/${notebookId}?phrase_ids=${Array.from(selectedPhraseIds).join(",")}${difficultyFilter !== "all" ? `&difficulty=${difficultyFilter}` : ""}`}
-                        title="Open Player with selected phrases"
-                      >
-                        Player
-                      </a>
-                    </Button>
-                    <Button variant="default" size="sm" className="w-full" onClick={handleAddToFlashcards}>
-                      <Layers className="size-4" /> Flashcards
-                    </Button>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => setStoryOpen(true)}
-                      disabled={selectedPhraseIds.size < 3}
-                      title="Select at least 3 phrases to create a story"
-                    >
-                      <Sparkles className="size-4" /> Story
-                    </Button>
-                    <Button
-                      asChild
-                      variant="default"
-                      size="sm"
-                      className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-                    >
-                      <a
-                        href={`/notebooks/${notebookId}/learn?phrase_ids=${Array.from(selectedPhraseIds).join(",")}${difficultyFilter !== "all" ? `&difficulty=${difficultyFilter}` : ""}`}
-                        title="Open Learn Mode with selected phrases"
-                      >
-                        Learn
-                      </a>
-                    </Button>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => handleBulkUpdateDifficulty("easy")}
-                    >
-                      Easy
-                    </Button>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => handleBulkUpdateDifficulty("medium")}
-                    >
-                      Medium
-                    </Button>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => handleBulkUpdateDifficulty("hard")}
-                    >
-                      Hard
-                    </Button>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => handleBulkUpdateDifficulty(null)}
-                    >
-                      Clear
-                    </Button>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="w-full"
-                      onClick={handleCreateSnapshot}
-                      disabled={isCreatingSnapshot}
-                    >
-                      {isCreatingSnapshot ? "Creating..." : "Snapshot selected"}
-                    </Button>
-                    {!isVirtualNotebook(notebookId) && (
-                      <Button
-                        variant="default"
-                        size="sm"
-                        className="w-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        onClick={handleBulkDeletePhrases}
-                      >
-                        Delete selected
-                      </Button>
-                    )}
-                  </div>
-                  <Button variant="ghost" size="sm" className="w-full" onClick={() => setSelectedPhraseIds(new Set())}>
                     Deselect All
                   </Button>
                 </div>
