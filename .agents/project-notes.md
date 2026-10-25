@@ -28,3 +28,4 @@
 
 - Use the default `Button` variant for primary actions. It uses the project green `bg-primary` styling.
 - An icon-only primary action must use `size="icon"`, retain the default variant, and include an accessible `aria-label` and `title`.
+- User preference (2026-10-25): preserve the distinct backgrounds of the three top flashcard icon buttons: amber for difficult cards, violet for export, and sky blue for settings. These are intentional exceptions to the default green styling; retain them when fixing layout or theme issues.

@@ -643,6 +643,7 @@ function FlashcardsContent() {
             onClick={() => void loadDifficultCards()}
             disabled={difficultLoading}
             title="Most difficult flashcards"
+            aria-label="Most difficult flashcards"
           >
             {difficultLoading ? <LoaderCircle className="animate-spin" /> : <Flame />}
           </Button>
@@ -657,6 +658,7 @@ function FlashcardsContent() {
             className="bg-sky-400 text-black hover:bg-sky-300"
             onClick={() => setSettingsOpen(!settingsOpen)}
             title="Flashcard settings"
+            aria-label="Flashcard settings"
           >
             <Settings2 />
           </Button>

@@ -12,7 +12,7 @@ const { title = "Phrase Follower", currentPath, fullWidth = false } = Astro.prop
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
@@ -21,7 +21,7 @@ const { title = "Phrase Follower", currentPath, fullWidth = false } = Astro.prop
     <title>{title}</title>
   </head>
   <body class="bg-background text-foreground overflow-x-hidden">
-    <div class="min-h-screen bg-background dark w-full">
+    <div class="min-h-screen bg-background w-full">
       <Topbar currentPath={currentPath} />
       <main class={fullWidth ? "w-full px-0 md:px-4 py-2 md:py-6" : "container mx-auto px-4 py-6"}>
         <slot />
