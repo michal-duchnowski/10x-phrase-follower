@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ArrowLeft, Copy, Download, LoaderCircle } from "lucide-react";
 import { useApi } from "../lib/hooks/useApi";
 import { Button } from "./ui/button";
+import { createExportFilename } from "../lib/export-filename";
 
 export default function FlashcardsExportView() {
   const { token, isAuthenticated } = useApi();
@@ -59,7 +60,9 @@ export default function FlashcardsExportView() {
         const blobUrl = URL.createObjectURL(new Blob([markdown], { type: "text/markdown;charset=utf-8" }));
         const link = document.createElement("a");
         link.href = blobUrl;
-        link.download = mode === "difficult" ? "flashcards-difficult.md" : "flashcards.md";
+        link.download =
+          response.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ??
+          createExportFilename(`flashcards-${mode}`);
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -86,7 +89,7 @@ export default function FlashcardsExportView() {
         Download Markdown
       </Button>
       <Button
-        variant="secondary"
+        variant="default"
         disabled={!isAuthenticated || !!busy || (mode === "difficult" && !validLimit)}
         onClick={() => void exportMarkdown(mode, "copy")}
       >
@@ -105,32 +108,17 @@ export default function FlashcardsExportView() {
         <ArrowLeft className="size-4" /> Back to Flashcards
       </a>
       <h1 className="text-3xl font-bold">Export flashcards</h1>
-      <p className="mt-2 text-muted-foreground">
-        Download a Markdown file or copy it for your English practice. Each learning direction counts as a separate
-        flashcard.
-      </p>
       <div className="mt-8 space-y-6">
         <section className="rounded-lg border border-border bg-card p-6" aria-labelledby="all-export-title">
           <h2 id="all-export-title" className="text-xl font-semibold">
             All flashcards · full details
           </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            All flashcards, including archived ones, with the same information as the previous export: front, back,
-            direction, score, state, reviews, lapses, stability, review dates, and status.
-          </p>
           {actions("all")}
         </section>
         <section className="rounded-lg border border-border bg-card p-6" aria-labelledby="difficult-export-title">
           <h2 id="difficult-export-title" className="text-xl font-semibold">
             Difficult flashcards · Again / Hard
           </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Active flashcards rated Again or Hard in the selected period, ranked by difficulty score (highest first).
-            The score considers the full review history, recent difficulties, lapses, and stability.
-          </p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Only: Front, Back, Kierunek, Score, Powtórki, Błędy, Stabilność.
-          </p>
           <label htmlFor="export-limit" className="mt-5 block text-sm font-medium">
             Number of flashcards
           </label>
@@ -143,12 +131,9 @@ export default function FlashcardsExportView() {
             value={limit}
             onChange={(event) => setLimit(event.target.value)}
             aria-invalid={!validLimit}
-            aria-describedby="export-limit-help"
-            className="mt-2 w-32 rounded-md border border-input bg-background p-2"
+            title="1-1000"
+            className="mt-2 w-32 rounded-md border border-input bg-background p-2 text-foreground"
           />
-          <p id="export-limit-help" className="mt-2 text-sm text-muted-foreground">
-            Choose 1–1000 (default 20). If fewer match, all matching flashcards are exported.
-          </p>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <label className="text-sm font-medium" htmlFor="export-direction">
               Learning direction
@@ -156,7 +141,7 @@ export default function FlashcardsExportView() {
                 id="export-direction"
                 value={direction}
                 onChange={(event) => setDirection(event.target.value)}
-                className="mt-2 block w-full rounded-md border border-input bg-background p-2"
+                className="mt-2 block w-full rounded-md border border-input bg-background p-2 text-foreground"
               >
                 <option value="all">Both directions</option>
                 <option value="pl_to_en">PL → EN</option>
@@ -164,13 +149,12 @@ export default function FlashcardsExportView() {
               </select>
             </label>
             <label className="text-sm font-medium" htmlFor="export-period">
-              Again / Hard reviews from
+              Again / Hard period
               <select
                 id="export-period"
                 value={period}
                 onChange={(event) => setPeriod(event.target.value)}
-                aria-describedby="export-period-help"
-                className="mt-2 block w-full rounded-md border border-input bg-background p-2"
+                className="mt-2 block w-full rounded-md border border-input bg-background p-2 text-foreground"
               >
                 <option value="all">All history</option>
                 <option value="7">Last 7 days</option>
@@ -178,17 +162,8 @@ export default function FlashcardsExportView() {
               </select>
             </label>
           </div>
-          <p id="export-period-help" className="mt-2 text-sm text-muted-foreground">
-            The period applies to Again / Hard ratings, even if a later review was Good or Easy. Filters apply before
-            the flashcard limit.
-          </p>
           {actions("difficult")}
         </section>
-        <p className="text-sm text-muted-foreground">
-          For voice practice, paste the difficult flashcards and add: „Ćwicz ze mną głosowo. Podawaj po jednym pytaniu
-          zgodnie z kierunkiem fiszki, czekaj na odpowiedź, poprawiaj błędy i wracaj do trudnych zwrotów w nowych
-          zdaniach.”
-        </p>
       </div>
       {message && (
         <p
@@ -204,7 +179,7 @@ export default function FlashcardsExportView() {
           readOnly
           value={preview}
           onFocus={(event) => event.target.select()}
-          className="mt-4 h-64 w-full rounded-md border border-input bg-background p-3 font-mono text-sm"
+          className="mt-4 h-64 w-full rounded-md border border-input bg-background p-3 text-foreground font-mono text-sm"
         />
       )}
     </section>

@@ -22,6 +22,7 @@ import type {
 } from "../types";
 import { parseMarkdownToHtml, isVirtualNotebook, getDifficultyFromVirtualNotebook } from "../lib/utils";
 import { tokenizePhrase } from "../lib/word-bank.service";
+import { createExportFilename } from "../lib/export-filename";
 
 interface NotebookViewProps {
   notebookId: string;
@@ -357,7 +358,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
     const blobUrl = URL.createObjectURL(new Blob([markdown], { type: "text/markdown;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = blobUrl;
-    link.download = "selected-phrases.md";
+    link.download = createExportFilename("phrases");
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -1185,7 +1186,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                   <MobileActionMenu
                     triggerLabel="Mark / Clear"
                     triggerIcon={false}
-                    triggerVariant="secondary"
+                    triggerVariant="default"
                     triggerSize="sm"
                     className="w-full md:w-auto"
                     triggerClassName="w-full"
@@ -1224,7 +1225,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                       </>
                     )}
                   </MobileActionMenu>
-                  <Button variant="secondary" size="sm" onClick={handleCreateSnapshot} disabled={isCreatingSnapshot}>
+                  <Button variant="default" size="sm" onClick={handleCreateSnapshot} disabled={isCreatingSnapshot}>
                     {isCreatingSnapshot ? "Creating..." : "Snapshot Selected"}
                   </Button>
                 </div>

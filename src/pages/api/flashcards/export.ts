@@ -4,6 +4,7 @@ import type { LocalsWithAuth } from "../../../lib/types";
 import { ApiErrors, requireAuth, withErrorHandling } from "../../../lib/errors";
 import { getSupabaseClient } from "../../../lib/utils";
 import { buildFlashcardsMarkdown, type FlashcardExportRow } from "../../../lib/flashcards-export";
+import { createExportFilename } from "../../../lib/export-filename";
 
 export const prerender = false;
 const PAGE_SIZE = 1000;
@@ -131,7 +132,7 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
   return new Response(markdown, {
     headers: {
       "Content-Type": "text/markdown; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${mode === "difficult" ? "flashcards-difficult" : "flashcards"}.md"`,
+      "Content-Disposition": `attachment; filename="${createExportFilename(mode === "difficult" ? `flashcards-difficult-${selectedDirection}-${period === "all" ? "all-time" : `${period}d`}` : "flashcards-all")}"`,
       "X-Flashcard-Count": String(selectedRows.length),
       "Cache-Control": "no-store",
     },
