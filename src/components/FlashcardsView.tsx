@@ -107,6 +107,8 @@ function FlashcardsContent() {
       const data = await apiCall<{ items: DifficultCard[] }>(`/api/flashcards/difficult?pool=${pool}`);
       setDifficultCards(data.items);
       setDifficultOpen(true);
+      setCards([]);
+      setTrainingCompleted(false);
     } catch (error) {
       addToast({
         type: "error",
@@ -461,7 +463,7 @@ function FlashcardsContent() {
         <p className="mt-2 text-muted-foreground">
           {trainingCompleted ? "No review statistics or schedule were changed." : "Your reviews have been saved."}
         </p>
-        <div className="mt-6 flex justify-center gap-2">
+        <div className="mt-6 flex flex-wrap justify-center gap-2">
           <Button onClick={() => void start()}>
             <Play />
             Start session
@@ -472,6 +474,15 @@ function FlashcardsContent() {
               Add {overview.settings.new_phrases_per_batch} new phrases
             </Button>
           )}
+          <Button
+            variant="secondary"
+            className="bg-amber-400 text-black hover:bg-amber-300"
+            onClick={() => void loadDifficultCards()}
+            disabled={difficultLoading}
+          >
+            {difficultLoading ? <LoaderCircle className="animate-spin" /> : <Flame />}
+            Most difficult flashcards
+          </Button>
         </div>
       </section>
     );
