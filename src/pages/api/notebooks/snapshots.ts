@@ -12,6 +12,8 @@ import {
 } from "../../../lib/utils";
 import { generatePositions } from "../../../lib/import.service";
 
+import { MAX_NOTEBOOK_PHRASES } from "../../../lib/notebook-limits";
+
 export const prerender = false;
 
 // POST /api/notebooks/snapshots - Create a snapshot notebook from selected phrases
@@ -32,7 +34,7 @@ const createSnapshot = async (context: APIContext): Promise<Response> => {
   const { source_notebook_id, phrase_ids }: CreateSnapshotCommand = body;
 
   // Validate phrase_ids
-  const validatedPhraseIds = validateArray(phrase_ids, 1, 100, "phrase_ids");
+  const validatedPhraseIds = validateArray(phrase_ids, 1, MAX_NOTEBOOK_PHRASES, "phrase_ids");
 
   // Deduplicate phrase_ids
   const uniquePhraseIds = Array.from(new Set(validatedPhraseIds));

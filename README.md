@@ -230,7 +230,7 @@ For production-like testing, it's recommended to run the application in Docker. 
 - **Export ZIP:** Export notebook audio as ZIP file with combined MP3 files (EN1 + 800ms silence + EN2 + 800ms silence + EN3 + 800ms silence + PL per phrase).
 - **Keyboard Shortcuts:** Space/K (play/pause), S (stop), R (restart), ←/→ (seek), Shift+←/→ (seek large), P/N (prev/next phrase)
 - **Touch Gestures:** Swipe navigation, double-tap play/pause, double-tap left/right for seeking
-- **Limits:** Up to 500 notebooks per user, 100 phrases per notebook, 2000 characters per phrase
+- **Limits:** Up to 500 notebooks per user, 200 phrases per notebook, 2000 characters per phrase
 
 ### Out of scope for MVP
 

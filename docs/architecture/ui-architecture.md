@@ -34,7 +34,7 @@ Aplikacja webowa do nauki fraz EN→PL z odtwarzaniem sekwencyjnym, klik-to-seek
 - **Główny cel**: Utworzenie notatnika i zaimportowanie fraz z linii `EN ::: PL` z normalizacją. Po sukcesie podsumowanie accepted/rejected i **„Przejdź do notatnika”**.
 - **Kluczowe informacje do wyświetlenia**: Pole tekstowe/textarea, checkbox „Normalizuj”, nazwa notatnika; wynik importu (accepted, rejected, lista błędów); link do `/notebooks/:id`. API: `POST /api/notebooks:import`, `GET /api/notebooks/:id/import-logs`.
 - **Kluczowe komponenty widoku**: `ImportForm`, `NormalizeToggle`, `ImportSummary`, `GoToNotebookButton`.
-- **UX, dostępność i względy bezpieczeństwa**: Walidacja separatora i limitów (≤100 fraz, ≤2000 znaków/fraza); jasne błędy; aria-describedby dla błędów; body limit.
+- **UX, dostępność i względy bezpieczeństwa**: Walidacja separatora i limitów (≤200 fraz, ≤2000 znaków/fraza); jasne błędy; aria-describedby dla błędów; body limit.
 
 ### Widok: Notatnik (szczegóły)
 

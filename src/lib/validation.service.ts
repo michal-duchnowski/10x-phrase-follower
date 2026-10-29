@@ -53,7 +53,10 @@ export function validateInteger(value: unknown, min?: number, max?: number, fiel
 /**
  * Validates pagination parameters
  */
-export function validatePaginationParams(url: URL): {
+export function validatePaginationParams(
+  url: URL,
+  maxLimit = 100
+): {
   limit: number;
   cursor: string | null;
 } {
@@ -66,7 +69,7 @@ export function validatePaginationParams(url: URL): {
     if (isNaN(parsedLimit) || parsedLimit < 1) {
       throw ApiErrors.validationError("Limit must be a positive integer");
     }
-    limit = Math.min(parsedLimit, 100); // max 100
+    limit = Math.min(parsedLimit, maxLimit);
   }
 
   return { limit, cursor };

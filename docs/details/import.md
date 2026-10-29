@@ -11,7 +11,7 @@ Odrzuć linię, jeśli:
 
 - brak separatora lub jest wiele separatorów,
 - EN lub PL puste po trim,
-- przekroczono limit: ≤100 fraz/notatnik, ≤2000 znaków/fraza.
+- przekroczono limit: ≤200 fraz/notatnik, ≤2000 znaków/fraza.
 
 Raport: pokaż tylko odrzucone linie z numerem i powodem.
 

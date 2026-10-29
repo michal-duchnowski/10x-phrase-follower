@@ -18,7 +18,7 @@ Uczący się B1/B2 potrzebują powtarzalnej sekwencji odsłuchów z wieloma gło
 3. Widok tabelaryczny fraz.
 4. Notatniki prywatne per użytkownik (logowanie wymagane).
 
-3.2 Import 5) Format pliku: linia-po-linii `EN zdanie ::: PL zdanie`. 6) Walidacja: pojedynczy separator, niepustość EN/PL; limity: ≤100 fraz/notatnik, ≤2000 znaków/fraza.
+3.2 Import 5) Format pliku: linia-po-linii `EN zdanie ::: PL zdanie`. 6) Walidacja: pojedynczy separator, niepustość EN/PL; limity: ≤200 fraz/notatnik, ≤2000 znaków/fraza.
 6.1) Użytkownik może utworzyć maksymalnie 500 notatników. 7) Normalizacja wejścia: cudzysłowy typograficzne, znaki zero-width, podwójne spacje, podstawowa normalizacja znaków problematycznych. 8) Raport importu: lista odrzuconych linii z powodem.
 
 3.3 TTS i lektorzy 9) Klucz Google TTS per użytkownik: zapis w ustawieniach; test walidacyjny przy zapisie; brak ekspozycji klucza do klienta. 10) Lektorzy: EN3 w ustalonej kolejności + PL1; brak duplikatów w obrębie języka; kolejność EN wyznacza odtwarzanie.
@@ -73,7 +73,7 @@ Opis: Jako użytkownik chcę zaimportować plik `EN ::: PL` i otrzymać raport o
 Kryteria akceptacji:
 
 - Linie z wielokrotnym/niejednoznacznym separatorem lub pustą częścią są odrzucone z powodem.
-- Po imporcie frazy są znormalizowane; limity: ≤100 fraz, ≤2000 znaków/fraza.
+- Po imporcie frazy są znormalizowane; limity: ≤200 fraz, ≤2000 znaków/fraza.
 
 UC-05 Zarządzanie frazami w notatniku
 Opis: Jako użytkownik chcę dodawać, przenosić i usuwać frazy.

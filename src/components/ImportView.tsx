@@ -1,3 +1,4 @@
+import { MAX_NOTEBOOK_PHRASES } from "../lib/notebook-limits";
 import React, { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { useApi } from "../lib/hooks/useApi";
@@ -77,8 +78,8 @@ function ImportViewContent() {
       return "No valid lines found";
     }
 
-    if (records.length > 100) {
-      return "Import exceeds 100 phrases limit";
+    if (records.length > MAX_NOTEBOOK_PHRASES) {
+      return `Import exceeds ${MAX_NOTEBOOK_PHRASES} phrases limit`;
     }
 
     // Basic format validation
@@ -221,7 +222,7 @@ function ImportForm({
   error,
 }: ImportFormProps) {
   const phraseCount = splitImportRecords(linesText.split("\n")).length;
-  const effectivePhraseCount = Math.min(phraseCount, 100);
+  const effectivePhraseCount = Math.min(phraseCount, MAX_NOTEBOOK_PHRASES);
 
   return (
     <div className="bg-card border border-border rounded-lg p-6">
@@ -271,9 +272,11 @@ function ImportForm({
             className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent font-mono text-sm"
           />
           <div className="flex justify-between text-xs text-muted-foreground">
-            <span>{phraseCount} phrases (max 100)</span>
-            <span className={phraseCount > 100 ? "text-destructive" : ""}>
-              {phraseCount > 100 ? "Exceeds limit!" : ""}
+            <span>
+              {phraseCount} phrases (max {MAX_NOTEBOOK_PHRASES})
+            </span>
+            <span className={phraseCount > MAX_NOTEBOOK_PHRASES ? "text-destructive" : ""}>
+              {phraseCount > MAX_NOTEBOOK_PHRASES ? "Exceeds limit!" : ""}
             </span>
           </div>
         </div>
@@ -308,7 +311,7 @@ function ImportForm({
             </li>
             <li>• Both EN and PL parts must be non-empty</li>
             <li>- Maximum 2000 characters per EN/PL part and 12000 per hint</li>
-            <li>• Maximum 100 lines per import</li>
+            <li>• Maximum {MAX_NOTEBOOK_PHRASES} lines per import</li>
           </ul>
           <div className="mt-2">
             <p className="text-xs text-muted-foreground font-medium">Example:</p>
@@ -317,7 +320,7 @@ function ImportForm({
         </div>
 
         {/* Submit button */}
-        <Button type="submit" disabled={isLoading || phraseCount > 100} className="w-full">
+        <Button type="submit" disabled={isLoading || phraseCount > MAX_NOTEBOOK_PHRASES} className="w-full">
           {isLoading ? "Importing..." : `Import ${effectivePhraseCount} phrase(s)`}
         </Button>
       </form>

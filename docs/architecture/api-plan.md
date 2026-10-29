@@ -221,7 +221,7 @@
 
 #### POST `/api/notebooks:import`
 
-- **Desc:** Create a notebook and import phrases from payload. Enforces PRD limits (≤100 phrases; ≤2000 chars per part).
+- **Desc:** Create a notebook and import phrases from payload. Enforces PRD limits (≤200 phrases; ≤2000 chars per part).
 - **Headers:** `Idempotency-Key` supported
 - **Request**
 
@@ -246,7 +246,7 @@
 }
 ```
 
-- **Errors:** `400 validation_error` (format), `413 limit_exceeded` (phrases>100)
+- **Errors:** `400 validation_error` (format), `413 limit_exceeded` (phrases>200)
 - **Notes:** For rejected lines, rows are persisted to `import_logs` with `line_no`, `raw_text`, `reason`.
 
 #### GET `/api/notebooks/:notebookId/import-logs`
@@ -657,7 +657,7 @@
 
 - Input lines must match exactly one `:::` separator with non-empty EN/PL.
 - Normalize if `normalize=true`: typographic quotes, zero-width removal, double spaces, basic character fixes.
-- Limits: ≤100 phrases per import, ≤2000 chars per side; total notebooks per user ≤500 (enforced app-side).
+- Limits: ≤200 phrases per import, ≤2000 chars per side; total notebooks per user ≤500 (enforced app-side).
 - Persist rejects in `import_logs`.
 
 **Playback Manifest**
@@ -722,7 +722,7 @@
 | 409  | `unique_violation` | Notebook name already exists.      | `citext` uniqueness    |
 | 409  | `job_in_progress`  | A generate job is already running. | Generate               |
 | 409  | `conflict`         | Duplicate EN voice within slots.   | User voices            |
-| 413  | `limit_exceeded`   | Import exceeds 100 phrases.        | Import                 |
+| 413  | `limit_exceeded`   | Import exceeds 200 phrases.        | Import                 |
 | 422  | `cannot_cancel`    | Job already in terminal state.     | Cancel                 |
 | 500  | `internal`         | Unexpected error.                  | Server fault           |
 | 504  | `tts_timeout`      | TTS provider timed out.            | TTS/Generation         |

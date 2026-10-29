@@ -18,4 +18,4 @@
 ## Sanity checks
 
 - Po rebuildzie: skan katalogu notatnika → brak plików starszych generacji.
-- Przy imporcie: liczba fraz ≤ 100, każda fraza ≤ 2000 znaków.
+- Przy imporcie: liczba fraz ≤ 200, każda fraza ≤ 2000 znaków.

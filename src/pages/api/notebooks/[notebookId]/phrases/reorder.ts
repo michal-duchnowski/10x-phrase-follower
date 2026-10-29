@@ -4,6 +4,8 @@ import type { LocalsWithAuth } from "../../../../../lib/types";
 import { withErrorHandling, requireAuth, ApiErrors } from "../../../../../lib/errors";
 import { ensureUserExists, getSupabaseClient } from "../../../../../lib/utils";
 
+import { MAX_NOTEBOOK_PHRASES } from "../../../../../lib/notebook-limits";
+
 export const prerender = false;
 
 // POST /api/notebooks/:notebookId/phrases:reorder - Bulk reorder phrases
@@ -34,8 +36,8 @@ const reorderPhrases = async (context: APIContext): Promise<Response> => {
     throw ApiErrors.validationError("Moves array cannot be empty");
   }
 
-  if (moves.length > 100) {
-    throw ApiErrors.validationError("Too many moves. Maximum 100 phrases can be reordered at once");
+  if (moves.length > MAX_NOTEBOOK_PHRASES) {
+    throw ApiErrors.validationError(`Too many moves. Maximum ${MAX_NOTEBOOK_PHRASES} phrases can be reordered at once`);
   }
 
   // Validate each move

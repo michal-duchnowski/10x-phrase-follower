@@ -85,6 +85,11 @@ describe("Validation Service", () => {
       expect(result.limit).toBe(50);
     });
 
+    it("should allow a custom phrase page limit of 200", () => {
+      expect(validatePaginationParams(new URL("http://example.com?limit=200"), 200).limit).toBe(200);
+      expect(validatePaginationParams(new URL("http://example.com?limit=201"), 200).limit).toBe(200);
+    });
+
     it("should cap limit at 100", () => {
       const url = new URL("http://example.com?limit=150");
       const result = validatePaginationParams(url);

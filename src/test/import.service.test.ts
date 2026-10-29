@@ -224,10 +224,18 @@ describe("Import Service", () => {
       expect(() => validateImportCommand(command)).toThrow(ApiError);
     });
 
+    it("should accept 200 phrases with multiline learning hints", () => {
+      const lines = Array.from({ length: 200 }, () => 'Hello ::: Czesc :::"First line\nSecond line":::')
+        .join("\n")
+        .split("\n");
+      expect(() => validateImportCommand({ name: "Test Notebook", lines })).not.toThrow();
+      expect(processImportLines(lines, false).accepted).toHaveLength(200);
+    });
+
     it("should reject too many lines", () => {
       const command = {
         name: "Test Notebook",
-        lines: new Array(101).fill("Hello ::: Czesc"),
+        lines: new Array(201).fill("Hello ::: Czesc"),
         normalize: true,
       };
       expect(() => validateImportCommand(command)).toThrow(ApiError);

@@ -1,0 +1,1 @@
+export const MAX_NOTEBOOK_PHRASES = 200;

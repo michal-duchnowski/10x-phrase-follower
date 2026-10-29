@@ -20,6 +20,8 @@ import {
 } from "../../../../../lib/utils";
 import { triggerIncrementalAudioGeneration } from "../../../../../lib/incremental-audio";
 
+import { MAX_NOTEBOOK_PHRASES } from "../../../../../lib/notebook-limits";
+
 export const prerender = false;
 
 // GET /api/notebooks/:notebookId/phrases - List phrases in a notebook
@@ -32,7 +34,7 @@ const getPhrases = async (context: APIContext): Promise<Response> => {
   const { notebookId } = context.params as { notebookId: string };
 
   // Validate query parameters
-  const { limit, cursor } = validatePaginationParams(context.url);
+  const { limit, cursor } = validatePaginationParams(context.url, MAX_NOTEBOOK_PHRASES);
   const { sort, order } = validateSortParams(context.url, ["position", "created_at"], "created_at");
 
   // Check if this is a virtual notebook (cross-notebook difficulty view)

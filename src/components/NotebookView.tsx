@@ -9,6 +9,7 @@ import PhraseLearningHintModal from "./PhraseLearningHintModal";
 import StoryModal from "./StoryModal";
 import { Info, Trash2, Minimize2, Plus, Layers, Sparkles, Download } from "lucide-react";
 import DifficultyBadge from "./DifficultyBadge";
+import { MAX_NOTEBOOK_PHRASES } from "../lib/notebook-limits";
 import type {
   PhraseDTO,
   PhraseListResponse,
@@ -259,7 +260,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
         const isVirtual = isVirtualNotebook(notebookId);
 
         // Build phrases URL - for virtual notebooks, use created_at DESC, for regular use position ASC
-        let phrasesUrl = `/api/notebooks/${notebookId}/phrases?sort=${isVirtual ? "created_at" : "position"}&order=${isVirtual ? "desc" : "asc"}&limit=100`;
+        let phrasesUrl = `/api/notebooks/${notebookId}/phrases?sort=${isVirtual ? "created_at" : "position"}&order=${isVirtual ? "desc" : "asc"}&limit=${MAX_NOTEBOOK_PHRASES}`;
         // Don't apply difficulty filter for virtual notebooks (they already filter by difficulty)
         if (!isVirtual && difficultyFilter !== "all") {
           phrasesUrl += `&difficulty=${difficultyFilter}`;
@@ -435,7 +436,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
 
       // Reload phrases to reflect changes
       const isVirtual = isVirtualNotebook(notebookId);
-      const phrasesUrl = `/api/notebooks/${notebookId}/phrases?sort=${isVirtual ? "created_at" : "position"}&order=${isVirtual ? "desc" : "asc"}&limit=100${
+      const phrasesUrl = `/api/notebooks/${notebookId}/phrases?sort=${isVirtual ? "created_at" : "position"}&order=${isVirtual ? "desc" : "asc"}&limit=${MAX_NOTEBOOK_PHRASES}${
         !isVirtual && difficultyFilter !== "all" ? `&difficulty=${difficultyFilter}` : ""
       }${isVirtual && onlyPinned ? `&pinned=1` : ""}${isVirtual && selectedNotebookIds.size > 0 ? `&notebook_ids=${Array.from(selectedNotebookIds).join(",")}` : ""}`;
       const phrasesData = await apiCall<PhraseListResponse>(phrasesUrl, {
@@ -665,9 +666,12 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
         try {
           const [notebookData, phrasesData] = await Promise.all([
             apiCall<NotebookDTO>(`/api/notebooks/${notebookId}`, { method: "GET" }),
-            apiCall<PhraseListResponse>(`/api/notebooks/${notebookId}/phrases?sort=position&order=asc&limit=100`, {
-              method: "GET",
-            }),
+            apiCall<PhraseListResponse>(
+              `/api/notebooks/${notebookId}/phrases?sort=position&order=asc&limit=${MAX_NOTEBOOK_PHRASES}`,
+              {
+                method: "GET",
+              }
+            ),
           ]);
 
           setState((prev) => ({

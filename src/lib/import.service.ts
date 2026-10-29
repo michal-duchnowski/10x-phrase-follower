@@ -1,5 +1,6 @@
 import type { ImportNotebookCommand, PhraseTokens } from "../types";
 import { ApiErrors } from "./errors";
+import { MAX_NOTEBOOK_PHRASES } from "./notebook-limits";
 
 /**
  * Import service for parsing and normalizing EN ::: PL format lines
@@ -300,8 +301,8 @@ export function validateImportCommand(command: ImportNotebookCommand): void {
     }
   }
 
-  if (splitImportRecords(lines).length > 100) {
-    throw ApiErrors.limitExceeded("Import exceeds 100 phrases limit");
+  if (splitImportRecords(lines).length > MAX_NOTEBOOK_PHRASES) {
+    throw ApiErrors.limitExceeded(`Import exceeds ${MAX_NOTEBOOK_PHRASES} phrases limit`);
   }
 
   // Validate normalize flag
