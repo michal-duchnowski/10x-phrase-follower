@@ -4,6 +4,7 @@ import type { LocalsWithAuth } from "../../../lib/types";
 import { requireAuth, withErrorHandling } from "../../../lib/errors";
 import { getSupabaseClient } from "../../../lib/utils";
 import { getFlashcardsDay } from "../../../lib/flashcards.service";
+import { fetchAllRows } from "../../../lib/supabase-pagination";
 export const prerender = false;
 export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
   const userId = (context.locals as LocalsWithAuth).userId;
@@ -13,21 +14,26 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
   const today = getFlashcardsDay();
   const start = new Date();
   start.setHours(0, 0, 0, 0);
-  const [directionsResult, settingsResult, introductionsResult] = await Promise.all([
-    db
-      .from("flashcard_directions")
-      .select("fsrs_state,due_at,reps,flashcards!inner(id,phrase_id,user_id,status)")
-      .eq("flashcards.user_id", userId)
-      .eq("flashcards.status", "active"),
+  const [directions, settingsResult, introductions] = await Promise.all([
+    fetchAllRows<any>(
+      db
+        .from("flashcard_directions")
+        .select("fsrs_state,due_at,reps,flashcards!inner(id,phrase_id,user_id,status)")
+        .eq("flashcards.user_id", userId)
+        .eq("flashcards.status", "active")
+        .order("id")
+    ),
     db.from("flashcard_settings").select("*").eq("user_id", userId).maybeSingle(),
-    db.from("flashcard_phrase_introductions").select("phrase_id,introduced_on").eq("user_id", userId),
+    fetchAllRows<any>(
+      db
+        .from("flashcard_phrase_introductions")
+        .select("phrase_id,introduced_on")
+        .eq("user_id", userId)
+        .order("phrase_id")
+    ),
   ]);
-  if (directionsResult.error) throw new Error("Failed to load flashcard overview");
   if (settingsResult.error) throw new Error("Failed to load flashcard settings");
-  if (introductionsResult.error) throw new Error("Failed to load flashcard introductions");
-  const directions = directionsResult.data ?? [];
   const settings = settingsResult.data;
-  const introductions = introductionsResult.data ?? [];
   const due = (directions ?? []).filter((d: any) => d.fsrs_state !== "New" && d.due_at <= now).length;
   const overdue = (directions ?? []).filter(
     (d: any) => d.fsrs_state !== "New" && d.due_at < start.toISOString()

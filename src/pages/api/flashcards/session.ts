@@ -4,6 +4,7 @@ import type { LocalsWithAuth } from "../../../lib/types";
 import { ApiErrors, requireAuth, withErrorHandling } from "../../../lib/errors";
 import { getSupabaseClient } from "../../../lib/utils";
 import { getFlashcardsDay, spaceDirections } from "../../../lib/flashcards.service";
+import { fetchAllRows } from "../../../lib/supabase-pagination";
 
 export const prerender = false;
 export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
@@ -17,27 +18,21 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
   const today = getFlashcardsDay();
   const { data: settings } = await db.from("flashcard_settings").select("*").eq("user_id", userId).maybeSingle();
   const config = settings ?? { new_phrases_per_batch: 5, review_cards_per_batch: 50 };
-  const { data: directions, error: directionError } = await db
-    .from("flashcard_directions")
-    .select("*, flashcards!inner(id,phrase_id,user_id,status,phrases!inner(id,en_text,pl_text,learning_hint_markdown))")
-    .eq("flashcards.user_id", userId)
-    .eq("flashcards.status", "active")
-    .order("due_at");
-  if (directionError) {
-    // eslint-disable-next-line no-console
-    console.error("[flashcards/session] Failed to load active directions:", directionError);
-    throw ApiErrors.internal("Failed to build session");
-  }
+  const directions = await fetchAllRows<any>(
+    db
+      .from("flashcard_directions")
+      .select(
+        "*, flashcards!inner(id,phrase_id,user_id,status,phrases!inner(id,en_text,pl_text,learning_hint_markdown))"
+      )
+      .eq("flashcards.user_id", userId)
+      .eq("flashcards.status", "active")
+      .order("due_at")
+      .order("id")
+  );
   if (!directions?.length) return Response.json({ cards: [] });
-  const { data: introductions, error: introductionError } = await db
-    .from("flashcard_phrase_introductions")
-    .select("phrase_id,introduced_on")
-    .eq("user_id", userId);
-  if (introductionError) {
-    // eslint-disable-next-line no-console
-    console.error("[flashcards/session] Failed to load phrase introductions:", introductionError);
-    throw ApiErrors.internal("Failed to read introduced phrases");
-  }
+  const introductions = await fetchAllRows<any>(
+    db.from("flashcard_phrase_introductions").select("phrase_id,introduced_on").eq("user_id", userId).order("phrase_id")
+  );
   const cards = (directions ?? []).map((direction: any) =>
     Array.isArray(direction.flashcards) ? direction.flashcards[0] : direction.flashcards
   );
@@ -76,9 +71,7 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
       list.push(d);
       newByPhrase.set(card.phrase_id, list);
     });
-  const pendingGroups = Array.from(newByPhrase.entries()).filter(
-    ([phraseId]) => introducedByPhrase.has(phraseId) && introducedByPhrase.get(phraseId) !== today
-  );
+  const pendingGroups = Array.from(newByPhrase.entries()).filter(([phraseId]) => introducedByPhrase.has(phraseId));
   const canAddNew = reviews.length < config.review_cards_per_batch && overdue <= config.review_cards_per_batch * 2;
   if (pendingGroups.length && canAddNew) {
     pendingGroups.slice(0, config.new_phrases_per_batch).forEach(([, group]) => selected.push(...group));
