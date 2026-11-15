@@ -16,6 +16,7 @@ interface StoryModalProps {
 }
 interface StoryContent {
   content: string;
+  phrase_ids: string[];
 }
 
 interface TranslationResult {
@@ -443,7 +444,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
     try {
       const result = await apiCall<TranslationResult>("/api/stories/translate", {
         method: "POST",
-        body: JSON.stringify({ content: story.content, phrase_ids: phraseIds }),
+        body: JSON.stringify({ content: story.content, phrase_ids: story.phrase_ids }),
       });
       setTranslation(result.translation);
     } catch (err) {
@@ -451,7 +452,7 @@ export default function StoryModal({ open, phraseIds, onClose }: StoryModalProps
     } finally {
       setTranslationLoading(false);
     }
-  }, [apiCall, phraseIds, story]);
+  }, [apiCall, story]);
 
   useEffect(() => {
     isOpenRef.current = open;

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { useApi } from "../lib/hooks/useApi";
 import { storyLiveAudioCache } from "../lib/story-live-audio-cache";
+import { DEFAULT_STORY_MAX_PHRASES, MIN_STORY_PHRASES, MAX_STORY_PHRASES } from "../lib/story-settings";
 
 interface StorySettings {
   is_configured: boolean;
@@ -9,6 +10,7 @@ interface StorySettings {
   prompt: string;
   temperature: number;
   max_tokens: number;
+  max_phrases: number;
   thinking_enabled: boolean;
   thinking_effort: "low" | "high" | "max";
   tts_speaking_rate: number;
@@ -40,6 +42,7 @@ export default function StorySettingsForm() {
   const [prompt, setPrompt] = useState("");
   const [temperature, setTemperature] = useState("0.8");
   const [maxTokens, setMaxTokens] = useState("800");
+  const [maxPhrases, setMaxPhrases] = useState(String(DEFAULT_STORY_MAX_PHRASES));
   const [thinkingEnabled, setThinkingEnabled] = useState(false);
   const [thinkingEffort, setThinkingEffort] = useState<StorySettings["thinking_effort"]>("low");
   const [ttsVoiceId, setTtsVoiceId] = useState("en-GB-Chirp3-HD-Kore");
@@ -55,6 +58,7 @@ export default function StorySettingsForm() {
         setPrompt(data.prompt);
         setTemperature(String(data.temperature));
         setMaxTokens(String(data.max_tokens));
+        setMaxPhrases(String(data.max_phrases));
         setThinkingEnabled(data.thinking_enabled);
         setThinkingEffort(data.thinking_effort);
         setTtsVoiceId(data.tts_voice_id);
@@ -67,11 +71,16 @@ export default function StorySettingsForm() {
 
   const parsedTemperature = Number(temperature.replace(",", "."));
   const parsedMaxTokens = Number(maxTokens);
+  const parsedMaxPhrases = Number(maxPhrases);
+  const hasValidMaxPhrases =
+    Number.isInteger(parsedMaxPhrases) &&
+    parsedMaxPhrases >= MIN_STORY_PHRASES &&
+    parsedMaxPhrases <= MAX_STORY_PHRASES;
   const hasValidTemperature = Number.isFinite(parsedTemperature) && parsedTemperature >= 0 && parsedTemperature <= 2;
   const hasValidMaxTokens = Number.isInteger(parsedMaxTokens) && parsedMaxTokens >= 100 && parsedMaxTokens <= 64_000;
 
   const save = async () => {
-    if (!hasValidTemperature || !hasValidMaxTokens) return;
+    if (!hasValidTemperature || !hasValidMaxTokens || !hasValidMaxPhrases) return;
     setSaving(true);
     setMessage(null);
     try {
@@ -83,6 +92,7 @@ export default function StorySettingsForm() {
           prompt,
           temperature: parsedTemperature,
           max_tokens: parsedMaxTokens,
+          max_phrases: parsedMaxPhrases,
           thinking_enabled: thinkingEnabled,
           thinking_effort: thinkingEffort,
           tts_voice_id: ttsVoiceId,
@@ -124,6 +134,24 @@ export default function StorySettingsForm() {
           className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
         />
         <p className="mt-1 text-xs text-muted-foreground">The key is encrypted before it is stored.</p>
+      </div>
+      <div>
+        <label htmlFor="story-max-phrases" className="mb-2 block text-sm font-medium text-foreground">
+          Maximum phrases per story
+        </label>
+        <input
+          id="story-max-phrases"
+          type="number"
+          min={MIN_STORY_PHRASES}
+          max={MAX_STORY_PHRASES}
+          step={1}
+          value={maxPhrases}
+          onChange={(event) => setMaxPhrases(event.target.value)}
+          className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
+        />
+        <p className="mt-1 text-xs text-muted-foreground">
+          From {MIN_STORY_PHRASES} to {MAX_STORY_PHRASES}. If you select more, a random subset is used for each story.
+        </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="text-sm font-medium text-foreground" htmlFor="story-temperature">
@@ -259,7 +287,9 @@ export default function StorySettingsForm() {
       )}
       <Button
         onClick={() => void save()}
-        disabled={saving || !model.trim() || !prompt.trim() || !hasValidTemperature || !hasValidMaxTokens}
+        disabled={
+          saving || !model.trim() || !prompt.trim() || !hasValidTemperature || !hasValidMaxTokens || !hasValidMaxPhrases
+        }
       >
         {saving ? "Saving..." : "Save story settings"}
       </Button>

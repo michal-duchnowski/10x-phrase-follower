@@ -5,19 +5,20 @@ import { ApiErrors, requireAuth, withErrorHandling } from "../../../lib/errors";
 import { decrypt, setRuntimeEnv } from "../../../lib/tts-encryption";
 import { getSupabaseClient } from "../../../lib/utils";
 
+import { MAX_STORY_PHRASES, MAX_STORY_VOCABULARY_LENGTH } from "../../../lib/story-settings";
+
 export const prerender = false;
 
 const MAX_TEXT_LENGTH = 12_000;
-const MAX_PHRASES = 30;
+
 const MAX_PHRASE_LENGTH = 500;
-const MAX_VOCABULARY_LENGTH = 6_000;
 
 const TranslationSchema = z.object({
   content: z.string().trim().min(1, "Story content is required").max(MAX_TEXT_LENGTH),
   phrase_ids: z
     .array(z.string().min(1))
     .min(1)
-    .max(MAX_PHRASES)
+    .max(MAX_STORY_PHRASES)
     .refine((ids) => new Set(ids).size === ids.length, "phrase_ids must not contain duplicates"),
 });
 
@@ -66,7 +67,7 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
   const vocabulary = JSON.stringify(
     phrases.map((phrase) => ({ english: phrase.en_text, polishMeaning: phrase.pl_text }))
   );
-  if (vocabulary.length > MAX_VOCABULARY_LENGTH) {
+  if (vocabulary.length > MAX_STORY_VOCABULARY_LENGTH) {
     throw ApiErrors.validationError("The selected phrases are too long to translate one story");
   }
 

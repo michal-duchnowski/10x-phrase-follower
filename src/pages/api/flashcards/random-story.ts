@@ -4,10 +4,10 @@ import { z } from "zod";
 import type { LocalsWithAuth } from "../../../lib/types";
 import { ApiErrors, requireAuth, withErrorHandling } from "../../../lib/errors";
 import { getSupabaseClient } from "../../../lib/utils";
+import { DEFAULT_STORY_MAX_PHRASES } from "../../../lib/story-settings";
 
 export const prerender = false;
 
-const TOTAL_PHRASE_LIMIT = 20;
 const MINIMUM_STORY_PHRASES = 3;
 
 const RandomStorySchema = z.object({
@@ -29,6 +29,13 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
   const excludedIds = parsed.data.exclude_phrase_ids;
 
   const db: any = getSupabaseClient(context);
+  const { data: settings, error: settingsError } = await db
+    .from("story_settings")
+    .select("max_phrases")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (settingsError) throw ApiErrors.internal("Could not load story settings");
+  const phraseLimit = settings?.max_phrases ?? DEFAULT_STORY_MAX_PHRASES;
   let activeCards = db
     .from("flashcards")
     .select("id", { count: "exact", head: true })
@@ -38,7 +45,7 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
   const { count, error: countError } = await activeCards;
   if (countError) throw ApiErrors.internal("Could not count flashcards for a random story");
 
-  const offsets = randomUniqueOffsets(count ?? 0, TOTAL_PHRASE_LIMIT - excludedIds.length);
+  const offsets = randomUniqueOffsets(count ?? 0, Math.max(0, phraseLimit - excludedIds.length));
   const selectedCards = await Promise.all(
     offsets.map(async (offset) => {
       let query = db.from("flashcards").select("phrase_id").eq("user_id", userId).eq("status", "active");

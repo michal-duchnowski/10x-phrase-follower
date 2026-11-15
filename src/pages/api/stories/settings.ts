@@ -3,6 +3,9 @@ import { z } from "zod";
 import { ApiErrors, requireAuth, withErrorHandling } from "../../../lib/errors";
 import {
   DEFAULT_STORY_MODEL,
+  DEFAULT_STORY_MAX_PHRASES,
+  MIN_STORY_PHRASES,
+  MAX_STORY_PHRASES,
   DEFAULT_STORY_MAX_TOKENS,
   DEFAULT_STORY_PROMPT,
   DEFAULT_STORY_TEMPERATURE,
@@ -23,6 +26,7 @@ const StorySettingsSchema = z.object({
   model: z.string().trim().min(1, "Model is required").max(200),
   prompt: z.string().trim().min(1, "Prompt is required").max(12000),
   temperature: z.number().min(0).max(2),
+  max_phrases: z.number().int().min(MIN_STORY_PHRASES).max(MAX_STORY_PHRASES),
   max_tokens: z.number().int().min(100).max(64_000),
   thinking_enabled: z.boolean(),
   thinking_effort: z.enum(STORY_THINKING_EFFORTS),
@@ -52,7 +56,7 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
   const { data, error } = await db
     .from("story_settings")
     .select(
-      "encrypted_api_key, model, prompt, temperature, max_tokens, thinking_enabled, thinking_effort, tts_voice_id, tts_speaking_rate"
+      "encrypted_api_key, model, prompt, temperature, max_tokens, max_phrases, thinking_enabled, thinking_effort, tts_voice_id, tts_speaking_rate"
     )
     .eq("user_id", userId)
     .single();
@@ -64,6 +68,7 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
     prompt: data.prompt || DEFAULT_STORY_PROMPT,
     temperature: data.temperature ?? DEFAULT_STORY_TEMPERATURE,
     max_tokens: data.max_tokens ?? DEFAULT_STORY_MAX_TOKENS,
+    max_phrases: data.max_phrases ?? DEFAULT_STORY_MAX_PHRASES,
     thinking_enabled: data.thinking_enabled ?? DEFAULT_STORY_THINKING_ENABLED,
     thinking_effort: data.thinking_effort ?? DEFAULT_STORY_THINKING_EFFORT,
     tts_voice_id: data.tts_voice_id || DEFAULT_STORY_TTS_VOICE,
@@ -86,6 +91,7 @@ export const PUT: APIRoute = withErrorHandling(async (context: APIContext) => {
     prompt: string;
     temperature: number;
     max_tokens: number;
+    max_phrases: number;
     thinking_enabled: boolean;
     thinking_effort: "low" | "high" | "max";
     tts_speaking_rate: number;
@@ -97,6 +103,7 @@ export const PUT: APIRoute = withErrorHandling(async (context: APIContext) => {
     prompt: body.prompt,
     temperature: body.temperature,
     max_tokens: body.max_tokens,
+    max_phrases: body.max_phrases,
     thinking_enabled: body.thinking_enabled,
     thinking_effort: body.thinking_effort,
     tts_speaking_rate: body.tts_speaking_rate,
@@ -110,7 +117,7 @@ export const PUT: APIRoute = withErrorHandling(async (context: APIContext) => {
     .update(update)
     .eq("user_id", userId)
     .select(
-      "encrypted_api_key, model, prompt, temperature, max_tokens, thinking_enabled, thinking_effort, tts_voice_id, tts_speaking_rate"
+      "encrypted_api_key, model, prompt, temperature, max_tokens, max_phrases, thinking_enabled, thinking_effort, tts_voice_id, tts_speaking_rate"
     )
     .single();
   if (error || !data) throw ApiErrors.internal("Failed to save story settings");
@@ -121,6 +128,7 @@ export const PUT: APIRoute = withErrorHandling(async (context: APIContext) => {
     prompt: data.prompt,
     temperature: data.temperature,
     max_tokens: data.max_tokens,
+    max_phrases: data.max_phrases,
     thinking_enabled: data.thinking_enabled,
     thinking_effort: data.thinking_effort,
     tts_voice_id: data.tts_voice_id,

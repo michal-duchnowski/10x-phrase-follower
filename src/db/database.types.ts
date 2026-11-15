@@ -332,6 +332,7 @@ export interface Database {
           encrypted_api_key: string | null;
           model: string;
           max_tokens: number;
+          max_phrases: number;
           prompt: string;
           temperature: number;
           thinking_enabled: boolean;
@@ -346,6 +347,7 @@ export interface Database {
           encrypted_api_key?: string | null;
           model?: string;
           max_tokens?: number;
+          max_phrases?: number;
           prompt?: string;
           temperature?: number;
           thinking_enabled?: boolean;
@@ -360,6 +362,7 @@ export interface Database {
           encrypted_api_key?: string | null;
           model?: string;
           max_tokens?: number;
+          max_phrases?: number;
           prompt?: string;
           temperature?: number;
           thinking_enabled?: boolean;

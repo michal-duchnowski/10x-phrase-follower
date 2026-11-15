@@ -1,4 +1,19 @@
 export const DEFAULT_STORY_MODEL = "deepseek-flash";
+export const DEFAULT_STORY_MAX_PHRASES = 30;
+export const MIN_STORY_PHRASES = 3;
+export const MAX_STORY_PHRASES = 100;
+export const MAX_STORY_VOCABULARY_LENGTH = 120_000;
+
+/** Select a random subset without changing the caller's selection. */
+export function selectStoryPhrases<T>(items: readonly T[], limit: number): T[] {
+  const shuffled = [...items];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[index]];
+  }
+  return shuffled.slice(0, limit);
+}
+
 export const DEFAULT_STORY_TEMPERATURE = 0.8;
 export const DEFAULT_STORY_MAX_TOKENS = 64_000;
 export const DEFAULT_STORY_THINKING_ENABLED = true;
@@ -52,7 +67,7 @@ Do not add other sections, titles, notes, translations, explanations, or comment
 
 Write a vivid, coherent B1-B2 mini-story that a real person could naturally tell. Natural, correct, idiomatic English is more important than coverage. Select expressions that fit one real-life situation; use as many as fit naturally, but skip anything forced, doubtful, misleading, or requiring an artificial topic change. Never turn the story into a vocabulary exercise.
 
-Approximate lengths: 1-3 targets 50-75 words; 4-6 75-110; 7-10 110-155; 11-15 145-200; 16-20 180-240. A slightly longer natural story is better than forced coverage.
+Approximate lengths: 1-3 targets 50-75 words; 4-6 75-110; 7-10 110-155; 11-15 145-200; 16-20 180-240; for more than 20 targets allow roughly 10-15 words per target. A slightly longer natural story is better than forced coverage.
 
 Before writing, silently choose a fitting setting. Use clear cause and effect, concrete action, natural dialogue and normal connecting sentences. Do not output planning. Do not force an expression into every sentence or spread them evenly.
 

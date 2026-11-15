@@ -2,24 +2,19 @@
 import type { APIRoute, APIContext } from "astro";
 import type { LocalsWithAuth } from "../../../lib/types";
 import { ApiErrors, requireAuth, withErrorHandling } from "../../../lib/errors";
-import { DEFAULT_STORY_THINKING_EFFORT, STORY_PROMPT_SUFFIX } from "../../../lib/story-settings";
+import {
+  DEFAULT_STORY_MAX_PHRASES,
+  DEFAULT_STORY_THINKING_EFFORT,
+  MAX_STORY_VOCABULARY_LENGTH,
+  selectStoryPhrases,
+  STORY_PROMPT_SUFFIX,
+} from "../../../lib/story-settings";
 import { decrypt, setRuntimeEnv } from "../../../lib/tts-encryption";
 import { getSupabaseClient } from "../../../lib/utils";
 
 export const prerender = false;
 
-const MAX_PHRASES = 30;
 const MAX_PHRASE_LENGTH = 500;
-const MAX_VOCABULARY_LENGTH = 6000;
-
-function shuffle<T>(items: T[]): T[] {
-  const shuffled = [...items];
-  for (let index = shuffled.length - 1; index > 0; index -= 1) {
-    const randomIndex = Math.floor(Math.random() * (index + 1));
-    [shuffled[index], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[index]];
-  }
-  return shuffled;
-}
 
 export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
   const userId = (context.locals as LocalsWithAuth).userId;
@@ -27,13 +22,26 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
 
   const body = await context.request.json();
   const ids = body?.phrase_ids;
-  if (!Array.isArray(ids) || ids.length < 3 || ids.length > MAX_PHRASES || ids.some((id) => typeof id !== "string")) {
-    throw ApiErrors.validationError(`phrase_ids must contain from 3 to ${MAX_PHRASES} IDs`);
+  if (!Array.isArray(ids) || ids.length < 3 || ids.some((id) => typeof id !== "string")) {
+    throw ApiErrors.validationError("phrase_ids must contain at least 3 IDs");
   }
-  const phraseIds = [...new Set(ids)];
-  if (phraseIds.length !== ids.length) throw ApiErrors.validationError("phrase_ids must not contain duplicates");
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length !== ids.length) throw ApiErrors.validationError("phrase_ids must not contain duplicates");
 
   const db: any = getSupabaseClient(context);
+  const locals = context.locals as unknown as { runtime?: { env?: Record<string, string | undefined> } };
+  if (locals.runtime?.env) setRuntimeEnv(locals.runtime.env);
+  const { data: settings, error: settingsError } = await db
+    .from("story_settings")
+    .select("encrypted_api_key, model, prompt, temperature, max_tokens, max_phrases, thinking_enabled, thinking_effort")
+    .eq("user_id", userId)
+    .single();
+  if (settingsError || !settings)
+    throw ApiErrors.validationError("Configure AI story settings before generating a story.");
+  if (!settings.encrypted_api_key) {
+    throw ApiErrors.validationError("Add your DeepSeek API key in Settings before generating a story.");
+  }
+  const phraseIds = selectStoryPhrases(uniqueIds, settings.max_phrases ?? DEFAULT_STORY_MAX_PHRASES);
   const { data: phrases, error } = await db
     .from("phrases")
     .select("id, en_text, pl_text, notebooks!inner(user_id)")
@@ -51,18 +59,6 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
     throw ApiErrors.validationError(`Each selected phrase must be at most ${MAX_PHRASE_LENGTH} characters long`);
   }
 
-  const locals = context.locals as unknown as { runtime?: { env?: Record<string, string | undefined> } };
-  if (locals.runtime?.env) setRuntimeEnv(locals.runtime.env);
-  const { data: settings, error: settingsError } = await db
-    .from("story_settings")
-    .select("encrypted_api_key, model, prompt, temperature, max_tokens, thinking_enabled, thinking_effort")
-    .eq("user_id", userId)
-    .single();
-  if (settingsError || !settings)
-    throw ApiErrors.validationError("Configure AI story settings before generating a story.");
-  if (!settings.encrypted_api_key) {
-    throw ApiErrors.validationError("Add your DeepSeek API key in Settings before generating a story.");
-  }
   let apiKey: string;
   try {
     apiKey = await decrypt(settings.encrypted_api_key);
@@ -71,11 +67,10 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
     throw ApiErrors.internal("Could not read your AI story credentials. Save the API key again in Settings.");
   }
 
-  const shuffledPhrases = shuffle(phrases);
   const vocabulary = JSON.stringify(
-    shuffledPhrases.map((phrase: any) => ({ english: phrase.en_text, polishMeaning: phrase.pl_text }))
+    phrases.map((phrase: any) => ({ english: phrase.en_text, polishMeaning: phrase.pl_text }))
   );
-  if (vocabulary.length > MAX_VOCABULARY_LENGTH) {
+  if (vocabulary.length > MAX_STORY_VOCABULARY_LENGTH) {
     throw ApiErrors.validationError("The selected phrases are too long to create one story");
   }
   const response = await fetch("https://api.deepseek.com/chat/completions", {
@@ -106,5 +101,5 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
   const result = (await response.json()) as { choices?: { message?: { content?: string | null } }[] };
   const content = result.choices?.[0]?.message?.content?.trim();
   if (!content) throw ApiErrors.internal("The story generator returned an empty response. Please try again.");
-  return Response.json({ content });
+  return Response.json({ content, phrase_ids: phraseIds });
 });
