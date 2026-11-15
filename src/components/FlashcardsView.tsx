@@ -49,7 +49,7 @@ interface Overview {
 }
 type Rating = "Again" | "Hard" | "Good" | "Easy";
 type SessionMode = "daily" | "training";
-type DifficultCardPool = "most_difficult" | "recent_again" | "frequent_lapses";
+type DifficultCardPool = "most_difficult" | "recent_again" | "recent_again_or_hard" | "frequent_lapses";
 interface DifficultCard {
   flashcard_id: string;
   phrase_id: string;
@@ -750,7 +750,8 @@ function FlashcardsContent() {
               aria-label="Difficult card pool"
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground sm:w-auto"
             >
-              <option value="recent_again">Incorrect in last 90 days</option>
+              <option value="recent_again">Again in last 90 days</option>
+              <option value="recent_again_or_hard">Again + Hard in last 90 days (newest first)</option>
               <option value="most_difficult">Most difficult</option>
               <option value="frequent_lapses">Frequently incorrect</option>
             </select>
@@ -794,9 +795,10 @@ function FlashcardsContent() {
                       }}
                     />
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {difficultPool === "recent_again" ? (
+                      {difficultPool === "recent_again" || difficultPool === "recent_again_or_hard" ? (
                         <>
-                          {card.recent_again_or_hard} Again in 90d · {card.lapses} lapses · stability {card.stability}d
+                          {card.recent_again_or_hard} {difficultPool === "recent_again" ? "Again" : "Again/Hard"} in 90d
+                          · {card.lapses} lapses · stability {card.stability}d
                         </>
                       ) : (
                         <>

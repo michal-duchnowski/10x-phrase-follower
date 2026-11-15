@@ -12,7 +12,12 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
   requireAuth(userId);
   const params = new URL(context.request.url).searchParams;
   const pool = params.get("pool") ?? "most_difficult";
-  if (pool !== "most_difficult" && pool !== "recent_again" && pool !== "frequent_lapses") {
+  if (
+    pool !== "most_difficult" &&
+    pool !== "recent_again" &&
+    pool !== "recent_again_or_hard" &&
+    pool !== "frequent_lapses"
+  ) {
     return new Response(JSON.stringify({ error: "Invalid difficult-card pool" }), { status: 400 });
   }
   const db: any = getSupabaseClient(context);
@@ -27,17 +32,17 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
   }
   const limit = requestedLimit ? Number(requestedLimit) : (settings?.difficult_cards_per_training ?? 10);
 
-  if (pool === "recent_again") {
+  if (pool === "recent_again" || pool === "recent_again_or_hard") {
     const recentSince = new Date(Date.now() - RECENT_INCORRECT_WINDOW_DAYS * 86400000).toISOString();
-    // This pool needs only recent failed reviews. Avoid loading every active
-    // direction and its full history just to find them.
+    // Sort both ratings together by review time before deduplication and limiting.
+    // Giving Again priority would hide newer Hard reviews in a limited training set.
     const { data: recentReviews, error: recentReviewsError } = await db
       .from("flashcard_reviews")
       .select(
         "flashcard_direction_id, flashcard_id, phrase_id, direction, reviewed_at, flashcards!inner(id, status, user_id, phrases!inner(en_text, pl_text, learning_hint_markdown, difficulty))"
       )
       .eq("user_id", userId)
-      .eq("fsrs_rating", "Again")
+      .in("fsrs_rating", pool === "recent_again" ? ["Again"] : ["Again", "Hard"])
       .gte("reviewed_at", recentSince)
       .eq("flashcards.status", "active")
       .order("reviewed_at", { ascending: false })
