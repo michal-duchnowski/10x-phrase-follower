@@ -751,7 +751,7 @@ function FlashcardsContent() {
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground sm:w-auto"
             >
               <option value="recent_again">Again in last 90 days</option>
-              <option value="recent_again_or_hard">Again + Hard in last 90 days (newest first)</option>
+              <option value="recent_again_or_hard">Again + Hard in last 90 days</option>
               <option value="most_difficult">Most difficult</option>
               <option value="frequent_lapses">Frequently incorrect</option>
             </select>
