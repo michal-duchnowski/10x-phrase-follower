@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArchiveX,
   Flag,
@@ -22,6 +22,12 @@ import { FlashcardAudioCache } from "../lib/flashcard-audio-cache";
 import PhraseLearningHintModal from "./PhraseLearningHintModal";
 import StoryModal from "./StoryModal";
 import { parseMarkdownToHtml } from "../lib/utils";
+import type { LearnManifestDTO } from "../types";
+import { createNotebookTrainingCards } from "../lib/notebook-training";
+
+interface FlashcardsViewProps {
+  notebookTraining?: { manifestUrl: string; returnUrl: string };
+}
 
 interface SessionCard {
   direction_id: string;
@@ -66,7 +72,7 @@ interface DifficultCard {
   recent_again_or_hard: number;
 }
 
-function FlashcardsContent() {
+function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
   const { apiCall, isAuthenticated } = useApi();
   const { addToast } = useToast();
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -93,6 +99,9 @@ function FlashcardsContent() {
   const [editingDifficultHint, setEditingDifficultHint] = useState<DifficultCard | null>(null);
   const [storyOpen, setStoryOpen] = useState(false);
   const [storyPhraseIds, setStoryPhraseIds] = useState<string[]>([]);
+  const [notebookLoading, setNotebookLoading] = useState(Boolean(notebookTraining));
+  const [notebookError, setNotebookError] = useState<string | null>(null);
+  const notebookManifestUrl = notebookTraining?.manifestUrl;
   const current = cards[index];
   const loadOverview = async () => {
     try {
@@ -168,6 +177,32 @@ function FlashcardsContent() {
   useEffect(() => {
     if (isAuthenticated) void loadOverview();
   }, [isAuthenticated]);
+  const startNotebookTraining = useCallback(async () => {
+    if (!notebookManifestUrl) return;
+    setNotebookLoading(true);
+    setNotebookError(null);
+    try {
+      const manifest = await apiCall<LearnManifestDTO>(notebookManifestUrl);
+      const trainingCards = createNotebookTrainingCards(manifest.phrases);
+      setCards(trainingCards);
+      setIndex(0);
+      setSessionMode("training");
+      setTrainingCompleted(false);
+      setAnswer("");
+      setChecked(null);
+      setDrillActive(false);
+      setDrillStreak(0);
+      setDetailsOpen(false);
+      if (!trainingCards.length) setNotebookError("No phrases match this selection.");
+    } catch (error) {
+      setNotebookError(error instanceof Error ? error.message : "Could not load training");
+    } finally {
+      setNotebookLoading(false);
+    }
+  }, [apiCall, notebookManifestUrl]);
+  useEffect(() => {
+    if (isAuthenticated) void startNotebookTraining();
+  }, [isAuthenticated, startNotebookTraining]);
   useEffect(() => {
     const cache = FlashcardAudioCache.forBrowser(async (phraseId) => {
       const { url } = await apiCall<{ url: string | null }>(
@@ -454,6 +489,44 @@ function FlashcardsContent() {
       setBusy(false);
     }
   };
+  if (notebookTraining && (notebookLoading || notebookError))
+    return (
+      <section className="mx-auto max-w-xl py-16 text-center">
+        <h1 className="text-2xl font-semibold">Notebook training</h1>
+        {notebookLoading ? (
+          <p className="mt-4" role="status">
+            Loading training…
+          </p>
+        ) : (
+          <>
+            <p className="mt-4 text-muted-foreground" role="alert">
+              {notebookError}
+            </p>
+            <Button className="mt-4" onClick={() => void startNotebookTraining()}>
+              Try again
+            </Button>
+          </>
+        )}
+        <Button asChild variant="secondary" className="mt-4 ml-2">
+          <a href={notebookTraining.returnUrl}>Back to notebook</a>
+        </Button>
+      </section>
+    );
+  if (notebookTraining && trainingCompleted)
+    return (
+      <section className="mx-auto max-w-xl py-16 text-center">
+        <h1 className="text-2xl font-semibold">Training session completed</h1>
+        <p className="mt-2 text-muted-foreground">No review statistics or schedule were changed.</p>
+        <div className="mt-6 flex justify-center gap-2">
+          <Button onClick={() => void startNotebookTraining()}>
+            <Play /> Train again
+          </Button>
+          <Button asChild variant="secondary">
+            <a href={notebookTraining.returnUrl}>Back to notebook</a>
+          </Button>
+        </div>
+      </section>
+    );
   if (trainingCompleted || (cards.length && !current))
     return (
       <section className="mx-auto max-w-xl py-16 text-center">
@@ -492,6 +565,11 @@ function FlashcardsContent() {
     const drillTarget = overview?.settings.drill_repetitions ?? 3;
     return (
       <section className="mx-auto max-w-2xl py-5">
+        {notebookTraining && (
+          <Button asChild variant="ghost" size="sm" className="mb-3">
+            <a href={notebookTraining.returnUrl}>Back to notebook</a>
+          </Button>
+        )}
         <div className="mb-4 flex items-center justify-between text-sm text-muted-foreground">
           <span>
             {sessionMode === "training" ? `${cards.length} cards to master` : `${cards.length - index} cards remaining`}
@@ -907,10 +985,10 @@ function Metric({ label, value }: { label: string; value: number }) {
     </div>
   );
 }
-export default function FlashcardsView() {
+export default function FlashcardsView(props: FlashcardsViewProps) {
   return (
     <ToastProvider>
-      <FlashcardsContent />
+      <FlashcardsContent {...props} />
     </ToastProvider>
   );
 }

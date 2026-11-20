@@ -1,0 +1,25 @@
+---
+import AppLayout from "../../../layouts/AppLayout.astro";
+import AuthGuard from "../../../components/AuthGuard";
+import FlashcardsView from "../../../components/FlashcardsView";
+import { isVirtualNotebook } from "../../../lib/utils";
+
+const { id } = Astro.params;
+const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+if (!id || (!uuidRegex.test(id) && !isVirtualNotebook(id))) {
+  return Astro.redirect("/notebooks");
+}
+const params = new URLSearchParams();
+for (const key of ["phrase_ids", "difficulty", "pinned", "notebook_ids"]) {
+  const value = Astro.url.searchParams.get(key);
+  if (value) params.set(key, value);
+}
+const manifestUrl = `/api/notebooks/${id}/learn-manifest?${params.toString()}`;
+const returnUrl = `/notebooks/${id}`;
+---
+
+<AppLayout title="Training - Phrase Follower" currentPath={`/notebooks/${id}/training`}>
+  <AuthGuard client:load>
+    <FlashcardsView notebookTraining={{ manifestUrl, returnUrl }} client:load />
+  </AuthGuard>
+</AppLayout>

@@ -63,6 +63,18 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
   // Check if this is a virtual notebook (Smart List)
   const isVirtual = isVirtualNotebook(notebookId);
 
+  const trainingHref = (selectedOnly = false) => {
+    const params = new URLSearchParams();
+    if (selectedOnly) params.set("phrase_ids", Array.from(selectedPhraseIds).join(","));
+    if (isVirtual) {
+      if (onlyPinned) params.set("pinned", "1");
+      if (selectedNotebookIds.size > 0) params.set("notebook_ids", Array.from(selectedNotebookIds).join(","));
+    } else if (difficultyFilter !== "all") {
+      params.set("difficulty", difficultyFilter);
+    }
+    return `/notebooks/${notebookId}/training${params.size ? `?${params.toString()}` : ""}`;
+  };
+
   /**
    * Parses a quick select input string like "1-3, 4, 8-9" into an array of numbers.
    * Returns an array of 1-based indices (e.g., [1, 2, 3, 4, 8, 9]).
@@ -808,6 +820,11 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                     Learn
                   </a>
                 </Button>
+                <Button asChild size="sm" variant="default" className="shrink-0">
+                  <a href={trainingHref()} title="Train phrases in both directions">
+                    Training
+                  </a>
+                </Button>
                 {!isVirtualNotebook(notebookId) && (
                   <GenerateAudioButton
                     notebookId={notebookId}
@@ -851,9 +868,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
 
             {/* Mobile actions */}
             <div className="md:hidden">
-              <div
-                className={`grid ${!isVirtualNotebook(notebookId) ? "grid-cols-[1fr_1fr_auto_auto]" : "grid-cols-[1fr_1fr_auto]"} gap-2 items-stretch`}
-              >
+              <div className="grid grid-cols-2 gap-2 items-stretch">
                 <Button asChild size="lg" variant="default" className="w-full">
                   <a
                     href={`/player/${notebookId}${difficultyFilter !== "all" ? `?difficulty=${difficultyFilter}` : ""}`}
@@ -879,6 +894,11 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                     title="Open Learn Mode"
                   >
                     Learn
+                  </a>
+                </Button>
+                <Button asChild size="lg" variant="default" className="w-full">
+                  <a href={trainingHref()} title="Train phrases in both directions">
+                    Training
                   </a>
                 </Button>
                 {!isVirtualNotebook(notebookId) && (
@@ -1165,6 +1185,11 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                       title="Open Learn Mode with selected phrases"
                     >
                       Learn
+                    </a>
+                  </Button>
+                  <Button asChild variant="default" size="sm">
+                    <a href={trainingHref(true)} title="Train selected phrases in both directions">
+                      Training
                     </a>
                   </Button>
                   <Button variant="default" size="sm" onClick={handleAddToFlashcards}>
