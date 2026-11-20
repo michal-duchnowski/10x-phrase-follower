@@ -674,7 +674,9 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
                   ? "Choose a recall rating"
                   : "Not correct"}
             </div>
-            <div className={current.image_url ? "space-y-3" : "flex items-start justify-between gap-4"}>
+            <div
+              className={`flex items-start justify-between gap-4 ${current.image_url ? "flex-col sm:flex-row" : ""}`}
+            >
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-foreground">Expected answer</p>
                 <div
@@ -683,7 +685,7 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
                 />
               </div>
               {current.image_url && (
-                <div className="min-w-0">
+                <div className="min-w-0 sm:flex-1">
                   <PhraseImage
                     key={`${current.phrase_id}:${current.image_url}`}
                     url={current.image_url}
