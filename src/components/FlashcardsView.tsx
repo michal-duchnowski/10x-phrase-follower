@@ -674,47 +674,13 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
                   ? "Choose a recall rating"
                   : "Not correct"}
             </div>
-            <div className={current.image_url ? "grid min-w-0 gap-4 sm:grid-cols-2" : ""}>
-              <div className={`flex items-start justify-between gap-4 ${current.image_url ? "flex-wrap" : ""}`}>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-foreground">Expected answer</p>
-                  <div
-                    className="mt-1 text-lg text-foreground"
-                    dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(current.expected_answer) }}
-                  />
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    onClick={() => {
-                      setHintSaveError(null);
-                      setDetailsOpen(true);
-                    }}
-                    title="Description (shortcut: 8)"
-                    aria-label="Description. Shortcut: 8"
-                  >
-                    <Info />
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    onClick={startDrill}
-                    title={`Drill: ${drillTarget} consecutive correct answers (shortcut: 9)`}
-                    aria-label={`Drill: ${drillTarget} consecutive correct answers. Shortcut: 9`}
-                  >
-                    <span className="text-sm font-bold">{drillTarget}×</span>
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    onClick={() => void playEnglish()}
-                    title="Play English audio (shortcut: 0)"
-                    aria-label="Play English audio. Shortcut: 0"
-                  >
-                    <Volume2 />
-                  </Button>
-                </div>
+            <div className={current.image_url ? "space-y-3" : "flex items-start justify-between gap-4"}>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-foreground">Expected answer</p>
+                <div
+                  className="mt-1 text-lg text-foreground"
+                  dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(current.expected_answer) }}
+                />
               </div>
               {current.image_url && (
                 <div className="min-w-0">
@@ -727,6 +693,38 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
                   />
                 </div>
               )}
+              <div className="flex shrink-0 gap-2">
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  onClick={() => {
+                    setHintSaveError(null);
+                    setDetailsOpen(true);
+                  }}
+                  title="Description (shortcut: 8)"
+                  aria-label="Description. Shortcut: 8"
+                >
+                  <Info />
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  onClick={startDrill}
+                  title={`Drill: ${drillTarget} consecutive correct answers (shortcut: 9)`}
+                  aria-label={`Drill: ${drillTarget} consecutive correct answers. Shortcut: 9`}
+                >
+                  <span className="text-sm font-bold">{drillTarget}×</span>
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  onClick={() => void playEnglish()}
+                  title="Play English audio (shortcut: 0)"
+                  aria-label="Play English audio. Shortcut: 0"
+                >
+                  <Volume2 />
+                </Button>
+              </div>
             </div>
             {!isMatch && !isManual && (
               <p className="text-sm text-muted-foreground">Choose the rating that reflects your recall.</p>
