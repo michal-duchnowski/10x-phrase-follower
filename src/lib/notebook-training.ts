@@ -9,6 +9,7 @@ export interface TrainingCard {
   en_text: string;
   pl_text: string;
   learning_hint_markdown: string | null;
+  image_url?: string | null;
 }
 
 /** Both directions enter one shuffled queue, without creating saved flashcards. */
@@ -23,6 +24,7 @@ export function createNotebookTrainingCards(phrases: LearnManifestDTO["phrases"]
       en_text: phrase.en_text,
       pl_text: phrase.pl_text,
       learning_hint_markdown: phrase.learning_hint_markdown,
+      image_url: phrase.image_url ?? null,
     }))
   );
   for (let index = cards.length - 1; index > 0; index--) {

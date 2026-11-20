@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { Eye, Pencil, X } from "lucide-react";
 import { Button } from "./ui/button";
+import PhraseImage from "./PhraseImage";
+import { normalizeImageUrl, MAX_IMAGE_URL_LENGTH } from "../lib/phrase-image";
 import { parseMarkdownToHtml } from "../lib/utils";
 
 interface PhraseLearningHintModalProps {
@@ -11,6 +13,8 @@ interface PhraseLearningHintModalProps {
   error: string | null;
   onSave: (value: string | null) => void;
   onClose: () => void;
+  imageUrl?: string | null;
+  onSaveImage?: (url: string | null) => void;
 }
 
 const MAX_HINT_LENGTH = 12000;
@@ -23,16 +27,23 @@ export default function PhraseLearningHintModal({
   error,
   onSave,
   onClose,
+  imageUrl,
+  onSaveImage,
 }: PhraseLearningHintModalProps) {
   const [value, setValue] = useState(initialValue ?? "");
-  const [activePane, setActivePane] = useState<"edit" | "preview">("edit");
+  const [activePane, setActivePane] = useState<"edit" | "preview" | "image">("edit");
+
+  const [imageValue, setImageValue] = useState(imageUrl ?? "");
+  const [imageError, setImageError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
       setValue(initialValue ?? "");
+      setImageValue(imageUrl ?? "");
+      setImageError(null);
       setActivePane("preview");
     }
-  }, [initialValue, open]);
+  }, [initialValue, imageUrl, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -57,6 +68,16 @@ export default function PhraseLearningHintModal({
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
+    if (activePane === "image") {
+      try {
+        const url = normalizeImageUrl(imageValue);
+        setImageError(null);
+        onSaveImage?.(url);
+      } catch (error) {
+        setImageError(error instanceof Error ? error.message : "Invalid image link");
+      }
+      return;
+    }
     if (isTooLong) return;
     onSave(trimmed.length > 0 ? trimmed : null);
   };
@@ -106,6 +127,35 @@ export default function PhraseLearningHintModal({
                 />
               </section>
 
+              {activePane === "image" && (
+                <section className="space-y-3">
+                  <label htmlFor="phrase-image-url" className="text-sm font-medium">
+                    Image link
+                  </label>
+                  <input
+                    id="phrase-image-url"
+                    type="url"
+                    value={imageValue}
+                    onChange={(event) => {
+                      setImageValue(event.target.value);
+                      setImageError(null);
+                    }}
+                    maxLength={MAX_IMAGE_URL_LENGTH}
+                    placeholder="https://example.com/image.jpg"
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    In Google Images, open the image and choose "Copy image address". Paste the direct HTTPS link here.
+                    Leave empty to remove. Images appear only after checking your answer.
+                  </p>
+                  {imageError && (
+                    <p role="alert" className="text-sm text-destructive">
+                      {imageError}
+                    </p>
+                  )}
+                  {imageValue.trim().startsWith("https://") && <PhraseImage url={imageValue.trim()} revealed={true} />}
+                </section>
+              )}
               <section className={activePane === "edit" ? "block space-y-1.5" : "hidden"}>
                 <label htmlFor="learning-hint-markdown" className="text-sm font-medium text-foreground">
                   Markdown
@@ -136,6 +186,11 @@ export default function PhraseLearningHintModal({
                   <Pencil className="size-4" />
                   Edit
                 </Button>
+                {onSaveImage && (
+                  <Button type="button" variant="outline" onClick={() => setActivePane("image")} disabled={isSaving}>
+                    Edit image link
+                  </Button>
+                )}
                 <Button type="button" onClick={onClose} disabled={isSaving}>
                   OK
                 </Button>
@@ -146,7 +201,7 @@ export default function PhraseLearningHintModal({
                   <Eye className="size-4" />
                   Preview
                 </Button>
-                <Button type="submit" disabled={isSaving || isTooLong}>
+                <Button type="submit" disabled={isSaving || (activePane === "edit" && isTooLong)}>
                   {isSaving ? "Saving..." : "Save"}
                 </Button>
               </>

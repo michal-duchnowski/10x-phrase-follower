@@ -39,7 +39,7 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
     const { data: recentReviews, error: recentReviewsError } = await db
       .from("flashcard_reviews")
       .select(
-        "flashcard_direction_id, flashcard_id, phrase_id, direction, reviewed_at, flashcards!inner(id, status, user_id, phrases!inner(en_text, pl_text, learning_hint_markdown, difficulty))"
+        "flashcard_direction_id, flashcard_id, phrase_id, direction, reviewed_at, flashcards!inner(id, status, user_id, phrases!inner(en_text, pl_text, learning_hint_markdown, image_url, difficulty))"
       )
       .eq("user_id", userId)
       .in("fsrs_rating", pool === "recent_again" ? ["Again"] : ["Again", "Hard"])
@@ -82,6 +82,7 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
           en_text: phrase.en_text,
           pl_text: phrase.pl_text,
           learning_hint_markdown: phrase.learning_hint_markdown,
+          image_url: phrase.image_url ?? null,
           phrase_difficulty: phrase.difficulty,
           score: 0,
           lapses: direction?.lapses ?? 0,
@@ -96,7 +97,7 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
   const { data: directions, error } = await db
     .from("flashcard_directions")
     .select(
-      "id, direction, fsrs_state, stability, difficulty, reps, lapses, due_at, last_review_at, flashcards!inner(id, status, user_id, phrase_id, phrases!inner(en_text, pl_text, learning_hint_markdown, difficulty))"
+      "id, direction, fsrs_state, stability, difficulty, reps, lapses, due_at, last_review_at, flashcards!inner(id, status, user_id, phrase_id, phrases!inner(en_text, pl_text, learning_hint_markdown, image_url, difficulty))"
     )
     .eq("flashcards.user_id", userId)
     .eq("flashcards.status", "active");
@@ -162,6 +163,7 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
         en_text: phrase.en_text,
         pl_text: phrase.pl_text,
         learning_hint_markdown: phrase.learning_hint_markdown,
+        image_url: phrase.image_url ?? null,
         phrase_difficulty: phrase.difficulty,
         score: Math.round(score),
         lapses: direction.lapses,

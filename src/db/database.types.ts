@@ -286,6 +286,7 @@ export interface Database {
           en_text: string;
           id: string;
           learning_hint_markdown: string | null;
+          image_url: string | null;
           notebook_id: string;
           pl_text: string;
           position: number;
@@ -298,6 +299,7 @@ export interface Database {
           en_text: string;
           id: string;
           learning_hint_markdown?: string | null;
+          image_url?: string | null;
           notebook_id: string;
           pl_text: string;
           position: number;
@@ -310,6 +312,7 @@ export interface Database {
           en_text?: string;
           id?: string;
           learning_hint_markdown?: string | null;
+          image_url?: string | null;
           notebook_id?: string;
           pl_text?: string;
           position?: number;

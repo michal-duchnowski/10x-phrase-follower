@@ -17,7 +17,13 @@ function review(phraseId: string, rating: string, reviewedAt: string, direction 
     flashcards: {
       id: `card-${phraseId}`,
       status: "active",
-      phrases: { en_text: phraseId, pl_text: phraseId, difficulty: null, learning_hint_markdown: null },
+      phrases: {
+        en_text: phraseId,
+        pl_text: phraseId,
+        difficulty: null,
+        learning_hint_markdown: null,
+        image_url: "https://example.com/photo.jpg",
+      },
     },
   };
 }
@@ -95,7 +101,11 @@ describe("recent difficult flashcards", () => {
     expect(response.status).toBe(200);
     const { items } = await response.json();
     expect(items.map((item: { phrase_id: string }) => item.phrase_id)).toEqual(["latest-hard", "middle-again"]);
-    expect(items[0]).toMatchObject({ direction: "pl_to_en", recent_again_or_hard: 2 });
+    expect(items[0]).toMatchObject({
+      direction: "pl_to_en",
+      recent_again_or_hard: 2,
+      image_url: "https://example.com/photo.jpg",
+    });
     expect(ratingFilter).toHaveBeenCalledWith(["Again", "Hard"]);
     expect(ordering).toHaveBeenCalledWith("reviewed_at", { ascending: false });
   });

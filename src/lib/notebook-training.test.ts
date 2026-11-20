@@ -6,6 +6,7 @@ const phrases: LearnPhraseDTO[] = [
   {
     id: "phrase-one",
     position: 1,
+    image_url: "https://example.com/cat.jpg",
     en_text: "cat",
     pl_text: "kot",
     learning_hint_markdown: "A hint",
@@ -40,6 +41,7 @@ describe("notebook training", () => {
           prompt_text: "cat",
           expected_answer: "kot",
           learning_hint_markdown: "A hint",
+          image_url: "https://example.com/cat.jpg",
         }),
         expect.objectContaining({
           phrase_id: "phrase-one",
@@ -47,6 +49,7 @@ describe("notebook training", () => {
           prompt_text: "kot",
           expected_answer: "cat",
           learning_hint_markdown: "A hint",
+          image_url: "https://example.com/cat.jpg",
         }),
       ])
     );

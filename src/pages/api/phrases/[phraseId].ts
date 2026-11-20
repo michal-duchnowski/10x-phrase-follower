@@ -3,6 +3,7 @@ import type { UpdatePhraseCommand } from "../../../types";
 import type { LocalsWithAuth } from "../../../lib/types";
 import { withErrorHandling, requireAuth, ApiErrors } from "../../../lib/errors";
 import { ensureUserExists, getSupabaseClient } from "../../../lib/utils";
+import { normalizeImageUrl } from "../../../lib/phrase-image";
 
 export const prerender = false;
 
@@ -22,7 +23,8 @@ const updatePhrase = async (context: APIContext): Promise<Response> => {
   }
 
   const body = await context.request.json();
-  const { position, en_text, pl_text, learning_hint_markdown, tokens, difficulty }: UpdatePhraseCommand = body;
+  const { position, en_text, pl_text, learning_hint_markdown, image_url, tokens, difficulty }: UpdatePhraseCommand =
+    body;
 
   // Validate input
   if (position !== undefined && (typeof position !== "number" || !Number.isInteger(position))) {
@@ -64,6 +66,13 @@ const updatePhrase = async (context: APIContext): Promise<Response> => {
 
   // Build update object
   const updateData: Record<string, unknown> = {};
+  if (image_url !== undefined) {
+    try {
+      updateData.image_url = normalizeImageUrl(image_url);
+    } catch (error) {
+      throw ApiErrors.validationError(error instanceof Error ? error.message : "Invalid image link");
+    }
+  }
   if (position !== undefined) {
     updateData.position = position;
   }
@@ -96,7 +105,7 @@ const updatePhrase = async (context: APIContext): Promise<Response> => {
     .eq("id", phraseId)
     .select(
       `
-      id, position, en_text, pl_text, learning_hint_markdown, tokens, difficulty, created_at, updated_at,
+      id, position, en_text, pl_text, learning_hint_markdown, image_url, tokens, difficulty, created_at, updated_at,
       notebook:notebooks!inner(id, user_id)
     `
     )

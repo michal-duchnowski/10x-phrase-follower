@@ -126,7 +126,7 @@ export type CreatePhraseCommand = Pick<
 };
 
 export type UpdatePhraseCommand = Partial<
-  Pick<TablesUpdate<"phrases">, "position" | "en_text" | "pl_text" | "learning_hint_markdown">
+  Pick<TablesUpdate<"phrases">, "position" | "en_text" | "pl_text" | "learning_hint_markdown" | "image_url">
 > & {
   tokens?: PhraseTokens | null;
   // null clears difficulty (sets to unset), undefined means "no change"
@@ -463,6 +463,7 @@ export interface LearnPhraseDTO {
   en_text: string;
   pl_text: string;
   learning_hint_markdown: string | null;
+  image_url?: string | null;
   tokens: PhraseTokens | null;
   difficulty: PhraseDifficulty | null;
   audio: LearnPhraseAudioAvailability;

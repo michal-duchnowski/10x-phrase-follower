@@ -3,6 +3,7 @@ import type { APIRoute, APIContext } from "astro";
 import type { LocalsWithAuth } from "../../../lib/types";
 import { ApiErrors, requireAuth, withErrorHandling } from "../../../lib/errors";
 import { ensureUserExists, getSupabaseClient } from "../../../lib/utils";
+import { isValidImageDimension } from "../../../lib/phrase-image";
 export const prerender = false;
 export const PATCH: APIRoute = withErrorHandling(async (context: APIContext) => {
   const userId = (context.locals as LocalsWithAuth).userId;
@@ -17,6 +18,8 @@ export const PATCH: APIRoute = withErrorHandling(async (context: APIContext) => 
     "request_retention",
     "drill_repetitions",
     "difficult_cards_per_training",
+    "image_max_width",
+    "image_max_height",
   ])
     if (body[key] !== undefined) update[key] = body[key];
   if (
@@ -37,7 +40,9 @@ export const PATCH: APIRoute = withErrorHandling(async (context: APIContext) => 
     (update.difficult_cards_per_training !== undefined &&
       (!Number.isInteger(update.difficult_cards_per_training) ||
         update.difficult_cards_per_training < 1 ||
-        update.difficult_cards_per_training > 100))
+        update.difficult_cards_per_training > 100)) ||
+    (update.image_max_width !== undefined && !isValidImageDimension(update.image_max_width, "width")) ||
+    (update.image_max_height !== undefined && !isValidImageDimension(update.image_max_height, "height"))
   )
     throw ApiErrors.validationError("Invalid settings");
   const { data, error } = await db

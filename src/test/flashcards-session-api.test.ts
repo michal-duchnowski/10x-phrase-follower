@@ -17,7 +17,12 @@ function direction(index: number, state = "New", dueAt = "2026-11-04T20:29:33Z")
     flashcards: {
       id: `flashcard-${Math.floor(index / 2)}`,
       phrase_id: `phrase-${Math.floor(index / 2)}`,
-      phrases: { en_text: `English ${index}`, pl_text: `Polish ${index}`, learning_hint_markdown: null },
+      phrases: {
+        en_text: `English ${index}`,
+        pl_text: `Polish ${index}`,
+        learning_hint_markdown: null,
+        image_url: "https://example.com/photo.jpg",
+      },
     },
   };
 }
@@ -109,6 +114,7 @@ describe("flashcard overview and session pagination", () => {
     expect(cards).toHaveLength(10);
     expect(new Set(cards.map((card: { phrase_id: string }) => card.phrase_id)).size).toBe(5);
     expect(cards[0].direction_id).toBe("direction-1000");
+    expect(cards.every((card: { image_url: string }) => card.image_url === "https://example.com/photo.jpg")).toBe(true);
     expect(insert).toHaveBeenCalledOnce();
     expect(orders).toHaveBeenCalledWith("flashcard_directions", "due_at");
     expect(orders).toHaveBeenCalledWith("flashcard_directions", "id");

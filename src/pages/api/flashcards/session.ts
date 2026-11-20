@@ -22,7 +22,7 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
     db
       .from("flashcard_directions")
       .select(
-        "*, flashcards!inner(id,phrase_id,user_id,status,phrases!inner(id,en_text,pl_text,learning_hint_markdown))"
+        "*, flashcards!inner(id,phrase_id,user_id,status,phrases!inner(id,en_text,pl_text,learning_hint_markdown,image_url))"
       )
       .eq("flashcards.user_id", userId)
       .eq("flashcards.status", "active")
@@ -50,6 +50,7 @@ export const POST: APIRoute = withErrorHandling(async (context: APIContext) => {
       en_text: phrase.en_text,
       pl_text: phrase.pl_text,
       learning_hint_markdown: phrase.learning_hint_markdown,
+      image_url: phrase.image_url ?? null,
       fsrs_card: direction,
     };
   };

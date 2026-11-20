@@ -21,6 +21,8 @@ import { checkFlashcardAnswer, shouldRequireExactEnglishMatch } from "../lib/fsr
 import { FlashcardAudioCache } from "../lib/flashcard-audio-cache";
 import PhraseLearningHintModal from "./PhraseLearningHintModal";
 import StoryModal from "./StoryModal";
+import PhraseImage from "./PhraseImage";
+import { DEFAULT_IMAGE_MAX_WIDTH, DEFAULT_IMAGE_MAX_HEIGHT } from "../lib/phrase-image";
 import { parseMarkdownToHtml } from "../lib/utils";
 import type { LearnManifestDTO } from "../types";
 import { createNotebookTrainingCards } from "../lib/notebook-training";
@@ -38,6 +40,7 @@ interface SessionCard {
   en_text: string;
   pl_text: string;
   learning_hint_markdown: string | null;
+  image_url?: string | null;
 }
 interface Overview {
   due_reviews: number;
@@ -51,6 +54,8 @@ interface Overview {
     review_cards_per_batch: number;
     drill_repetitions: number;
     difficult_cards_per_training: number;
+    image_max_width?: number;
+    image_max_height?: number;
   };
 }
 type Rating = "Again" | "Hard" | "Good" | "Easy";
@@ -64,6 +69,7 @@ interface DifficultCard {
   en_text: string;
   pl_text: string;
   learning_hint_markdown: string | null;
+  image_url?: string | null;
   phrase_difficulty: "easy" | "medium" | "hard" | null;
   score: number;
   lapses: number;
@@ -320,6 +326,7 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
         en_text: card.en_text,
         pl_text: card.pl_text,
         learning_hint_markdown: card.learning_hint_markdown,
+        image_url: card.image_url ?? null,
       }))
     );
     setIndex(0);
@@ -373,6 +380,29 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
       });
     } catch (error) {
       setHintSaveError(error instanceof Error ? error.message : "Failed to save learning hint");
+    } finally {
+      setIsSavingHint(false);
+    }
+  };
+  const saveImage = async (url: string | null, phraseId: string) => {
+    setIsSavingHint(true);
+    setHintSaveError(null);
+    try {
+      const updated = await apiCall<{ image_url: string | null }>(`/api/phrases/${phraseId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ image_url: url }),
+      });
+      setCards((previous) =>
+        previous.map((card) => (card.phrase_id === phraseId ? { ...card, image_url: updated.image_url } : card))
+      );
+      setDifficultCards((previous) =>
+        previous.map((card) => (card.phrase_id === phraseId ? { ...card, image_url: updated.image_url } : card))
+      );
+      setDetailsOpen(false);
+      setEditingDifficultHint(null);
+      addToast({ type: "success", title: updated.image_url ? "Image link saved" : "Image link removed" });
+    } catch (error) {
+      setHintSaveError(error instanceof Error ? error.message : "Could not save image link");
     } finally {
       setIsSavingHint(false);
     }
@@ -481,6 +511,8 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
           review_cards_per_batch: Number(form.get("reviews")),
           drill_repetitions: Number(form.get("drillRepetitions")),
           difficult_cards_per_training: Number(form.get("difficultCardsPerTraining")),
+          image_max_width: Number(form.get("imageMaxWidth")),
+          image_max_height: Number(form.get("imageMaxHeight")),
         }),
       });
       setSettingsOpen(false);
@@ -642,46 +674,59 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
                   ? "Choose a recall rating"
                   : "Not correct"}
             </div>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-foreground">Expected answer</p>
-                <div
-                  className="mt-1 text-lg text-foreground"
-                  dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(current.expected_answer) }}
-                />
+            <div className={current.image_url ? "grid min-w-0 gap-4 sm:grid-cols-2" : ""}>
+              <div className={`flex items-start justify-between gap-4 ${current.image_url ? "flex-wrap" : ""}`}>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-foreground">Expected answer</p>
+                  <div
+                    className="mt-1 text-lg text-foreground"
+                    dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(current.expected_answer) }}
+                  />
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    onClick={() => {
+                      setHintSaveError(null);
+                      setDetailsOpen(true);
+                    }}
+                    title="Description (shortcut: 8)"
+                    aria-label="Description. Shortcut: 8"
+                  >
+                    <Info />
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    onClick={startDrill}
+                    title={`Drill: ${drillTarget} consecutive correct answers (shortcut: 9)`}
+                    aria-label={`Drill: ${drillTarget} consecutive correct answers. Shortcut: 9`}
+                  >
+                    <span className="text-sm font-bold">{drillTarget}×</span>
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    onClick={() => void playEnglish()}
+                    title="Play English audio (shortcut: 0)"
+                    aria-label="Play English audio. Shortcut: 0"
+                  >
+                    <Volume2 />
+                  </Button>
+                </div>
               </div>
-              <div className="flex shrink-0 gap-2">
-                <Button
-                  variant="secondary"
-                  size="icon"
-                  onClick={() => {
-                    setHintSaveError(null);
-                    setDetailsOpen(true);
-                  }}
-                  title="Description (shortcut: 8)"
-                  aria-label="Description. Shortcut: 8"
-                >
-                  <Info />
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="icon"
-                  onClick={startDrill}
-                  title={`Drill: ${drillTarget} consecutive correct answers (shortcut: 9)`}
-                  aria-label={`Drill: ${drillTarget} consecutive correct answers. Shortcut: 9`}
-                >
-                  <span className="text-sm font-bold">{drillTarget}×</span>
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="icon"
-                  onClick={() => void playEnglish()}
-                  title="Play English audio (shortcut: 0)"
-                  aria-label="Play English audio. Shortcut: 0"
-                >
-                  <Volume2 />
-                </Button>
-              </div>
+              {current.image_url && (
+                <div className="min-w-0">
+                  <PhraseImage
+                    key={`${current.phrase_id}:${current.image_url}`}
+                    url={current.image_url}
+                    revealed={Boolean(checked)}
+                    maxWidth={overview?.settings.image_max_width ?? DEFAULT_IMAGE_MAX_WIDTH}
+                    maxHeight={overview?.settings.image_max_height ?? DEFAULT_IMAGE_MAX_HEIGHT}
+                  />
+                </div>
+              )}
             </div>
             {!isMatch && !isManual && (
               <p className="text-sm text-muted-foreground">Choose the rating that reflects your recall.</p>
@@ -707,6 +752,8 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
           open={detailsOpen}
           phraseLabel={`${current.en_text} / ${current.pl_text}`}
           initialValue={current.learning_hint_markdown}
+          imageUrl={current.image_url}
+          onSaveImage={(url) => void saveImage(url, current.phrase_id)}
           isSaving={isSavingHint}
           error={hintSaveError}
           onSave={saveLearningHint}
@@ -802,6 +849,33 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
               className="mt-1 w-full rounded-md border border-input bg-background p-2 text-foreground"
             />
           </label>
+          <label className="text-sm font-medium text-foreground">
+            Image max width (px)
+            <input
+              name="imageMaxWidth"
+              type="number"
+              min="120"
+              max="480"
+              required
+              defaultValue={overview.settings.image_max_width ?? DEFAULT_IMAGE_MAX_WIDTH}
+              className="mt-1 w-full rounded-md border border-input bg-background p-2 text-foreground"
+            />
+          </label>
+          <label className="text-sm font-medium text-foreground">
+            Image max height (px)
+            <input
+              name="imageMaxHeight"
+              type="number"
+              min="90"
+              max="360"
+              required
+              defaultValue={overview.settings.image_max_height ?? DEFAULT_IMAGE_MAX_HEIGHT}
+              className="mt-1 w-full rounded-md border border-input bg-background p-2 text-foreground"
+            />
+          </label>
+          <p className="text-xs text-muted-foreground sm:col-span-2">
+            Images fit within these limits without cropping or stretching. Smaller images keep their original size.
+          </p>
           <div className="flex flex-wrap gap-2 sm:col-span-4">
             <Button type="submit" disabled={busy} className="bg-primary text-primary-foreground">
               Save settings
@@ -959,6 +1033,10 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
         open={Boolean(editingDifficultHint)}
         phraseLabel={editingDifficultHint ? `${editingDifficultHint.en_text} / ${editingDifficultHint.pl_text}` : ""}
         initialValue={editingDifficultHint?.learning_hint_markdown ?? null}
+        imageUrl={editingDifficultHint?.image_url}
+        onSaveImage={(url) => {
+          if (editingDifficultHint) void saveImage(url, editingDifficultHint.phrase_id);
+        }}
         isSaving={isSavingHint}
         error={hintSaveError}
         onSave={saveDifficultLearningHint}

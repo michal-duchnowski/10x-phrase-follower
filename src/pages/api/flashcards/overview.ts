@@ -69,6 +69,8 @@ export const GET: APIRoute = withErrorHandling(async (context: APIContext) => {
     request_retention: 0.9,
     drill_repetitions: 3,
     difficult_cards_per_training: 10,
+    image_max_width: 240,
+    image_max_height: 180,
   };
   return Response.json({
     due_reviews: due,
