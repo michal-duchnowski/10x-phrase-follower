@@ -108,6 +108,7 @@ export type PhraseDTO = Pick<
   Tables<"phrases">,
   "id" | "position" | "en_text" | "pl_text" | "learning_hint_markdown" | "created_at" | "updated_at"
 > & {
+  image_url?: string | null;
   // Strongly typed version of DB Json
   tokens: PhraseTokens | null;
   // Difficulty: null means "unset"
@@ -337,7 +338,7 @@ export interface PlaybackManifestSegment {
 export interface PlaybackManifestItem {
   phrase: Pick<
     PhraseDTO,
-    "id" | "position" | "en_text" | "pl_text" | "learning_hint_markdown" | "tokens" | "difficulty"
+    "id" | "position" | "en_text" | "pl_text" | "learning_hint_markdown" | "image_url" | "tokens" | "difficulty"
   >;
   segments: PlaybackManifestSegment[];
 }

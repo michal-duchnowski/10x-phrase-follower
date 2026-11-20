@@ -1481,18 +1481,18 @@ function LearnViewContent({
   }, [isSavingHint]);
 
   const handleSaveHint = useCallback(
-    async (learningHintMarkdown: string | null) => {
+    async (value: string | null, field: "learning_hint_markdown" | "image_url" = "learning_hint_markdown") => {
       if (!editingHintPhrase) return;
 
       setIsSavingHint(true);
       setHintSaveError(null);
 
       try {
-        const updatedPhrase = await apiCall<{ learning_hint_markdown: string | null }>(
+        const updatedPhrase = await apiCall<{ learning_hint_markdown: string | null; image_url: string | null }>(
           `/api/phrases/${editingHintPhrase.id}`,
           {
             method: "PATCH",
-            body: JSON.stringify({ learning_hint_markdown: learningHintMarkdown }),
+            body: JSON.stringify({ [field]: value }),
           }
         );
 
@@ -1501,9 +1501,7 @@ function LearnViewContent({
           return {
             ...prev,
             phrases: prev.phrases.map((phrase) =>
-              phrase.id === editingHintPhrase.id
-                ? { ...phrase, learning_hint_markdown: updatedPhrase.learning_hint_markdown }
-                : phrase
+              phrase.id === editingHintPhrase.id ? { ...phrase, [field]: updatedPhrase[field] } : phrase
             ),
           };
         });
@@ -1511,25 +1509,21 @@ function LearnViewContent({
         setSession((prev) => ({
           ...prev,
           currentRound: prev.currentRound.map((phrase) =>
-            phrase.id === editingHintPhrase.id
-              ? { ...phrase, learning_hint_markdown: updatedPhrase.learning_hint_markdown }
-              : phrase
+            phrase.id === editingHintPhrase.id ? { ...phrase, [field]: updatedPhrase[field] } : phrase
           ),
           incorrectPhrases: prev.incorrectPhrases.map((phrase) =>
-            phrase.id === editingHintPhrase.id
-              ? { ...phrase, learning_hint_markdown: updatedPhrase.learning_hint_markdown }
-              : phrase
+            phrase.id === editingHintPhrase.id ? { ...phrase, [field]: updatedPhrase[field] } : phrase
           ),
         }));
 
         setEditingHintPhrase(null);
         addToast({
           type: "success",
-          title: "Learning hint saved",
-          description: learningHintMarkdown ? "The hint was updated." : "The hint was cleared.",
+          title: field === "image_url" ? "Image link saved" : "Learning hint saved",
+          description: value ? "Saved." : "Cleared.",
         });
       } catch (err) {
-        setHintSaveError(err instanceof Error ? err.message : "Failed to save learning hint");
+        setHintSaveError(err instanceof Error ? err.message : "Failed to save changes");
       } finally {
         setIsSavingHint(false);
       }
@@ -2395,6 +2389,8 @@ function LearnViewContent({
         open={Boolean(editingHintPhrase)}
         phraseLabel={editingHintPhrase ? getPromptText(editingHintPhrase, session.direction) : ""}
         initialValue={editingHintPhrase?.learning_hint_markdown ?? null}
+        imageUrl={editingHintPhrase?.image_url}
+        onSaveImage={(url) => void handleSaveHint(url, "image_url")}
         isSaving={isSavingHint}
         error={hintSaveError}
         onSave={handleSaveHint}

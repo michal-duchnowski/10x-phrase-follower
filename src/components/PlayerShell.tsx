@@ -407,17 +407,17 @@ export default function PlayerShell({
   );
 
   const saveLearningHint = useCallback(
-    async (value: string | null) => {
+    async (value: string | null, field: "learning_hint_markdown" | "image_url" = "learning_hint_markdown") => {
       if (!currentPhrase) return;
 
       setIsSavingDescription(true);
       setDescriptionSaveError(null);
       try {
-        const updated = await apiCall<{ learning_hint_markdown: string | null }>(
+        const updated = await apiCall<{ learning_hint_markdown: string | null; image_url: string | null }>(
           `/api/phrases/${currentPhrase.phrase.id}`,
           {
             method: "PATCH",
-            body: JSON.stringify({ learning_hint_markdown: value }),
+            body: JSON.stringify({ [field]: value }),
           }
         );
         setManifest((previous) =>
@@ -426,7 +426,7 @@ export default function PlayerShell({
                 ...previous,
                 sequence: previous.sequence.map((item) =>
                   item.phrase.id === currentPhrase.phrase.id
-                    ? { ...item, phrase: { ...item.phrase, learning_hint_markdown: updated.learning_hint_markdown } }
+                    ? { ...item, phrase: { ...item.phrase, [field]: updated[field] } }
                     : item
                 ),
               }
@@ -434,7 +434,7 @@ export default function PlayerShell({
         );
         setDescriptionOpen(false);
       } catch (err) {
-        setDescriptionSaveError(err instanceof Error ? err.message : "Failed to save learning hint");
+        setDescriptionSaveError(err instanceof Error ? err.message : "Failed to save changes");
       } finally {
         setIsSavingDescription(false);
       }
@@ -555,7 +555,7 @@ export default function PlayerShell({
 
   return (
     <div className="max-w-6xl lg:max-w-7xl mx-auto px-4 sm:px-6 pb-32 md:p-6 md:pb-6">
-      <KeyboardShortcutsHandler {...shortcuts} />
+      {!descriptionOpen && <KeyboardShortcutsHandler {...shortcuts} />}
 
       {/* Header with title, phrase counter and Back to Notebook link (no extra row) */}
       <div className="mb-6 space-y-3">
@@ -583,6 +583,7 @@ export default function PlayerShell({
                 variant="secondary"
                 size="icon"
                 onClick={() => {
+                  handlePause();
                   setDescriptionSaveError(null);
                   setDescriptionOpen(true);
                 }}
@@ -720,6 +721,8 @@ export default function PlayerShell({
           open={descriptionOpen}
           phraseLabel={currentPhrase.phrase.en_text}
           initialValue={currentPhrase.phrase.learning_hint_markdown}
+          imageUrl={currentPhrase.phrase.image_url}
+          onSaveImage={(url) => void saveLearningHint(url, "image_url")}
           isSaving={isSavingDescription}
           error={descriptionSaveError}
           onSave={(value) => void saveLearningHint(value)}

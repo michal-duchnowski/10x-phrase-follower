@@ -179,7 +179,7 @@ export default function PhraseLearningHintModal({
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 border-t border-border px-4 py-3">
+          <div key={activePane} className="flex justify-end gap-2 border-t border-border px-4 py-3">
             {activePane === "preview" ? (
               <>
                 <Button type="button" variant="outline" onClick={() => setActivePane("edit")} disabled={isSaving}>

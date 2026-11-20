@@ -210,7 +210,7 @@ const getPhrases = async (context: APIContext): Promise<Response> => {
     query = supabase
       .from("phrases")
       .select(
-        "id, position, en_text, pl_text, learning_hint_markdown, tokens, difficulty, created_at, updated_at, notebook_id"
+        "id, position, en_text, pl_text, learning_hint_markdown, image_url, tokens, difficulty, created_at, updated_at, notebook_id"
       )
       .in("notebook_id", notebookIds)
       .eq("difficulty", difficulty)
@@ -239,7 +239,9 @@ const getPhrases = async (context: APIContext): Promise<Response> => {
     // Build query
     query = supabase
       .from("phrases")
-      .select("id, position, en_text, pl_text, learning_hint_markdown, tokens, difficulty, created_at, updated_at")
+      .select(
+        "id, position, en_text, pl_text, learning_hint_markdown, image_url, tokens, difficulty, created_at, updated_at"
+      )
       .eq("notebook_id", notebookId)
       .order(sort, { ascending: order === "asc" })
       .limit(limit + 1); // Get one extra to check if there are more
@@ -283,6 +285,7 @@ const getPhrases = async (context: APIContext): Promise<Response> => {
         en_text: phraseWithNotebook.en_text,
         pl_text: phraseWithNotebook.pl_text,
         learning_hint_markdown: phraseWithNotebook.learning_hint_markdown,
+        image_url: phraseWithNotebook.image_url ?? null,
         tokens: phraseWithNotebook.tokens,
         difficulty: phraseWithNotebook.difficulty,
         created_at: phraseWithNotebook.created_at,
@@ -381,7 +384,9 @@ const createPhrase = async (context: APIContext): Promise<Response> => {
       tokens: tokens || null,
       difficulty: null, // Default to unset
     })
-    .select("id, position, en_text, pl_text, learning_hint_markdown, tokens, difficulty, created_at, updated_at")
+    .select(
+      "id, position, en_text, pl_text, learning_hint_markdown, image_url, tokens, difficulty, created_at, updated_at"
+    )
     .single();
 
   if (error) {

@@ -64,6 +64,7 @@
     "eslint-plugin-react-compiler": "19.0.0-beta-aeaed83-20250323",
     "eslint-plugin-react-hooks": "5.2.0",
     "husky": "9.1.7",
+    "jsdom": "^26.1.0",
     "lint-staged": "15.5.0",
     "prettier-plugin-astro": "0.14.1",
     "sharp": "^0.34.5",
