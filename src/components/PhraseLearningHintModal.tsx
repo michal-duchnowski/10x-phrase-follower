@@ -145,8 +145,8 @@ export default function PhraseLearningHintModal({
                     className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   />
                   <p className="text-xs text-muted-foreground">
-                    In Google Images, open the image and choose "Copy image address". Paste the direct HTTPS link here.
-                    Leave empty to remove. Images appear only after checking your answer.
+                    In Google Images, open the image and choose &quot;Copy image address&quot;. Paste the direct HTTPS
+                    link here. Leave empty to remove. Images appear only after checking your answer.
                   </p>
                   {imageError && (
                     <p role="alert" className="text-sm text-destructive">
