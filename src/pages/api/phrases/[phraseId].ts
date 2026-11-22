@@ -3,6 +3,7 @@ import type { UpdatePhraseCommand } from "../../../types";
 import type { LocalsWithAuth } from "../../../lib/types";
 import { withErrorHandling, requireAuth, ApiErrors } from "../../../lib/errors";
 import { ensureUserExists, getSupabaseClient } from "../../../lib/utils";
+import { removePhraseImage } from "../../../lib/phrase-image-storage";
 import { normalizeImageUrl } from "../../../lib/phrase-image";
 
 export const prerender = false;
@@ -66,11 +67,29 @@ const updatePhrase = async (context: APIContext): Promise<Response> => {
 
   // Build update object
   const updateData: Record<string, unknown> = {};
+  let previousImage: string | null = null;
   if (image_url !== undefined) {
     try {
       updateData.image_url = normalizeImageUrl(image_url);
     } catch (error) {
       throw ApiErrors.validationError(error instanceof Error ? error.message : "Invalid image link");
+    }
+  }
+  if (image_url !== undefined) {
+    const { data: previous, error: lookupError } = await supabase
+      .from("phrases")
+      .select("image_url, notebooks!inner(user_id)")
+      .eq("id", phraseId)
+      .eq("notebooks.user_id", locals.userId)
+      .single();
+    if (lookupError || !previous) throw ApiErrors.notFound("Phrase not found");
+    previousImage = previous.image_url;
+    if (
+      typeof updateData.image_url === "string" &&
+      updateData.image_url.startsWith("/api/") &&
+      updateData.image_url !== previousImage
+    ) {
+      throw ApiErrors.validationError("Upload an image instead of entering a local image path.");
     }
   }
   if (position !== undefined) {
@@ -99,10 +118,12 @@ const updatePhrase = async (context: APIContext): Promise<Response> => {
     throw ApiErrors.validationError("No valid fields to update");
   }
 
-  const { data, error } = await supabase
-    .from("phrases")
-    .update(updateData)
-    .eq("id", phraseId)
+  let updateQuery = supabase.from("phrases").update(updateData).eq("id", phraseId);
+  if (image_url !== undefined) {
+    updateQuery =
+      previousImage == null ? updateQuery.is("image_url", null) : updateQuery.eq("image_url", previousImage);
+  }
+  const { data, error } = await updateQuery
     .select(
       `
       id, position, en_text, pl_text, learning_hint_markdown, image_url, tokens, difficulty, created_at, updated_at,
@@ -129,6 +150,9 @@ const updatePhrase = async (context: APIContext): Promise<Response> => {
   if (data.notebook.user_id !== locals.userId) {
     throw ApiErrors.notFound("Phrase not found");
   }
+
+  if (image_url !== undefined && previousImage !== data.image_url)
+    await removePhraseImage(locals.userId, previousImage);
 
   // Remove the notebook data from response
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -160,7 +184,7 @@ const deletePhrase = async (context: APIContext): Promise<Response> => {
   // First, get the phrase with notebook_id to verify ownership and get notebook_id for audio deletion
   const { data: phrase, error: phraseError } = await supabase
     .from("phrases")
-    .select("id, notebook_id")
+    .select("id, notebook_id, image_url")
     .eq("id", phraseId)
     .single();
 
@@ -241,6 +265,7 @@ const deletePhrase = async (context: APIContext): Promise<Response> => {
     throw ApiErrors.internal("Failed to delete phrase");
   }
 
+  await removePhraseImage(locals.userId, phrase.image_url);
   return new Response(null, { status: 204 });
 };
 

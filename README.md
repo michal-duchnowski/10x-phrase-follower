@@ -270,6 +270,8 @@ For detailed migration rationale, see [docs/lessons-learned/digital-ocean-why.md
 
 For deployment setup instructions, see [docs/guides/droplet-setup.md](./docs/guides/droplet-setup.md).
 
+Before deploying image uploads, prepare the persistent directory and apply the database migration described in [Flashcard image uploads and DigitalOcean setup](./docs/guides/phrase-image-uploads.md).
+
 ## 10. License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

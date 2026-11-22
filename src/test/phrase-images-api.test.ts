@@ -34,6 +34,7 @@ beforeEach(() => {
           return query;
         },
         eq: () => query,
+        is: () => query,
         select: () => query,
         single: async () => ({ data: { ...values, id: phraseId, notebook: { user_id: "user-1" } }, error: null }),
       };

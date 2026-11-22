@@ -102,7 +102,7 @@ describe("full-screen image preview", () => {
       )
     );
     const edit = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent?.trim() === "Edit image link"
+      (button) => button.textContent?.trim() === "Edit image"
     );
     act(() => edit?.click());
     click("Enlarge image");
@@ -120,3 +120,5 @@ describe("full-screen image preview", () => {
     expect(document.body.style.overflow).toBe("");
   });
 });
+
+vi.mock("../lib/hooks/useApi", () => ({ useApi: () => ({ apiFetch: vi.fn(), token: "test-token" }) }));

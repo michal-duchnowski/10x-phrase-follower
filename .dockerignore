@@ -46,3 +46,6 @@ docker-compose.yml
 # Scripts (not needed in production)
 scripts
 
+
+# User uploaded files
+storage/uploads/

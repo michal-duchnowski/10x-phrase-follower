@@ -556,7 +556,7 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
   };
 
   const handleSaveHint = async (
-    value: string | null,
+    value: string | File | null,
     field: "learning_hint_markdown" | "image_url" = "learning_hint_markdown"
   ) => {
     if (!editingHintPhrase) return;
@@ -565,10 +565,14 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
     setHintSaveError(null);
 
     try {
-      const updatedPhrase = await apiCall<PhraseDTO>(`/api/phrases/${editingHintPhrase.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ [field]: value }),
-      });
+      const updatedPhrase = await apiCall<PhraseDTO>(
+        `/api/phrases/${editingHintPhrase.id}${value instanceof File ? "/image" : ""}`,
+        {
+          method: value instanceof File ? "POST" : "PATCH",
+          headers: value instanceof File ? { "Content-Type": value.type || "application/octet-stream" } : {},
+          body: value instanceof File ? value : JSON.stringify({ [field]: value }),
+        }
+      );
 
       setState((prev) => ({
         ...prev,

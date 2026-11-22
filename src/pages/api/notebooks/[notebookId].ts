@@ -1,3 +1,4 @@
+import { removePhraseImage } from "../../../lib/phrase-image-storage";
 import type { APIRoute, APIContext } from "astro";
 import type { UpdateNotebookCommand } from "../../../types";
 import type { LocalsWithAuth } from "../../../lib/types";
@@ -210,6 +211,12 @@ const deleteNotebook = async (context: APIContext): Promise<Response> => {
     // Continue with database deletion even if storage cleanup fails
   }
 
+  const { data: phraseImages, error: imageLookupError } = await supabase
+    .from("phrases")
+    .select("image_url")
+    .eq("notebook_id", notebookId);
+  if (imageLookupError) throw ApiErrors.internal("Failed to list notebook images");
+
   // Delete the notebook from database (cascade will handle related records)
   const { error } = await supabase.from("notebooks").delete().eq("id", notebookId).eq("user_id", locals.userId);
 
@@ -219,6 +226,7 @@ const deleteNotebook = async (context: APIContext): Promise<Response> => {
     throw ApiErrors.internal("Failed to delete notebook");
   }
 
+  for (const phrase of phraseImages ?? []) await removePhraseImage(locals.userId, phrase.image_url);
   return new Response(null, { status: 204 });
 };
 

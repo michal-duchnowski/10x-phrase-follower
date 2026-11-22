@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Eye, Pencil, X } from "lucide-react";
 import { Button } from "./ui/button";
 import PhraseImage from "./PhraseImage";
-import { normalizeImageUrl, MAX_IMAGE_URL_LENGTH } from "../lib/phrase-image";
+import { normalizeImageUrl, MAX_IMAGE_URL_LENGTH, isStoredImageUrl } from "../lib/phrase-image";
 import { parseMarkdownToHtml } from "../lib/utils";
 
 interface PhraseLearningHintModalProps {
@@ -14,7 +14,7 @@ interface PhraseLearningHintModalProps {
   onSave: (value: string | null) => void;
   onClose: () => void;
   imageUrl?: string | null;
-  onSaveImage?: (url: string | null) => void;
+  onSaveImage?: (url: string | File | null) => void;
 }
 
 const MAX_HINT_LENGTH = 12000;
@@ -34,6 +34,25 @@ export default function PhraseLearningHintModal({
   const [activePane, setActivePane] = useState<"edit" | "preview" | "image">("edit");
 
   const [imageValue, setImageValue] = useState(imageUrl ?? "");
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
+  useEffect(() => {
+    if (!imageFile) {
+      setFilePreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(imageFile);
+    setFilePreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [imageFile]);
+  const selectImage = (file: File) => {
+    if (file.size > 5 * 1024 * 1024 || !["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setImageError("Choose a JPEG, PNG or WebP image up to 5 MB.");
+      return;
+    }
+    setImageFile(file);
+    setImageError(null);
+  };
   const [imageError, setImageError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -41,6 +60,7 @@ export default function PhraseLearningHintModal({
       setValue(initialValue ?? "");
       setImageValue(imageUrl ?? "");
       setImageError(null);
+      setImageFile(null);
       setActivePane("preview");
     }
   }, [initialValue, imageUrl, open]);
@@ -69,6 +89,10 @@ export default function PhraseLearningHintModal({
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     if (activePane === "image") {
+      if (imageFile) {
+        onSaveImage?.(imageFile);
+        return;
+      }
       try {
         const url = normalizeImageUrl(imageValue);
         setImageError(null);
@@ -90,7 +114,20 @@ export default function PhraseLearningHintModal({
         aria-labelledby="learning-hint-title"
         className="h-[92vh] w-full overflow-hidden rounded-t-lg border border-border bg-card text-card-foreground shadow-lg sm:h-auto sm:max-h-[90vh] sm:max-w-3xl sm:rounded-lg"
       >
-        <form onSubmit={handleSubmit} className="flex h-full min-h-0 flex-col sm:max-h-[90vh]">
+        <form
+          onPaste={(event) => {
+            if (activePane !== "image" || isSaving) return;
+            const file = Array.from(event.clipboardData.items)
+              .find((item) => item.type.startsWith("image/"))
+              ?.getAsFile();
+            if (file) {
+              event.preventDefault();
+              selectImage(file);
+            }
+          }}
+          onSubmit={handleSubmit}
+          className="flex h-full min-h-0 flex-col sm:max-h-[90vh]"
+        >
           <div className="flex items-start justify-between gap-4 border-b border-border px-4 py-3">
             <div className="min-w-0">
               <h2 id="learning-hint-title" className="text-base font-semibold text-foreground">
@@ -129,15 +166,41 @@ export default function PhraseLearningHintModal({
 
               {activePane === "image" && (
                 <section className="space-y-3">
+                  <label htmlFor="phrase-image-file" className="block text-sm font-medium">
+                    Upload image or paste with Ctrl+V
+                  </label>
+                  <input
+                    id="phrase-image-file"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    disabled={isSaving}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) selectImage(file);
+                      event.target.value = "";
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    JPEG, PNG or WebP, up to 5 MB. Uploaded when you save.
+                  </p>
+                  {filePreview && (
+                    <img src={filePreview} alt="Selected memory aid" className="max-h-64 max-w-full rounded-md" />
+                  )}
+                  {imageFile && (
+                    <Button type="button" variant="outline" onClick={() => setImageFile(null)}>
+                      Cancel selected file
+                    </Button>
+                  )}
                   <label htmlFor="phrase-image-url" className="text-sm font-medium">
                     Image link
                   </label>
                   <input
                     id="phrase-image-url"
-                    type="url"
+                    type="text"
                     value={imageValue}
                     onChange={(event) => {
                       setImageValue(event.target.value);
+                      setImageFile(null);
                       setImageError(null);
                     }}
                     maxLength={MAX_IMAGE_URL_LENGTH}
@@ -148,12 +211,25 @@ export default function PhraseLearningHintModal({
                     In Google Images, open the image and choose &quot;Copy image address&quot;. Paste the direct HTTPS
                     link here. Leave empty to remove. Images appear only after checking your answer.
                   </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isSaving}
+                    onClick={() => {
+                      setImageFile(null);
+                      setImageValue("");
+                    }}
+                  >
+                    Remove image
+                  </Button>
                   {imageError && (
                     <p role="alert" className="text-sm text-destructive">
                       {imageError}
                     </p>
                   )}
-                  {imageValue.trim().startsWith("https://") && <PhraseImage url={imageValue.trim()} revealed={true} />}
+                  {!imageFile && (imageValue.trim().startsWith("https://") || isStoredImageUrl(imageValue.trim())) && (
+                    <PhraseImage url={imageValue.trim()} revealed={true} />
+                  )}
                 </section>
               )}
               <section className={activePane === "edit" ? "block space-y-1.5" : "hidden"}>
@@ -188,7 +264,7 @@ export default function PhraseLearningHintModal({
                 </Button>
                 {onSaveImage && (
                   <Button type="button" variant="outline" onClick={() => setActivePane("image")} disabled={isSaving}>
-                    Edit image link
+                    Edit image
                   </Button>
                 )}
                 <Button type="button" onClick={onClose} disabled={isSaving}>

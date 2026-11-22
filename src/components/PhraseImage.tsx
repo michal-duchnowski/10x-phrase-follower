@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
-import { DEFAULT_IMAGE_MAX_HEIGHT, DEFAULT_IMAGE_MAX_WIDTH } from "../lib/phrase-image";
+import { DEFAULT_IMAGE_MAX_HEIGHT, DEFAULT_IMAGE_MAX_WIDTH, isStoredImageUrl } from "../lib/phrase-image";
+
+import { useApi } from "../lib/hooks/useApi";
 
 interface PhraseImageProps {
   url: string | null | undefined;
@@ -16,6 +18,30 @@ export default function PhraseImage({
   maxWidth = DEFAULT_IMAGE_MAX_WIDTH,
   maxHeight = DEFAULT_IMAGE_MAX_HEIGHT,
 }: PhraseImageProps) {
+  const { apiFetch, token } = useApi();
+  const [localImage, setLocalImage] = useState<{ source: string; blob: string } | null>(null);
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    if (!revealed || !url || !isStoredImageUrl(url)) return;
+    const controller = new AbortController();
+    let blobUrl: string | undefined;
+    apiFetch(url, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Image unavailable");
+        const blob = await response.blob();
+        if (controller.signal.aborted) return;
+        blobUrl = URL.createObjectURL(blob);
+        setLocalImage({ source: url, blob: blobUrl });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setFailedUrl(url);
+      });
+    return () => {
+      controller.abort();
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
+  }, [url, revealed, apiFetch, token, retry]);
+  const displayUrl = url && isStoredImageUrl(url) ? (localImage?.source === url ? localImage.blob : null) : url;
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const [expandedUrl, setExpandedUrl] = useState<string | null>(null);
   const closePreview = useCallback(() => setExpandedUrl(null), []);
@@ -26,12 +52,21 @@ export default function PhraseImage({
         <p>Image unavailable. You can replace its link in Description.</p>
         <button
           type="button"
-          onClick={() => setFailedUrl(null)}
+          onClick={() => {
+            setFailedUrl(null);
+            setRetry((value) => value + 1);
+          }}
           className="underline underline-offset-2 hover:text-foreground"
         >
           Retry image
         </button>
       </div>
+    );
+  if (!displayUrl)
+    return (
+      <p role="status" className="text-xs text-muted-foreground">
+        Loading image...
+      </p>
     );
   return (
     <>
@@ -44,7 +79,7 @@ export default function PhraseImage({
       >
         <img
           key={url}
-          src={url}
+          src={displayUrl}
           alt="Memory aid"
           referrerPolicy="no-referrer"
           decoding="async"
@@ -53,7 +88,7 @@ export default function PhraseImage({
           onError={() => setFailedUrl(url)}
         />
       </button>
-      {expandedUrl === url && <ImagePreview url={url} onClose={closePreview} />}
+      {expandedUrl === url && <ImagePreview url={displayUrl} onClose={closePreview} />}
     </>
   );
 }

@@ -386,6 +386,7 @@ export interface HealthStatusDTO {
  */
 
 export interface PhraseVM {
+  image_url?: string | null;
   id: UUID;
   position: number;
   en_text: string;

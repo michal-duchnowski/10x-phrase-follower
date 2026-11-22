@@ -25,3 +25,5 @@ pnpm-debug.log*
 
 # ESLint cache
 .eslintcache
+# User uploaded files
+storage/uploads/

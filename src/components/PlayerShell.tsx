@@ -407,17 +407,18 @@ export default function PlayerShell({
   );
 
   const saveLearningHint = useCallback(
-    async (value: string | null, field: "learning_hint_markdown" | "image_url" = "learning_hint_markdown") => {
+    async (value: string | File | null, field: "learning_hint_markdown" | "image_url" = "learning_hint_markdown") => {
       if (!currentPhrase) return;
 
       setIsSavingDescription(true);
       setDescriptionSaveError(null);
       try {
         const updated = await apiCall<{ learning_hint_markdown: string | null; image_url: string | null }>(
-          `/api/phrases/${currentPhrase.phrase.id}`,
+          `/api/phrases/${currentPhrase.phrase.id}${value instanceof File ? "/image" : ""}`,
           {
-            method: "PATCH",
-            body: JSON.stringify({ [field]: value }),
+            method: value instanceof File ? "POST" : "PATCH",
+            headers: value instanceof File ? { "Content-Type": value.type || "application/octet-stream" } : {},
+            body: value instanceof File ? value : JSON.stringify({ [field]: value }),
           }
         );
         setManifest((previous) =>

@@ -55,7 +55,7 @@ afterEach(() => {
 describe("Description image editor", () => {
   it("does not turn the pane-switch button into a submit button during its click", () => {
     render();
-    const editButton = button("Edit image link");
+    const editButton = button("Edit image");
     act(() => editButton.click());
     // Browser click default actions must not see a button morphed into Save.
     expect(editButton.type).toBe("button");
@@ -66,7 +66,7 @@ describe("Description image editor", () => {
 
   it("keeps an unsaved URL through mouse movement, elapsed time and parent rerenders", async () => {
     render();
-    act(() => button("Edit image link").click());
+    act(() => button("Edit image").click());
     const url = "https://encrypted-tbn0.gstatic.com/images?q=example&s";
     setImage(url);
     act(() => document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true })));
@@ -84,11 +84,26 @@ describe("Description image editor", () => {
 
   it("clears a saved link only after an explicit Save", () => {
     render({ imageUrl: "https://example.com/cat.jpg" });
-    act(() => button("Edit image link").click());
+    act(() => button("Edit image").click());
     setImage("");
     expect(onSaveImage).not.toHaveBeenCalled();
     act(() => button("Save").click());
     expect(onSaveImage).toHaveBeenCalledExactlyOnceWith(null);
+  });
+
+  it("previews a pasted file and uploads only on Save", () => {
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:test"), revokeObjectURL: vi.fn() }));
+    render();
+    act(() => button("Edit image").click());
+    const file = new File(["png bytes"], "screenshot.png", { type: "image/png" });
+    const event = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "clipboardData", { value: { items: [{ type: "image/png", getAsFile: () => file }] } });
+    act(() => container.querySelector("form")?.dispatchEvent(event));
+    expect(event.defaultPrevented).toBe(true);
+    expect(container.querySelector('img[alt="Selected memory aid"]')?.getAttribute("src")).toBe("blob:test");
+    expect(onSaveImage).not.toHaveBeenCalled();
+    act(() => button("Save").click());
+    expect(onSaveImage).toHaveBeenCalledExactlyOnceWith(file);
   });
 
   it("keeps hint editing independent from image editing", () => {
@@ -99,3 +114,5 @@ describe("Description image editor", () => {
     expect(onSaveImage).not.toHaveBeenCalled();
   });
 });
+
+vi.mock("../lib/hooks/useApi", () => ({ useApi: () => ({ apiFetch: vi.fn(), token: "test-token" }) }));

@@ -384,14 +384,18 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
       setIsSavingHint(false);
     }
   };
-  const saveImage = async (url: string | null, phraseId: string) => {
+  const saveImage = async (url: string | File | null, phraseId: string) => {
     setIsSavingHint(true);
     setHintSaveError(null);
     try {
-      const updated = await apiCall<{ image_url: string | null }>(`/api/phrases/${phraseId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ image_url: url }),
-      });
+      const updated = await apiCall<{ image_url: string | null }>(
+        `/api/phrases/${phraseId}${url instanceof File ? "/image" : ""}`,
+        {
+          method: url instanceof File ? "POST" : "PATCH",
+          headers: url instanceof File ? { "Content-Type": url.type || "application/octet-stream" } : {},
+          body: url instanceof File ? url : JSON.stringify({ image_url: url }),
+        }
+      );
       setCards((previous) =>
         previous.map((card) => (card.phrase_id === phraseId ? { ...card, image_url: updated.image_url } : card))
       );

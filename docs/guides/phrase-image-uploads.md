@@ -1,0 +1,102 @@
+# Zdjęcia fiszek i konfiguracja DigitalOcean
+
+Zdjęcia wklejane ze schowka lub wybierane z pliku są przechowywane na dysku Dropleta. Supabase przechowuje tylko ścieżkę w `phrases.image_url`. Obecne linki HTTPS nadal działają. Zdjęcie należy do frazy, więc jest wspólne dla obu kierunków fiszki i widoków nauki.
+
+## Dodawanie zdjęć
+
+W oknie Learning hint wybierz Edit image. Wybierz plik lub wklej obraz przez Ctrl+V, sprawdź podgląd i kliknij Save. Zamknięcie okna przed zapisem nie wysyła pliku. Remove image przygotowuje usunięcie, które trzeba zatwierdzić przyciskiem Save.
+
+Obsługiwane formaty wejściowe to JPEG, PNG i WebP, maksymalnie 5 MiB i 25 milionów pikseli. Backend sprawdza rzeczywistą zawartość pliku, koryguje orientację, zmniejsza do maksymalnie 1600 × 1600 px bez powiększania i zapisuje WebP z jakością 82. Metadane oryginału nie są zachowywane. Rozmiar wynikowy zależy od obrazu.
+
+## Katalogi i dostęp
+
+```text
+/srv/phrase-follower/uploads/            # katalog na Droplecie
+  {userId}/
+    {phraseId}/
+      {losowyUUID}.webp
+```
+
+Docker montuje ten katalog pod `/app/storage/uploads`. Ścieżkę wewnętrzną określa `UPLOADS_DIR`, a katalog hosta opcjonalne `UPLOADS_HOST_DIR` w pliku `.env` obok Compose. Lokalnie domyślny katalog to `storage/uploads`, wyłączony z Git i kontekstu budowania Dockera.
+
+Nazwy tworzy backend; oryginalna nazwa pliku nie jest używana. Katalog nie jest publicznym katalogiem statycznym. POST `/api/phrases/{phraseId}/image` wymaga tokenu i własności frazy. GET `/api/phrase-images/{phraseId}/{UUID}.webp` również sprawdza token, właściciela i aktualne powiązanie w bazie. Frontend pobiera obraz z nagłówkiem Authorization i wyświetla lokalny adres Blob. Tokeny nie trafiają do adresów URL. Odpowiedzi z obrazami mają `Cache-Control: private, no-store`.
+
+Nowy plik powstaje przed zmianą powiązania w bazie; poprzedni usuwany jest po jej powodzeniu. Nieudana aktualizacja uploadu usuwa nowy plik. Równoczesne uploady sprawdzają poprzednią wartość, aby nie nadpisywać zmian bez ostrzeżenia. Zastąpienie zdjęcia linkiem, usunięcie zdjęcia, frazy lub notatnika sprząta powiązane pliki. Puste katalogi mogą pozostać.
+
+Awaria procesu między zapisem pliku i aktualizacją bazy lub błąd kasowania może pozostawić plik bez powiązania. Takie pliki wymagają okresowego audytu względem bazy; automatyczne sprzątanie i limit przestrzeni na użytkownika nie są częścią tej wersji. Nie należy ręcznie usuwać plików aktualnie wskazywanych przez bazę.
+
+## Przygotowanie Dropleta
+
+Otwórz DigitalOcean, wybierz Droplet i Launch Droplet Console albo połącz się przez SSH. Poniższe polecenia wykonuj na serwerze Linux, nie w lokalnym PowerShellu.
+
+Sprawdź miejsce i utwórz katalog:
+
+```sh
+df -h /srv
+sudo install -d -m 0700 -o root -g root /srv/phrase-follower/uploads
+sudo ls -ld /srv/phrase-follower/uploads
+```
+
+Obecny Dockerfile uruchamia proces jako root, dlatego właściciel root i tryb 0700 pasują do obecnej konfiguracji zwykłego, rootful Dockera. Przy zmianie użytkownika kontenera lub użyciu rootless Docker trzeba dopasować UID/GID właściciela katalogu. Nie używaj chmod 777.
+
+W repozytorium konfiguracja Compose już zawiera montowanie:
+
+```yaml
+volumes:
+  - type: bind
+    source: ${UPLOADS_HOST_DIR:-/srv/phrase-follower/uploads}
+    target: /app/storage/uploads
+    bind:
+      create_host_path: false
+```
+
+Katalog musi istnieć przed uruchomieniem nowej konfiguracji. Na serwerze zaktualizuj również sam plik `docker-compose.yml`; samo pobranie nowego obrazu nie dodaje montowania.
+
+## Wdrożenie i sprawdzenie
+
+1. Zastosuj migrację `supabase/migrations/20261122120000_allow_local_phrase_images.sql` w swoim procesie migracji Supabase. Wymaga wcześniejszej migracji dodającej `image_url`.
+2. Zbuduj i opublikuj nowy obraz aplikacji w dotychczasowym procesie wdrażania.
+3. W katalogu serwera zawierającym aktualny Compose i `.env` uruchom:
+
+```sh
+docker compose config --quiet
+docker compose pull app
+docker compose up -d app
+docker compose exec app sh -c 'id; test -w /app/storage/uploads && echo uploads-writable'
+docker inspect phrase-follower --format '{{json .Mounts}}'
+```
+
+Jeżeli przed aplikacją działa Nginx, dodaj `client_max_body_size 6m;` w odpowiednim bloku `server`, następnie wykonaj `sudo nginx -t` i `sudo systemctl reload nginx`. Limit API pozostaje 5 MiB. Nie dodawaj publicznego aliasu Nginx do katalogu uploads.
+
+Po wdrożeniu wklej zdjęcie, zapisz, odśwież stronę i sprawdź wyświetlanie po odsłonięciu odpowiedzi. Następnie wykonaj `docker compose up -d --force-recreate app` i ponownie sprawdź zdjęcie. Sprawdź też podmianę, usunięcie oraz brak dostępu z drugiego konta. Żądanie GET bez tokenu powinno zwracać 401.
+
+## Backup i kontrola miejsca
+
+Montowanie chroni przed utratą plików przy odtworzeniu kontenera. Nie chroni przed utratą Dropleta. Kopię katalogu należy przechowywać poza tym serwerem, razem z odpowiednio zabezpieczoną kopią bazy Supabase. Baza i pliki muszą pochodzić ze spójnego momentu; na czas ręcznej kopii można zatrzymać aplikację.
+
+Przykład ręcznej kopii, uruchamiany w katalogu Compose:
+
+```sh
+sudo install -d -m 0700 /var/backups/phrase-follower
+docker compose stop app
+sudo tar -C /srv/phrase-follower -czf /var/backups/phrase-follower/uploads-$(date +%F-%H%M%S).tar.gz uploads
+sudo chmod 0600 /var/backups/phrase-follower/uploads-*.tar.gz
+docker compose start app
+```
+
+Jeśli archiwizacja się nie powiedzie, uruchom aplikację ponownie poleceniem `docker compose start app`. Archiwum lokalne trzeba skopiować poza Dropleta i ustalić retencję, aby same kopie nie zapełniły dysku. Przy odtwarzaniu zatrzymaj aplikację, odtwórz bazę i katalog z właściwymi uprawnieniami, a potem uruchom usługę i sprawdź obrazy.
+
+Do kontroli wykorzystania miejsca:
+
+```sh
+df -h /srv/phrase-follower/uploads
+sudo du -sh /srv/phrase-follower/uploads
+```
+
+Przy większej liczbie użytkowników można przenieść katalog na dodatkowy DigitalOcean Volume albo zastąpić zapis usługą Spaces. Obecna implementacja wymaga serwera Node i zapisywalnego dysku; nie działa jako upload na Cloudflare Pages. Repliki aplikacji muszą korzystać z tych samych plików.
+
+## Zakres zabezpieczeń
+
+Ta funkcja nie udostępnia katalogu publicznie i nie wykonuje przesłanych plików. Aplikacja zachowuje dotychczasowy sposób uruchamiania jako root wewnątrz kontenera. W razie wykorzystania błędu aplikacji daje to napastnikowi większe uprawnienia w kontenerze niż uruchomienie jej jako zwykły użytkownik. Osobno należy utrzymywać aktualizacje Ubuntu i obrazów, logowanie SSH kluczem, firewall oraz kopie zapasowe. Weryfikacja tych ustawień na konkretnym Droplecie nie jest częścią implementacji.
+
+Kontrola rozmiaru pliku nie ogranicza łącznego wykorzystania przestrzeni ani liczby równoczesnych uploadów. Dla publicznej rejestracji należy dodać limity na użytkownika i ograniczanie liczby żądań. Na małym Droplecie warto obserwować również RAM podczas przetwarzania zdjęć.
