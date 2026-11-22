@@ -692,11 +692,12 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
                 />
               </div>
               {current.image_url && (
-                <div className="order-4 col-span-2 min-w-0 [--phrase-image-viewport-limit:30dvh] sm:order-none sm:flex-1 sm:[--phrase-image-viewport-limit:100000px]">
+                <div className="order-4 col-span-2 min-w-0 sm:order-none sm:flex-1">
                   <PhraseImage
                     key={`${current.phrase_id}:${current.image_url}`}
                     url={current.image_url}
                     revealed={Boolean(checked)}
+                    compactMobile
                     maxWidth={overview?.settings.image_max_width ?? DEFAULT_IMAGE_MAX_WIDTH}
                     maxHeight={overview?.settings.image_max_height ?? DEFAULT_IMAGE_MAX_HEIGHT}
                   />

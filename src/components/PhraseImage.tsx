@@ -10,6 +10,7 @@ interface PhraseImageProps {
   revealed: boolean;
   maxWidth?: number;
   maxHeight?: number;
+  compactMobile?: boolean;
 }
 
 export default function PhraseImage({
@@ -17,6 +18,7 @@ export default function PhraseImage({
   revealed,
   maxWidth = DEFAULT_IMAGE_MAX_WIDTH,
   maxHeight = DEFAULT_IMAGE_MAX_HEIGHT,
+  compactMobile = false,
 }: PhraseImageProps) {
   const { apiFetch, token } = useApi();
   const [localImage, setLocalImage] = useState<{ source: string; blob: string } | null>(null);
@@ -83,10 +85,12 @@ export default function PhraseImage({
           alt="Memory aid"
           referrerPolicy="no-referrer"
           decoding="async"
-          className="block h-auto w-auto max-w-full rounded-md object-contain"
+          className={`block h-auto w-auto max-w-full rounded-md object-contain ${compactMobile ? "[--phrase-image-viewport-limit:30dvh] sm:[--phrase-image-viewport-limit:100000px]" : ""}`}
           style={{
             maxWidth: `min(100%, ${maxWidth}px)`,
-            maxHeight: `min(var(--phrase-image-viewport-limit, 100000px), ${maxHeight}px)`,
+            maxHeight: compactMobile
+              ? `min(var(--phrase-image-viewport-limit, 100000px), ${maxHeight}px)`
+              : `${maxHeight}px`,
           }}
           onError={() => setFailedUrl(url)}
         />

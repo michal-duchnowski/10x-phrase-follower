@@ -44,6 +44,17 @@ describe("phrase images", () => {
     expect(html).toContain("object-contain");
     expect(html).not.toMatch(/\s(?:width|height)="/);
   });
+  it("optionally limits mobile images to the viewport while respecting configured dimensions", () => {
+    const html = renderToStaticMarkup(
+      createElement(PhraseImage, { url: image, revealed: true, maxWidth: 300, maxHeight: 200, compactMobile: true })
+    );
+    expect(html).toContain("max-width:min(100%, 300px)");
+    expect(html).toContain("max-height:min(var(--phrase-image-viewport-limit, 100000px), 200px)");
+    expect(html).toContain("[--phrase-image-viewport-limit:30dvh]");
+    expect(html).toContain("sm:[--phrase-image-viewport-limit:100000px]");
+    expect(html).toContain("object-contain");
+    expect(html).not.toMatch(/\s(?:width|height)="/);
+  });
   it("validates user size settings, including fractional and out-of-range sizes", () => {
     expect(isValidImageDimension(120, "width")).toBe(true);
     expect(isValidImageDimension(480, "width")).toBe(true);
