@@ -50,7 +50,7 @@ volumes:
       create_host_path: false
 ```
 
-Katalog musi istnieć przed uruchomieniem nowej konfiguracji. Na serwerze zaktualizuj również sam plik `docker-compose.yml`; samo pobranie nowego obrazu nie dodaje montowania.
+Katalog musi istnieć przed uruchomieniem nowej konfiguracji. Workflow GitHub Actions automatycznie dostarcza `docker-compose.yml` z wdrażanego commita. Przed podmianą sprawdza składnię i pobiera obrazy; poprzedni plik zachowuje jako `docker-compose.yml.bak`. Plik `.env` pozostaje na serwerze i nadal dostarcza konfigurację środowiska. Po uruchomieniu workflow sprawdza zmienną `UPLOADS_DIR` i możliwość zapisu w katalogu. Przy ręcznym wdrażaniu trzeba samodzielnie skopiować aktualny Compose.
 
 ## Wdrożenie i sprawdzenie
 
@@ -67,6 +67,16 @@ docker inspect phrase-follower --format '{{json .Mounts}}'
 ```
 
 Jeżeli przed aplikacją działa Nginx, dodaj `client_max_body_size 6m;` w odpowiednim bloku `server`, następnie wykonaj `sudo nginx -t` i `sudo systemctl reload nginx`. Limit API pozostaje 5 MiB. Nie dodawaj publicznego aliasu Nginx do katalogu uploads.
+
+Dla konfiguracji z instrukcji Dropleta otwórz `sudo nano /etc/nginx/sites-available/phrase-follower` i dodaj tę dyrektywę w bloku HTTPS (`listen 443`). Zapisz plik i wykonaj:
+
+```sh
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Domyślny limit Nginx wynosi 1 MiB. Jeśli proxy odrzuca upload błędem HTTP 413, żądanie nie dociera do aplikacji i może nie pojawić się w logach Dockera. Sprawdź `sudo tail -n 30 /var/log/nginx/phrase-follower-error.log`. Ustawienie limitu nie wyłącza walidacji 5 MiB w API. Konfiguracja Nginx pozostaje na serwerze; workflow jej nie nadpisuje. [Dokumentacja client_max_body_size](https://nginx.org/en/docs/http/ngx_http_core_module.html#client_max_body_size).
+
+Komunikat `Image storage is not configured` oznacza brak `UPLOADS_DIR` w uruchomionym kontenerze. Workflow dostarcza teraz tę zmienną i montowanie przez aktualny Compose. Po udanym wdrożeniu powtórz zapis zdjęcia; w razie problemu sprawdź `docker inspect phrase-follower --format '{{json .Mounts}}'` i powyższe polecenia weryfikujące katalog.
 
 Po wdrożeniu wklej zdjęcie, zapisz, odśwież stronę i sprawdź wyświetlanie po odsłonięciu odpowiedzi. Następnie wykonaj `docker compose up -d --force-recreate app` i ponownie sprawdź zdjęcie. Sprawdź też podmianę, usunięcie oraz brak dostępu z drugiego konta. Żądanie GET bez tokenu powinno zwracać 401.
 

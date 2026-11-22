@@ -150,17 +150,23 @@ jobs:
             SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
             NODE_ENV=production"
 
+      - name: Prepare Compose configuration from this commit
+        id: compose
+        run: echo "content=$(base64 -w 0 docker-compose.yml)" >> "$GITHUB_OUTPUT"
+
       - name: Deploy to DigitalOcean Droplet via SSH
         uses: appleboy/ssh-action@v1.0.3
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DEEPSEEK_MODEL: ${{ secrets.DEEPSEEK_MODEL }}
+          COMPOSE_FILE_BASE64: ${{ steps.compose.outputs.content }}
         with:
           host: ${{ secrets.DROPLET_HOST }}
           username: ${{ secrets.DROPLET_USER }}
           key: ${{ secrets.DROPLET_SSH_KEY }}
-          envs: DEEPSEEK_API_KEY,DEEPSEEK_MODEL
+          envs: DEEPSEEK_API_KEY,DEEPSEEK_MODEL,COMPOSE_FILE_BASE64
           script: |
+            set -eu
             cd /opt/phrase-follower
             upsert_env() {
               if grep -q "^$1=" .env; then
@@ -169,13 +175,11 @@ jobs:
                 printf '\n%s=%s\n' "$1" "$2" >> .env
               fi
             }
-            upsert_env DEEPSEEK_API_KEY "$DEEPSEEK_API_KEY"
-            if [ -n "$DEEPSEEK_MODEL" ]; then
-              upsert_env DEEPSEEK_MODEL "$DEEPSEEK_MODEL"
+            if [ -n "${DEEPSEEK_API_KEY:-}" ]; then
+              upsert_env DEEPSEEK_API_KEY "$DEEPSEEK_API_KEY"
             fi
-            # Older Droplets may have a compose file from before story generation.
-            if ! grep -q "DEEPSEEK_API_KEY:" docker-compose.yml; then
-              sed -i '/PHRASE_TTS_ENCRYPTION_KEY:/a\      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}\n      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-flash}' docker-compose.yml
+            if [ -n "${DEEPSEEK_MODEL:-}" ]; then
+              upsert_env DEEPSEEK_MODEL "$DEEPSEEK_MODEL"
             fi
             # Update DOCKER_IMAGE in .env to use the branch-specific tag
             BRANCH_NAME="${{ steps.branch.outputs.branch_name }}"
@@ -187,9 +191,19 @@ jobs:
             else
               echo "DOCKER_IMAGE=${IMAGE_TAG}" >> .env
             fi
-            # Pull and deploy
-            docker compose pull
+            # Validate and pull with this commit's Compose before replacing the live file.
+            # Keep the server's .env and all uploaded files in place.
+            COMPOSE_CANDIDATE=$(mktemp ./docker-compose.XXXXXX.yml)
+            trap 'rm -f "$COMPOSE_CANDIDATE"' EXIT
+            printf '%s' "$COMPOSE_FILE_BASE64" | base64 --decode > "$COMPOSE_CANDIDATE"
+            docker compose --env-file .env -f "$COMPOSE_CANDIDATE" config --quiet
+            docker compose --env-file .env -f "$COMPOSE_CANDIDATE" pull
+            if [ -f docker-compose.yml ]; then
+              cp docker-compose.yml docker-compose.yml.bak
+            fi
+            mv "$COMPOSE_CANDIDATE" docker-compose.yml
             docker compose up -d
+            docker compose exec -T app node -e 'const fs = require("node:fs"); const dir = process.env.UPLOADS_DIR; if (!dir) throw new Error("UPLOADS_DIR is missing"); fs.accessSync(dir, fs.constants.W_OK); console.log("Image storage is writable:", dir);'
             docker compose ps
             # Keep the image used by the running container, but remove old
             # unreferenced images left behind by prior deployments.

@@ -168,6 +168,9 @@ server {
     listen 443 ssl http2;
     server_name IP_DROPLETA;  # np. 167.99.123.45
 
+    # Upload zdjęć do 5 MiB; limit proxy z niewielkim zapasem
+    client_max_body_size 6m;
+
     # SSL certificates
     ssl_certificate /etc/nginx/ssl/nginx-selfsigned.crt;
     ssl_certificate_key /etc/nginx/ssl/nginx-selfsigned.key;
@@ -316,7 +319,13 @@ GitHub Actions automatycznie:
 1. Zbuduje obraz Dockera
 2. Wypchnie do GHCR
 3. Połączy się przez SSH z dropletem
-4. Wykona: `cd /opt/phrase-follower && docker compose pull && docker compose up -d`
+4. Dostarczy `docker-compose.yml` z wdrażanego commita, sprawdzi jego składnię i pobierze obrazy
+5. Zachowa poprzedni Compose jako `docker-compose.yml.bak`, podmieni konfigurację i wykona `docker compose up -d`
+6. Sprawdzi `UPLOADS_DIR` i możliwość zapisu w katalogu zdjęć
+
+Katalog `/srv/phrase-follower/uploads` trzeba przygotować jednorazowo przed wdrożeniem uploadu. Plik `.env` i zdjęcia pozostają na serwerze. Szczegóły opisuje [instrukcja zdjęć fiszek](phrase-image-uploads.md).
+
+Konfigurację Nginx aktualizuje się osobno na serwerze. Dla już działającej instalacji dopisz `client_max_body_size 6m;` w bloku HTTPS w `/etc/nginx/sites-available/phrase-follower`, a potem wykonaj `nginx -t && systemctl reload nginx`. Sam deploy kontenera nie zmienia konfiguracji Nginx.
 
 **Uwaga:** Upewnij się, że:
 
