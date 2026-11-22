@@ -49,6 +49,46 @@ afterEach(() => {
 });
 
 describe("full-screen image preview", () => {
+  it("opens the revealed flashcard image with 7 and closes through the reachable close button", () => {
+    act(() => root.render(<PhraseImage url={url} revealed enlargeShortcut />));
+    expect(container.querySelector('button[aria-label="Enlarge image"]')?.getAttribute("aria-keyshortcuts")).toBe("7");
+    key("7");
+    expect(document.querySelector<HTMLDialogElement>('dialog[aria-label="Image preview"]')?.open).toBe(true);
+    expect(document.querySelector('button[aria-label="Close image preview"]')?.textContent).toContain("Close image");
+    key("3");
+    expect(document.querySelector('dialog[aria-label="Image preview"]')).not.toBeNull();
+    click("Close image preview");
+    expect(document.querySelector("dialog")).toBeNull();
+    key("7");
+    expect(document.querySelector("dialog")).not.toBeNull();
+    key("Escape");
+    expect(document.querySelector("dialog")).toBeNull();
+  });
+  it("does not open hidden images or steal 7 while editing or using a modified shortcut", () => {
+    act(() => root.render(<PhraseImage url={url} revealed={false} enlargeShortcut />));
+    key("7");
+    expect(document.querySelector("dialog")).toBeNull();
+    act(() =>
+      root.render(
+        <>
+          <textarea />
+          <div contentEditable suppressContentEditableWarning>
+            Answer
+          </div>
+          <PhraseImage url={url} revealed enlargeShortcut />
+        </>
+      )
+    );
+    for (const target of container.querySelectorAll("textarea, [contenteditable]")) {
+      act(() => target.dispatchEvent(new KeyboardEvent("keydown", { key: "7", bubbles: true, cancelable: true })));
+      expect(document.querySelector("dialog")).toBeNull();
+    }
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "7", ctrlKey: true })));
+    expect(document.querySelector("dialog")).toBeNull();
+    act(() => root.render(<PhraseImage url={url} revealed enlargeShortcut={false} />));
+    key("7");
+    expect(document.querySelector("dialog")).toBeNull();
+  });
   it("opens in the current page and closes without losing the answer or submitting its form", () => {
     const submit = vi.fn((event: React.FormEvent) => event.preventDefault());
     const location = window.location.href;

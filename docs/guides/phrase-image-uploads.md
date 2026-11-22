@@ -26,6 +26,8 @@ Obsługiwane formaty wejściowe to JPEG, PNG i WebP, maksymalnie 5 MiB i 25 mili
 
 ### Szybsze ładowanie podczas nauki
 
+Na odsłoniętej fiszce w Flashcards i treningu notatnika klawisz **7** powiększa zdjęcie, tak jak kliknięcie ilustracji. Skrót nie działa podczas wpisywania tekstu, w innych oknach dialogowych ani podczas przetwarzania odpowiedzi lub drilla. **Esc** zamyka podgląd; oceny fiszek pozostają zablokowane, dopóki obraz jest powiększony. Na telefonie szeroki przycisk **Close image** znajduje się na dole, z uwzględnieniem bezpiecznej strefy ekranu. Na większych ekranach pozostaje X w prawym górnym rogu.
+
 Flashcards i trening notatnika pobierają prywatny obraz bieżącej fiszki już podczas czytania pytania. Obraz pozostaje ukryty do sprawdzenia odpowiedzi. Prefetch i wyświetlenie współdzielą jedno żądanie, również gdy odpowiedź zostanie odsłonięta przed zakończeniem pobierania. Błąd pobierania w tle nie przerywa nauki; wyświetlenie może ponowić próbę.
 
 Pobrane obrazy są przechowywane wyłącznie w pamięci bieżącej strony: maksymalnie 32 pliki i 32 MiB, do 10 minut. Najdawniej używane wpisy są usuwane po przekroczeniu limitów. Cache jest izolowany tokenem sesji, czyszczony przy wylogowaniu i znika po przeładowaniu strony. Nie zapisujemy zdjęć w localStorage, IndexedDB ani publicznym cache HTTP. Podmiana obrazu tworzy nowy URL, więc kolejny odczyt pobiera nową wersję. Adresy Blob używane do wyświetlania są zwalniane przy zamknięciu widoku obrazu.

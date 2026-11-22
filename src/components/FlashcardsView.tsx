@@ -714,6 +714,7 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
                     key={`${current.phrase_id}:${current.image_url}`}
                     url={current.image_url}
                     revealed={Boolean(checked)}
+                    enlargeShortcut={!busy && !detailsOpen && !drillActive}
                     compactMobile
                     maxWidth={overview?.settings.image_max_width ?? DEFAULT_IMAGE_MAX_WIDTH}
                     maxHeight={overview?.settings.image_max_height ?? DEFAULT_IMAGE_MAX_HEIGHT}
