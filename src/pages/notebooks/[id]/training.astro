@@ -18,7 +18,7 @@ const manifestUrl = `/api/notebooks/${id}/learn-manifest?${params.toString()}`;
 const returnUrl = `/notebooks/${id}`;
 ---
 
-<AppLayout title="Training - Phrase Follower" currentPath={`/notebooks/${id}/training`}>
+<AppLayout title="Training - Phrase Follower" currentPath={`/notebooks/${id}/training`} compactMobile>
   <AuthGuard client:load>
     <FlashcardsView notebookTraining={{ manifestUrl, returnUrl }} client:load />
   </AuthGuard>

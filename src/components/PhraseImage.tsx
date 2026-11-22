@@ -84,7 +84,10 @@ export default function PhraseImage({
           referrerPolicy="no-referrer"
           decoding="async"
           className="block h-auto w-auto max-w-full rounded-md object-contain"
-          style={{ maxWidth: `min(100%, ${maxWidth}px)`, maxHeight: `${maxHeight}px` }}
+          style={{
+            maxWidth: `min(100%, ${maxWidth}px)`,
+            maxHeight: `min(var(--phrase-image-viewport-limit, 100000px), ${maxHeight}px)`,
+          }}
           onError={() => setFailedUrl(url)}
         />
       </button>

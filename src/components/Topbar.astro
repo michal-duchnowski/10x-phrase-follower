@@ -14,11 +14,61 @@ const isDev = import.meta.env.NODE_ENV === "development";
 ---
 
 <nav class="border-b border-border bg-card">
-  <div class="container mx-auto px-4">
+  <div class="flex h-14 items-center justify-between gap-2 px-3 sm:hidden">
+    <a href="/notebooks" class="shrink-0 whitespace-nowrap text-sm font-bold text-foreground">Phrase Follower</a>
+    <div class="flex items-center">
+      <a
+        href="/notebooks"
+        aria-label="Notebooks"
+        title="Notebooks"
+        aria-current={currentPath.startsWith("/notebooks") ? "page" : undefined}
+        class={`flex size-11 items-center justify-center rounded-md hover:bg-accent ${currentPath.startsWith("/notebooks") ? "text-primary" : "text-muted-foreground"}`}
+      >
+        <svg class="size-5" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 3H20v19H6.5A2.5 2.5 0 0 1 4 19.5v-14A2.5 2.5 0 0 1 6.5 3Z"
+          ></path>
+          <path d="M8 7h8M8 11h6"></path>
+        </svg>
+      </a>
+      <a
+        href="/flashcards"
+        aria-label="Flashcards"
+        title="Flashcards"
+        aria-current={currentPath.startsWith("/flashcards") ? "page" : undefined}
+        class={`flex size-11 items-center justify-center rounded-md hover:bg-accent ${currentPath.startsWith("/flashcards") ? "text-primary" : "text-muted-foreground"}`}
+      >
+        <svg class="size-5" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <rect x="3" y="7" width="15" height="14" rx="2"></rect>
+          <path d="M7 3h12a2 2 0 0 1 2 2v12M7 12h7M7 16h4"></path>
+        </svg>
+      </a>
+      <details class="group relative">
+        <summary
+          aria-label="More navigation options"
+          title="More"
+          class="flex size-11 cursor-pointer list-none items-center justify-center rounded-md text-muted-foreground hover:bg-accent [&::-webkit-details-marker]:hidden"
+        >
+          <svg class="size-5" aria-hidden="true" fill="currentColor" viewBox="0 0 24 24">
+            <circle cx="5" cy="12" r="2"></circle><circle cx="12" cy="12" r="2"></circle><circle cx="19" cy="12" r="2"
+            ></circle>
+          </svg>
+        </summary>
+        <div class="absolute right-0 z-40 mt-1 min-w-40 rounded-md border border-border bg-card p-2 shadow-lg">
+          <a href="/import" class="flex min-h-11 items-center rounded px-3 text-sm hover:bg-accent">Import</a>
+          <a href="/settings" class="flex min-h-11 items-center rounded px-3 text-sm hover:bg-accent">Settings</a>
+          <div class="mobile-logout border-t border-border pt-1"><LogoutButton client:load showLabel /></div>
+        </div>
+      </details>
+    </div>
+  </div>
+  <div class="container mx-auto hidden px-4 sm:block">
     <div class="flex h-16 items-center justify-between">
       <!-- Logo and main navigation -->
       <div class="flex items-center space-x-6">
-        <a href="/notebooks" class="text-sm md:text-lg font-bold text-foreground hover:text-primary transition-colors">
+        <a
+          href="/notebooks"
+          class="whitespace-nowrap text-sm md:text-lg font-bold text-foreground hover:text-primary transition-colors"
+        >
           Phrase Follower
         </a>
 

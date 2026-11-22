@@ -2,7 +2,7 @@ import React from "react";
 import { useAuth } from "../lib/hooks/useAuth";
 import { Button } from "./ui/button";
 
-export default function LogoutButton() {
+export default function LogoutButton({ showLabel = false }: { showLabel?: boolean }) {
   const { logout, isAuthenticated } = useAuth();
 
   // Don't render if not authenticated
@@ -15,7 +15,11 @@ export default function LogoutButton() {
       variant="ghost"
       size="sm"
       onClick={logout}
-      className="text-muted-foreground hover:text-foreground"
+      className={
+        showLabel
+          ? "min-h-11 w-full justify-start text-muted-foreground hover:text-foreground"
+          : "text-muted-foreground hover:text-foreground"
+      }
       title="Logout"
     >
       <svg className="h-4 w-4 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -26,7 +30,7 @@ export default function LogoutButton() {
           d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
         />
       </svg>
-      <span className="hidden sm:inline">Logout</span>
+      <span className={showLabel ? "inline" : "hidden sm:inline"}>Logout</span>
     </Button>
   );
 }

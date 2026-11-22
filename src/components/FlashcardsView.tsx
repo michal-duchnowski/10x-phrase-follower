@@ -238,6 +238,12 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
     return () => window.cancelAnimationFrame(frame);
   }, [current?.direction_id, checked, detailsOpen, drillActive]);
   useEffect(() => {
+    const textarea = answerRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, [answer, current?.direction_id, checked, drillActive]);
+  useEffect(() => {
     const handleRatingShortcut = (event: KeyboardEvent) => {
       if (event.key === "Escape" && drillActive && !busy && !detailsOpen) {
         event.preventDefault();
@@ -460,6 +466,7 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
       void playEnglish();
       return;
     }
+    answerRef.current?.blur();
     setChecked({ kind });
     void playEnglish();
   };
@@ -600,30 +607,37 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
     const isManual = checked?.kind === "manual" && answer.trim().length === 0;
     const drillTarget = overview?.settings.drill_repetitions ?? 3;
     return (
-      <section className="mx-auto max-w-2xl py-5">
-        {notebookTraining && (
-          <Button asChild variant="ghost" size="sm" className="mb-3">
-            <a href={notebookTraining.returnUrl}>Back to notebook</a>
-          </Button>
-        )}
-        <div className="mb-4 flex items-center justify-between text-sm text-muted-foreground">
-          <span>
-            {sessionMode === "training" ? `${cards.length} cards to master` : `${cards.length - index} cards remaining`}
-          </span>
-          <span>{current.direction === "en_to_pl" ? "English to Polish" : "Polish to English"}</span>
+      <section
+        className={`mx-auto max-w-2xl py-1 sm:py-5 ${checked && !drillActive ? "pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:pb-5" : ""}`}
+      >
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 sm:mb-4">
+          {notebookTraining && (
+            <Button asChild variant="ghost" size="sm" className="min-h-11 px-0 sm:px-3">
+              <a href={notebookTraining.returnUrl}>Back to notebook</a>
+            </Button>
+          )}
+          <div className="flex flex-1 flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground sm:text-sm">
+            <span>
+              {sessionMode === "training"
+                ? `${cards.length} cards to master`
+                : `${cards.length - index} cards remaining`}
+            </span>
+            <span>{current.direction === "en_to_pl" ? "English to Polish" : "Polish to English"}</span>
+          </div>
         </div>
-        <div className="rounded-md border border-border bg-card px-5 py-5 shadow-sm sm:px-6">
+        <div className="rounded-md border border-border bg-card px-3 py-3 shadow-sm sm:px-6 sm:py-5">
           <div
             className="text-xl leading-7 text-foreground sm:text-2xl sm:leading-8"
             dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(current.prompt_text) }}
           />
         </div>
-        <label htmlFor="flashcard-answer" className="mt-4 block text-sm font-medium text-foreground">
+        <label htmlFor="flashcard-answer" className="mt-3 block text-sm font-medium text-foreground sm:mt-4">
           {drillActive ? `Drill: ${drillStreak} / ${drillTarget} consecutive correct answers` : "Your answer"}
         </label>
         <textarea
           id="flashcard-answer"
           ref={answerRef}
+          rows={1}
           value={answer}
           disabled={(Boolean(checked) && !drillActive) || busy}
           onKeyDown={(event) => {
@@ -634,7 +648,7 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
           }}
           onChange={(event) => setAnswer(event.target.value)}
           placeholder="Type your answer"
-          className="mt-2 min-h-[72px] w-full rounded-md border border-input bg-card p-3 text-base text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="mt-1 min-h-11 w-full resize-none overflow-hidden sm:mt-2 sm:min-h-[72px] rounded-md border border-input bg-card p-3 text-base text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
         {drillActive ? (
           <div className="mt-3 flex flex-wrap gap-2">
@@ -652,36 +666,25 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
           </div>
         ) : !checked ? (
           <Button
-            className="mt-3 bg-primary text-primary-foreground hover:bg-primary/90"
+            className="mt-2 min-h-11 bg-primary text-primary-foreground hover:bg-primary/90 sm:mt-3"
             onClick={check}
             disabled={busy}
           >
             Check answer
           </Button>
         ) : (
-          <div className="mt-4 space-y-3 rounded-md border border-border bg-card p-4 shadow-sm">
-            <div
-              className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium ${isMatch ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : isManual ? "border-primary/40 bg-primary/10 text-primary" : "border-destructive/40 bg-destructive/10 text-destructive"}`}
-            >
-              {isMatch ? (
-                <CheckCircle2 className="size-4" />
-              ) : isManual ? (
-                <Info className="size-4" />
-              ) : (
-                <XCircle className="size-4" />
-              )}
-              {isMatch
-                ? checked.kind === "exact"
-                  ? "Correct"
-                  : "Partial match"
-                : isManual
-                  ? "Choose a recall rating"
-                  : "Not correct"}
-            </div>
-            <div
-              className={`flex items-start justify-between gap-4 ${current.image_url ? "flex-col sm:flex-row" : ""}`}
-            >
-              <div className="min-w-0 flex-1">
+          <div className="mt-3 space-y-2 rounded-md border border-border bg-card p-3 shadow-sm sm:mt-4 sm:space-y-3 sm:p-4">
+            {!isManual && (
+              <div
+                className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium ${isMatch ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "border-destructive/40 bg-destructive/10 text-destructive"}`}
+              >
+                {isMatch ? <CheckCircle2 className="size-4" /> : <XCircle className="size-4" />}
+                {isMatch ? (checked.kind === "exact" ? "Correct" : "Partial match") : "Not correct"}
+              </div>
+            )}
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-2 sm:flex sm:justify-between sm:gap-4">
+              <p className="self-center text-sm font-medium text-foreground sm:hidden">Expected answer</p>
+              <div className="hidden min-w-0 flex-1 sm:block">
                 <p className="text-sm font-medium text-foreground">Expected answer</p>
                 <div
                   className="mt-1 text-lg text-foreground"
@@ -689,7 +692,7 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
                 />
               </div>
               {current.image_url && (
-                <div className="min-w-0 sm:flex-1">
+                <div className="order-4 col-span-2 min-w-0 [--phrase-image-viewport-limit:30dvh] sm:order-none sm:flex-1 sm:[--phrase-image-viewport-limit:100000px]">
                   <PhraseImage
                     key={`${current.phrase_id}:${current.image_url}`}
                     url={current.image_url}
@@ -699,10 +702,11 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
                   />
                 </div>
               )}
-              <div className="flex shrink-0 gap-2">
+              <div className="flex shrink-0 gap-1 sm:gap-2">
                 <Button
                   variant="secondary"
                   size="icon"
+                  className="size-11 sm:size-9"
                   onClick={() => {
                     setHintSaveError(null);
                     setDetailsOpen(true);
@@ -715,6 +719,7 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
                 <Button
                   variant="secondary"
                   size="icon"
+                  className="size-11 sm:size-9"
                   onClick={startDrill}
                   title={`Drill: ${drillTarget} consecutive correct answers (shortcut: 9)`}
                   aria-label={`Drill: ${drillTarget} consecutive correct answers. Shortcut: 9`}
@@ -724,6 +729,7 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
                 <Button
                   variant="secondary"
                   size="icon"
+                  className="size-11 sm:size-9"
                   onClick={() => void playEnglish()}
                   title="Play English audio (shortcut: 0)"
                   aria-label="Play English audio. Shortcut: 0"
@@ -731,21 +737,28 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
                   <Volume2 />
                 </Button>
               </div>
+              <div
+                className="col-span-2 text-lg text-foreground sm:hidden"
+                dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(current.expected_answer) }}
+              />
             </div>
             {!isMatch && !isManual && (
               <p className="text-sm text-muted-foreground">Choose the rating that reflects your recall.</p>
             )}
-            {sessionMode === "training" && (
-              <p className="text-sm text-muted-foreground">
-                Training only: Again repeats this card later; Good marks it mastered. Nothing is saved.
-              </p>
-            )}
-            <div className={`grid grid-cols-2 gap-2 ${sessionMode === "training" ? "" : "sm:grid-cols-4"}`}>
+            <div
+              role="group"
+              aria-label="Recall rating"
+              className={`fixed inset-x-0 bottom-0 z-20 grid gap-2 border-t border-border bg-card p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-lg sm:static sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none ${sessionMode === "training" ? "grid-cols-2" : "grid-cols-4"}`}
+            >
               {(sessionMode === "training"
                 ? (["Again", "Good"] as const)
                 : (["Again", "Hard", "Good", "Easy"] as const)
               ).map((rating) => (
-                <Button key={rating} className={ratingButtonClass(rating)} onClick={() => rate(rating)}>
+                <Button
+                  key={rating}
+                  className={`${ratingButtonClass(rating)} min-h-11 px-2 sm:min-h-9 sm:px-4`}
+                  onClick={() => rate(rating)}
+                >
                   {rating}
                 </Button>
               ))}

@@ -6,16 +6,17 @@ interface Props {
   title?: string;
   currentPath?: string;
   fullWidth?: boolean;
+  compactMobile?: boolean;
 }
 
-const { title = "Phrase Follower", currentPath, fullWidth = false } = Astro.props;
+const { title = "Phrase Follower", currentPath, fullWidth = false, compactMobile = false } = Astro.props;
 ---
 
 <!doctype html>
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
@@ -23,7 +24,11 @@ const { title = "Phrase Follower", currentPath, fullWidth = false } = Astro.prop
   <body class="bg-background text-foreground overflow-x-hidden">
     <div class="min-h-screen bg-background w-full">
       <Topbar currentPath={currentPath} />
-      <main class={fullWidth ? "w-full px-0 md:px-4 py-2 md:py-6" : "container mx-auto px-4 py-6"}>
+      <main
+        class={fullWidth
+          ? "w-full px-0 md:px-4 py-2 md:py-6"
+          : `container mx-auto px-3 sm:px-4 ${compactMobile ? "py-2 sm:py-6" : "py-6"}`}
+      >
         <slot />
       </main>
     </div>
