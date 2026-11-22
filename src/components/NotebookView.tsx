@@ -1136,19 +1136,6 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
               </div>
             )}
 
-            <div className="my-3 flex flex-wrap gap-2">
-              <IllustrationWizard
-                phrases={state.phrases.filter((phrase) => selectedPhraseIds.has(phrase.id))}
-                onImported={(id, imageUrl) =>
-                  setState((previous) => ({
-                    ...previous,
-                    phrases: previous.phrases.map((phrase) =>
-                      phrase.id === id ? { ...phrase, image_url: imageUrl } : phrase
-                    ),
-                  }))
-                }
-              />
-            </div>
             {/* Quick selection helpers - for both regular and virtual notebooks */}
             {selectedPhraseIds.size === 0 && state.phrases.length > 0 && (
               <div className="flex items-center gap-2 text-sm">
@@ -1186,97 +1173,114 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
             )}
 
             {/* Bulk actions - for both regular and virtual notebooks */}
-            {selectedPhraseIds.size > 0 && (
-              <div className="space-y-3">
+            <div className="space-y-3">
+              {selectedPhraseIds.size > 0 && (
                 <div className="text-sm text-muted-foreground">{selectedPhraseIds.size} selected</div>
-                <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center">
-                  <Button asChild variant="default" size="sm">
-                    <a
-                      href={`/player/${notebookId}?phrase_ids=${Array.from(selectedPhraseIds).join(",")}${difficultyFilter !== "all" ? `&difficulty=${difficultyFilter}` : ""}`}
-                      title="Open Player with selected phrases"
+              )}
+              <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center">
+                <IllustrationWizard
+                  phrases={state.phrases.filter((phrase) => selectedPhraseIds.has(phrase.id))}
+                  onImported={(id, imageUrl) =>
+                    setState((previous) => ({
+                      ...previous,
+                      phrases: previous.phrases.map((phrase) =>
+                        phrase.id === id ? { ...phrase, image_url: imageUrl } : phrase
+                      ),
+                    }))
+                  }
+                />
+                {selectedPhraseIds.size > 0 && (
+                  <>
+                    <Button asChild variant="default" size="sm">
+                      <a
+                        href={`/player/${notebookId}?phrase_ids=${Array.from(selectedPhraseIds).join(",")}${difficultyFilter !== "all" ? `&difficulty=${difficultyFilter}` : ""}`}
+                        title="Open Player with selected phrases"
+                      >
+                        Player
+                      </a>
+                    </Button>
+                    <Button asChild variant="default" size="sm">
+                      <a
+                        href={`/notebooks/${notebookId}/learn?phrase_ids=${Array.from(selectedPhraseIds).join(",")}${difficultyFilter !== "all" ? `&difficulty=${difficultyFilter}` : ""}`}
+                        title="Open Learn Mode with selected phrases"
+                      >
+                        Learn
+                      </a>
+                    </Button>
+                    <Button asChild variant="default" size="sm">
+                      <a href={trainingHref(true)} title="Train selected phrases in both directions">
+                        Training
+                      </a>
+                    </Button>
+                    <Button variant="default" size="sm" onClick={handleAddToFlashcards}>
+                      <Layers className="size-4" /> Add to Flashcards
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => setStoryOpen(true)}
+                      disabled={selectedPhraseIds.size < 3}
+                      title="Select at least 3 phrases to create a story"
                     >
-                      Player
-                    </a>
-                  </Button>
-                  <Button asChild variant="default" size="sm">
-                    <a
-                      href={`/notebooks/${notebookId}/learn?phrase_ids=${Array.from(selectedPhraseIds).join(",")}${difficultyFilter !== "all" ? `&difficulty=${difficultyFilter}` : ""}`}
-                      title="Open Learn Mode with selected phrases"
+                      <Sparkles className="size-4" /> Create Story
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={handleExportSelected}
+                      title="Export selected phrases as EN:::PL Markdown"
                     >
-                      Learn
-                    </a>
-                  </Button>
-                  <Button asChild variant="default" size="sm">
-                    <a href={trainingHref(true)} title="Train selected phrases in both directions">
-                      Training
-                    </a>
-                  </Button>
-                  <Button variant="default" size="sm" onClick={handleAddToFlashcards}>
-                    <Layers className="size-4" /> Add to Flashcards
-                  </Button>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={() => setStoryOpen(true)}
-                    disabled={selectedPhraseIds.size < 3}
-                    title="Select at least 3 phrases to create a story"
-                  >
-                    <Sparkles className="size-4" /> Create Story
-                  </Button>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={handleExportSelected}
-                    title="Export selected phrases as EN:::PL Markdown"
-                  >
-                    <Download className="size-4" /> Export
-                  </Button>
-                  <MobileActionMenu
-                    triggerLabel="Mark / Clear"
-                    triggerIcon={false}
-                    triggerVariant="default"
-                    triggerSize="sm"
-                    className="w-full md:w-auto"
-                    triggerClassName="w-full"
-                  >
-                    {({ close }) => (
-                      <>
-                        <div className="px-2 py-1 text-xs text-muted-foreground">Difficulty of selected phrases</div>
-                        {(["easy", "medium", "hard"] as const).map((difficulty) => (
+                      <Download className="size-4" /> Export
+                    </Button>
+                    <MobileActionMenu
+                      triggerLabel="Mark / Clear"
+                      triggerIcon={false}
+                      triggerVariant="default"
+                      triggerSize="sm"
+                      className="w-full md:w-auto"
+                      triggerClassName="w-full"
+                    >
+                      {({ close }) => (
+                        <>
+                          <div className="px-2 py-1 text-xs text-muted-foreground">Difficulty of selected phrases</div>
+                          {(["easy", "medium", "hard"] as const).map((difficulty) => (
+                            <Button
+                              key={difficulty}
+                              role="menuitem"
+                              variant="ghost"
+                              size="sm"
+                              className="w-full justify-start"
+                              onClick={() => {
+                                close();
+                                void handleBulkUpdateDifficulty(difficulty);
+                              }}
+                            >
+                              Mark {difficulty === "easy" ? "Easy" : difficulty === "medium" ? "Medium" : "Hard"}
+                            </Button>
+                          ))}
+                          <div role="separator" className="my-1 border-t border-border" />
                           <Button
-                            key={difficulty}
                             role="menuitem"
                             variant="ghost"
                             size="sm"
                             className="w-full justify-start"
                             onClick={() => {
                               close();
-                              void handleBulkUpdateDifficulty(difficulty);
+                              void handleBulkUpdateDifficulty(null);
                             }}
                           >
-                            Mark {difficulty === "easy" ? "Easy" : difficulty === "medium" ? "Medium" : "Hard"}
+                            Clear difficulty
                           </Button>
-                        ))}
-                        <div role="separator" className="my-1 border-t border-border" />
-                        <Button
-                          role="menuitem"
-                          variant="ghost"
-                          size="sm"
-                          className="w-full justify-start"
-                          onClick={() => {
-                            close();
-                            void handleBulkUpdateDifficulty(null);
-                          }}
-                        >
-                          Clear difficulty
-                        </Button>
-                      </>
-                    )}
-                  </MobileActionMenu>
-                  <Button variant="default" size="sm" onClick={handleCreateSnapshot} disabled={isCreatingSnapshot}>
-                    {isCreatingSnapshot ? "Creating..." : "Snapshot Selected"}
-                  </Button>
-                </div>
+                        </>
+                      )}
+                    </MobileActionMenu>
+                    <Button variant="default" size="sm" onClick={handleCreateSnapshot} disabled={isCreatingSnapshot}>
+                      {isCreatingSnapshot ? "Creating..." : "Snapshot Selected"}
+                    </Button>
+                  </>
+                )}
+              </div>
+              {selectedPhraseIds.size > 0 && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
                   {!isVirtualNotebook(notebookId) && (
                     <Button variant="destructive" size="sm" onClick={handleBulkDeletePhrases}>
@@ -1287,8 +1291,8 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
                     Deselect All
                   </Button>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
 

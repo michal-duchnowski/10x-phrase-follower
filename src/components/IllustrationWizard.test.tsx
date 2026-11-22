@@ -90,3 +90,41 @@ it("runs the wizard, resumes after closing and uploads only after replacement is
   expect(container.textContent).toContain("Saved 1 image(s)");
   expect(localStorage.getItem("illustration-draft-v1:test-user")).toBeNull();
 });
+
+function dragEvent(type: string, files: File[] = []) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "dataTransfer", { value: { files, dropEffect: "none" } });
+  return event;
+}
+
+it("highlights the drop zone and opens a preview from a dropped ZIP", async () => {
+  await act(async () => root.render(<IllustrationWizard phrases={[phrase]} />));
+  await click("Add illustrations");
+  expect(container.querySelector("textarea")?.value).toBe("Różnorodne, kwadratowe ilustracje.");
+  await click("Copy prompt");
+  expect(mocks.clipboard).toHaveBeenCalledWith(expect.stringContaining("Styl: Różnorodne, kwadratowe ilustracje."));
+  const zone = container.querySelector('input[type="file"]')?.closest("label");
+  if (!zone) throw new Error("Missing drop zone");
+  await act(async () => zone.dispatchEvent(dragEvent("dragenter")));
+  expect(zone.textContent).toContain("Drop your ZIP here");
+  const file = new File(["zip"], "illustrations.zip");
+  const event = dragEvent("drop", [file]);
+  await act(async () => zone.dispatchEvent(event));
+  expect(event.defaultPrevented).toBe(true);
+  expect(mocks.readZip).toHaveBeenCalledWith(file);
+  expect(container.textContent).toContain("3/3");
+  expect(container.querySelector("img")?.src).toBe("blob:preview");
+});
+
+it("rejects non-ZIP and multiple-file drops before unpacking", async () => {
+  await act(async () => root.render(<IllustrationWizard phrases={[phrase]} />));
+  await click("Add illustrations");
+  await click("Copy prompt");
+  const zone = container.querySelector('input[type="file"]')?.closest("label");
+  if (!zone) throw new Error("Missing drop zone");
+  for (const files of [[new File(["png"], "image.png")], [new File(["zip"], "a.zip"), new File(["zip"], "b.zip")]]) {
+    await act(async () => zone.dispatchEvent(dragEvent("drop", files)));
+    expect(container.textContent).toContain("Choose or drop exactly one ZIP file.");
+  }
+  expect(mocks.readZip).not.toHaveBeenCalled();
+});

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { Upload } from "lucide-react";
 import { Button } from "./ui/button";
 import { useApi } from "../lib/hooks/useApi";
 import {
   compressIllustration,
+  DEFAULT_ILLUSTRATION_STYLE,
   illustrationPrompt,
   parseIllustrationMapping,
   readIllustrationZip,
@@ -41,6 +43,8 @@ export default function IllustrationWizard({
   const [replace, setReplace] = useState(false);
   const [acceptChanges, setAcceptChanges] = useState(false);
   const [manualCopy, setManualCopy] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const dragDepth = useRef(0);
   const urls = useRef<string[]>([]);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const busyRef = useRef(false);
@@ -56,10 +60,12 @@ export default function IllustrationWizard({
         Array.isArray(value.phrases) &&
         value.phrases.length > 0 &&
         value.phrases.length <= 200 &&
-        value.phrases.every((p: IllustrationPhrase) => typeof p.id === "string" && typeof p.en_text === "string") &&
-        typeof value.style === "string"
+        value.phrases.every((p: IllustrationPhrase) => typeof p.id === "string" && typeof p.en_text === "string")
       )
-        setSavedDraft(value);
+        setSavedDraft({
+          phrases: value.phrases,
+          style: typeof value.style === "string" ? value.style : DEFAULT_ILLUSTRATION_STYLE,
+        });
     } catch {
       /* Storage is optional. */
     }
@@ -100,7 +106,7 @@ export default function IllustrationWizard({
   const start = (resume: boolean) => {
     const next = resume
       ? savedDraft
-      : { phrases: uniqueIllustrationPhrases(phrases), style: "Proste, kolorowe rysunki bez napisów." };
+      : { phrases: uniqueIllustrationPhrases(phrases), style: DEFAULT_ILLUSTRATION_STYLE };
     if (!next) return;
     clearImages();
     setDraft(next);
@@ -109,6 +115,8 @@ export default function IllustrationWizard({
     setReplace(false);
     setAcceptChanges(false);
     setManualCopy(false);
+    setDragging(false);
+    dragDepth.current = 0;
     setOpen(true);
   };
   const copyPrompt = async () => {
@@ -182,6 +190,14 @@ export default function IllustrationWizard({
       setBusy(false);
     }
   };
+  const selectZip = (files: File[]) => {
+    if (busyRef.current) return;
+    if (files.length !== 1 || !/\.zip$/i.test(files[0].name)) {
+      setMessage("Choose or drop exactly one ZIP file.");
+      return;
+    }
+    void inspectZip(files[0]);
+  };
   const eligible = (row: Preview) =>
     !!row.image && !row.error && !row.saved && (!row.phrase.image_url || replace) && (!row.changed || acceptChanges);
   const importImages = async () => {
@@ -222,9 +238,11 @@ export default function IllustrationWizard({
   };
   return (
     <>
-      <Button size="sm" disabled={!isAuthenticated || !phrases.length} onClick={() => start(false)}>
-        Add illustrations
-      </Button>
+      {phrases.length > 0 && (
+        <Button size="sm" disabled={!isAuthenticated} onClick={() => start(false)}>
+          Add illustrations
+        </Button>
+      )}
       {savedDraft && (
         <Button size="sm" variant="secondary" onClick={() => start(true)}>
           Resume illustrations
@@ -308,16 +326,49 @@ export default function IllustrationWizard({
                 ZIP up to 100 MiB. Images are unpacked locally, resized to 1600 × 1600 and compressed before upload. The
                 ZIP itself is never sent to the server.
               </p>
-              <label className="block">
-                Generated ZIP
+              <label
+                className={`flex min-h-48 flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-6 text-center transition-colors focus-within:ring-2 focus-within:ring-ring ${
+                  busy
+                    ? "cursor-wait border-border opacity-60"
+                    : dragging
+                      ? "cursor-copy border-primary bg-primary/10"
+                      : "cursor-pointer border-muted-foreground/50 bg-muted/20 hover:border-primary hover:bg-primary/5"
+                }`}
+                onDragEnter={(event) => {
+                  event.preventDefault();
+                  dragDepth.current++;
+                  if (!busyRef.current) setDragging(true);
+                }}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = busyRef.current ? "none" : "copy";
+                }}
+                onDragLeave={(event) => {
+                  event.preventDefault();
+                  dragDepth.current = Math.max(0, dragDepth.current - 1);
+                  if (!dragDepth.current) setDragging(false);
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  dragDepth.current = 0;
+                  setDragging(false);
+                  selectZip(Array.from(event.dataTransfer.files));
+                }}
+              >
+                <Upload aria-hidden="true" className="size-9 text-muted-foreground" />
+                <span className="font-medium">
+                  {busy ? "Processing ZIP…" : dragging ? "Drop your ZIP here" : "Drag and drop your ZIP here"}
+                </span>
+                <span className="text-sm text-muted-foreground">or click to choose a file · ZIP up to 100 MiB</span>
                 <input
+                  aria-label="Generated ZIP"
                   type="file"
                   accept=".zip,application/zip"
                   disabled={busy}
-                  className="mt-2 block w-full"
+                  className="sr-only"
                   onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) void inspectZip(file);
+                    const files = Array.from(event.target.files ?? []);
+                    if (files.length) selectZip(files);
                     event.target.value = "";
                   }}
                 />

@@ -19,7 +19,9 @@ describe("illustration import", () => {
   it("preserves multiline Markdown and deduplicates learning directions by phrase ID", () => {
     const phrase = { id, en_text: '**Ice**\n"quoted" | sentence', pl_text: "Lód" };
     expect(uniqueIllustrationPhrases([phrase, phrase])).toHaveLength(1);
-    const prompt = illustrationPrompt([phrase, phrase], "Watercolour");
+    const prompt = illustrationPrompt([phrase, phrase]);
+    expect(prompt).toContain("Styl: Różnorodne, kwadratowe ilustracje.");
+    expect(illustrationPrompt([phrase], "Akwarele")).toContain("Styl: Akwarele");
     const payload = JSON.parse(prompt.split("Fiszki:\n")[1]);
     expect(payload).toEqual([{ id, en: phrase.en_text, pl: phrase.pl_text }]);
   });
