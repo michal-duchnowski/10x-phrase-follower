@@ -17,6 +17,7 @@ import {
 import { Button } from "./ui/button";
 import { ToastProvider, useToast } from "./ui/toast";
 import { useApi } from "../lib/hooks/useApi";
+import { useFlashcardViewport } from "../lib/hooks/useFlashcardViewport";
 import { checkFlashcardAnswer, shouldRequireExactEnglishMatch } from "../lib/fsrs.service";
 import { FlashcardAudioCache } from "../lib/flashcard-audio-cache";
 import PhraseLearningHintModal from "./PhraseLearningHintModal";
@@ -84,6 +85,7 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioCacheRef = useRef<FlashcardAudioCache | null>(null);
   const answerRef = useRef<HTMLTextAreaElement | null>(null);
+  const actionsRef = useRef<HTMLDivElement | null>(null);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [cards, setCards] = useState<SessionCard[]>([]);
   const [index, setIndex] = useState(0);
@@ -237,12 +239,11 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
     const frame = window.requestAnimationFrame(() => answerRef.current?.focus());
     return () => window.cancelAnimationFrame(frame);
   }, [current?.direction_id, checked, detailsOpen, drillActive]);
-  useEffect(() => {
-    const textarea = answerRef.current;
-    if (!textarea) return;
-    textarea.style.height = "auto";
-    textarea.style.height = `${textarea.scrollHeight}px`;
-  }, [answer, current?.direction_id, checked, drillActive]);
+  useFlashcardViewport(answerRef, actionsRef, {
+    active: Boolean(current),
+    answer,
+    editing: !checked || drillActive,
+  });
   useEffect(() => {
     const handleRatingShortcut = (event: KeyboardEvent) => {
       if (event.key === "Escape" && drillActive && !busy && !detailsOpen) {
@@ -607,9 +608,7 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
     const isManual = checked?.kind === "manual" && answer.trim().length === 0;
     const drillTarget = overview?.settings.drill_repetitions ?? 3;
     return (
-      <section
-        className={`mx-auto max-w-2xl py-1 sm:py-5 ${checked && !drillActive ? "pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:pb-5" : ""}`}
-      >
+      <section className="mx-auto max-w-2xl py-1 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:py-5">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 sm:mb-4">
           {notebookTraining && (
             <Button asChild variant="ghost" size="sm" className="min-h-11 px-0 sm:px-3">
@@ -648,30 +647,45 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
           }}
           onChange={(event) => setAnswer(event.target.value)}
           placeholder="Type your answer"
-          className="mt-1 min-h-11 w-full resize-none overflow-hidden sm:mt-2 sm:min-h-[72px] rounded-md border border-input bg-card p-3 text-base text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="mt-1 min-h-11 w-full resize-none overflow-y-auto sm:mt-2 sm:min-h-[72px] rounded-md border border-input bg-card p-3 text-lg text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
         {drillActive ? (
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={check} disabled={busy}>
+          <div
+            ref={actionsRef}
+            className="fixed inset-x-0 bottom-[var(--flashcard-keyboard-inset,0px)] z-20 gap-2 border-t border-border bg-card p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-lg sm:static sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none flex sm:mt-3 sm:flex-wrap"
+          >
+            <Button
+              className="min-h-11 flex-1 bg-primary text-primary-foreground hover:bg-primary/90 sm:flex-none"
+              onClick={check}
+              onPointerDown={(event) => event.preventDefault()}
+              disabled={busy}
+            >
               Check drill answer
             </Button>
             <Button
               variant="secondary"
               onClick={() => setDrillActive(false)}
               disabled={busy}
+              className="min-h-11 flex-1 sm:flex-none"
               title="Back to rating (shortcut: Esc)"
             >
               Back to rating
             </Button>
           </div>
         ) : !checked ? (
-          <Button
-            className="mt-2 min-h-11 bg-primary text-primary-foreground hover:bg-primary/90 sm:mt-3"
-            onClick={check}
-            disabled={busy}
+          <div
+            ref={actionsRef}
+            className="fixed inset-x-0 bottom-[var(--flashcard-keyboard-inset,0px)] z-20 gap-2 border-t border-border bg-card p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-lg sm:static sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:mt-3"
           >
-            Check answer
-          </Button>
+            <Button
+              className="min-h-11 w-full bg-primary text-primary-foreground hover:bg-primary/90 sm:w-auto"
+              onClick={check}
+              onPointerDown={(event) => event.preventDefault()}
+              disabled={busy}
+            >
+              Check answer
+            </Button>
+          </div>
         ) : (
           <div className="mt-3 space-y-2 rounded-md border border-border bg-card p-3 shadow-sm sm:mt-4 sm:space-y-3 sm:p-4">
             {!isManual && (
@@ -687,7 +701,7 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
               <div className="hidden min-w-0 flex-1 sm:block">
                 <p className="text-sm font-medium text-foreground">Expected answer</p>
                 <div
-                  className="mt-1 text-lg text-foreground"
+                  className="mt-1 text-xl leading-7 text-foreground sm:text-2xl sm:leading-8"
                   dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(current.expected_answer) }}
                 />
               </div>
@@ -739,7 +753,7 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
                 </Button>
               </div>
               <div
-                className="col-span-2 text-lg text-foreground sm:hidden"
+                className="col-span-2 text-xl leading-7 text-foreground sm:hidden"
                 dangerouslySetInnerHTML={{ __html: parseMarkdownToHtml(current.expected_answer) }}
               />
             </div>
@@ -747,9 +761,10 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
               <p className="text-sm text-muted-foreground">Choose the rating that reflects your recall.</p>
             )}
             <div
+              ref={actionsRef}
               role="group"
               aria-label="Recall rating"
-              className={`fixed inset-x-0 bottom-0 z-20 grid gap-2 border-t border-border bg-card p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-lg sm:static sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none ${sessionMode === "training" ? "grid-cols-2" : "grid-cols-4"}`}
+              className={`fixed inset-x-0 bottom-[var(--flashcard-keyboard-inset,0px)] z-20 gap-2 border-t border-border bg-card p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-lg sm:static sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none grid sm:rounded-none ${sessionMode === "training" ? "grid-cols-2" : "grid-cols-4"}`}
             >
               {(sessionMode === "training"
                 ? (["Again", "Good"] as const)
