@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabaseClient } from "../../db/supabase.client";
+import { phraseImageCache } from "../phrase-image-cache";
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -28,6 +29,7 @@ export function useAuth(): AuthState {
   const isMountedRef = useRef(true);
 
   const logout = useCallback(async () => {
+    phraseImageCache.clear();
     // Clear DEV JWT from localStorage
     localStorage.removeItem("dev_jwt_token");
     localStorage.removeItem("dev_user_id");
@@ -219,6 +221,7 @@ export function useAuth(): AuthState {
     const {
       data: { subscription },
     } = supabaseClient.auth.onAuthStateChange((_event, session) => {
+      if (_event === "SIGNED_OUT") phraseImageCache.clear();
       if (!isMountedRef.current) return;
 
       if (session) {

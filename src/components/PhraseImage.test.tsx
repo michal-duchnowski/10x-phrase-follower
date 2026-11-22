@@ -4,6 +4,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import PhraseImage from "./PhraseImage";
 import PhraseLearningHintModal from "./PhraseLearningHintModal";
+import { usePrefetchPhraseImage } from "../lib/hooks/usePrefetchPhraseImage";
+import { phraseImageCache } from "../lib/phrase-image-cache";
+
+const mocks = vi.hoisted(() => ({ apiFetch: vi.fn(), token: "test-token" as string | null }));
 
 let container: HTMLDivElement;
 let root: Root;
@@ -21,6 +25,9 @@ function key(value: string) {
 }
 
 beforeEach(() => {
+  phraseImageCache.clear();
+  mocks.apiFetch.mockReset();
+  mocks.token = "test-token";
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   // jsdom has no native top layer; emulate the dialog's open/close operations.
   HTMLDialogElement.prototype.showModal = function () {
@@ -37,6 +44,7 @@ afterEach(() => {
   act(() => root.unmount());
   container.remove();
   document.body.style.overflow = "";
+  phraseImageCache.clear();
   vi.unstubAllGlobals();
 });
 
@@ -121,4 +129,79 @@ describe("full-screen image preview", () => {
   });
 });
 
-vi.mock("../lib/hooks/useApi", () => ({ useApi: () => ({ apiFetch: vi.fn(), token: "test-token" }) }));
+vi.mock("../lib/hooks/useApi", () => ({ useApi: () => ({ apiFetch: mocks.apiFetch, token: mocks.token }) }));
+
+const storedUrl = "/api/phrase-images/550e8400-e29b-41d4-a716-446655440000/550e8400-e29b-41d4-a716-446655440001.webp";
+function Question({ revealed, imageUrl = storedUrl }: { revealed: boolean; imageUrl?: string }) {
+  usePrefetchPhraseImage(imageUrl);
+  return revealed ? <PhraseImage url={imageUrl} revealed /> : <p>Read the question</p>;
+}
+function mockImageDownload() {
+  vi.stubGlobal(
+    "URL",
+    class extends URL {
+      static createObjectURL = vi.fn(() => "blob:cached-image");
+      static revokeObjectURL = vi.fn();
+    }
+  );
+  mocks.apiFetch.mockResolvedValue({ ok: true, blob: async () => new Blob(["image"], { type: "image/webp" }) });
+}
+
+describe("image prefetch and session cache", () => {
+  it("downloads during the question without revealing it and reuses the image across remounts", async () => {
+    mockImageDownload();
+    await act(async () => root.render(<Question revealed={false} />));
+    expect(mocks.apiFetch).toHaveBeenCalledOnce();
+    expect(container.querySelector("img")).toBeNull();
+    await act(async () => root.render(<Question revealed />));
+    expect(container.querySelector("img")?.getAttribute("src")).toBe("blob:cached-image");
+    expect(mocks.apiFetch).toHaveBeenCalledOnce();
+    await act(async () => root.render(<Question revealed={false} />));
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:cached-image");
+    await act(async () => root.render(<Question revealed />));
+    expect(mocks.apiFetch).toHaveBeenCalledOnce();
+  });
+  it("shares an unfinished prefetch when the answer is revealed immediately", async () => {
+    mockImageDownload();
+    let resolve: (response: unknown) => void = () => undefined;
+    mocks.apiFetch.mockImplementation(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        })
+    );
+    await act(async () => root.render(<Question revealed={false} />));
+    await act(async () => root.render(<Question revealed />));
+    expect(container.textContent).toContain("Loading image");
+    expect(mocks.apiFetch).toHaveBeenCalledOnce();
+    await act(async () => resolve({ ok: true, blob: async () => new Blob(["image"]) }));
+    expect(container.querySelector("img")).not.toBeNull();
+  });
+  it("keeps preload errors hidden and retries when the answer opens", async () => {
+    mockImageDownload();
+    mocks.apiFetch.mockRejectedValueOnce(new Error("Offline"));
+    await act(async () => root.render(<Question revealed={false} />));
+    expect(container.textContent).toBe("Read the question");
+    await act(async () => root.render(<Question revealed />));
+    expect(mocks.apiFetch).toHaveBeenCalledTimes(2);
+    expect(container.querySelector("img")).not.toBeNull();
+  });
+  it("hides the old account image and loads again after authentication changes", async () => {
+    mockImageDownload();
+    await act(async () => root.render(<PhraseImage url={storedUrl} revealed />));
+    mocks.token = null;
+    await act(async () => root.render(<PhraseImage url={storedUrl} revealed />));
+    expect(container.querySelector("img")).toBeNull();
+    mocks.token = "another-account";
+    await act(async () => root.render(<PhraseImage url={storedUrl} revealed />));
+    expect(mocks.apiFetch).toHaveBeenCalledTimes(2);
+  });
+  it("uses the new version URL after replacement instead of the cached old image", async () => {
+    mockImageDownload();
+    await act(async () => root.render(<Question revealed />));
+    const replacement = storedUrl.replace("440001.webp", "440002.webp");
+    await act(async () => root.render(<Question revealed imageUrl={replacement} />));
+    expect(mocks.apiFetch).toHaveBeenCalledTimes(2);
+    expect(mocks.apiFetch).toHaveBeenLastCalledWith(replacement, expect.anything());
+  });
+});

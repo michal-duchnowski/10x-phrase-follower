@@ -24,6 +24,14 @@ Obsługiwane formaty wejściowe to JPEG, PNG i WebP, maksymalnie 5 MiB i 25 mili
 
 ## Katalogi i dostęp
 
+### Szybsze ładowanie podczas nauki
+
+Flashcards i trening notatnika pobierają prywatny obraz bieżącej fiszki już podczas czytania pytania. Obraz pozostaje ukryty do sprawdzenia odpowiedzi. Prefetch i wyświetlenie współdzielą jedno żądanie, również gdy odpowiedź zostanie odsłonięta przed zakończeniem pobierania. Błąd pobierania w tle nie przerywa nauki; wyświetlenie może ponowić próbę.
+
+Pobrane obrazy są przechowywane wyłącznie w pamięci bieżącej strony: maksymalnie 32 pliki i 32 MiB, do 10 minut. Najdawniej używane wpisy są usuwane po przekroczeniu limitów. Cache jest izolowany tokenem sesji, czyszczony przy wylogowaniu i znika po przeładowaniu strony. Nie zapisujemy zdjęć w localStorage, IndexedDB ani publicznym cache HTTP. Podmiana obrazu tworzy nowy URL, więc kolejny odczyt pobiera nową wersję. Adresy Blob używane do wyświetlania są zwalniane przy zamknięciu widoku obrazu.
+
+Autoryzacja i nagłówek API `Cache-Control: private, no-store` pozostają bez zmian. Nginx nie wymaga dodatkowej konfiguracji.
+
 ```text
 /srv/phrase-follower/uploads/            # katalog na Droplecie
   {userId}/

@@ -19,6 +19,7 @@ import { Button } from "./ui/button";
 import { ToastProvider, useToast } from "./ui/toast";
 import { useApi } from "../lib/hooks/useApi";
 import { useFlashcardViewport } from "../lib/hooks/useFlashcardViewport";
+import { usePrefetchPhraseImage } from "../lib/hooks/usePrefetchPhraseImage";
 import { checkFlashcardAnswer, shouldRequireExactEnglishMatch } from "../lib/fsrs.service";
 import { FlashcardAudioCache } from "../lib/flashcard-audio-cache";
 import PhraseLearningHintModal from "./PhraseLearningHintModal";
@@ -112,6 +113,7 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
   const [notebookError, setNotebookError] = useState<string | null>(null);
   const notebookManifestUrl = notebookTraining?.manifestUrl;
   const current = cards[index];
+  usePrefetchPhraseImage(current?.image_url);
   const loadOverview = async () => {
     try {
       setOverview(await apiCall<Overview>("/api/flashcards/overview"));

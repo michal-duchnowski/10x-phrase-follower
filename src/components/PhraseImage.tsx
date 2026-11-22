@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { DEFAULT_IMAGE_MAX_HEIGHT, DEFAULT_IMAGE_MAX_WIDTH, isStoredImageUrl } from "../lib/phrase-image";
+import { fetchCachedPhraseImage, phraseImageCache } from "../lib/phrase-image-cache";
 
 import { useApi } from "../lib/hooks/useApi";
 
@@ -21,41 +22,46 @@ export default function PhraseImage({
   compactMobile = false,
 }: PhraseImageProps) {
   const { apiFetch, token } = useApi();
-  const [localImage, setLocalImage] = useState<{ source: string; blob: string } | null>(null);
+  const [localImage, setLocalImage] = useState<{ source: string; scope: string; blob: string } | null>(null);
+  const [failedImage, setFailedImage] = useState<{ source: string; scope: string | null } | null>(null);
   const [retry, setRetry] = useState(0);
   useEffect(() => {
-    if (!revealed || !url || !isStoredImageUrl(url)) return;
-    const controller = new AbortController();
+    if (!token || !url || !isStoredImageUrl(url)) return;
+    let active = true;
     let blobUrl: string | undefined;
-    apiFetch(url, { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Image unavailable");
-        const blob = await response.blob();
-        if (controller.signal.aborted) return;
+    fetchCachedPhraseImage(token, url, apiFetch)
+      .then((blob) => {
+        if (!active) return;
         blobUrl = URL.createObjectURL(blob);
-        setLocalImage({ source: url, blob: blobUrl });
+        setLocalImage({ source: url, scope: token, blob: blobUrl });
+        setFailedImage((previous) => (previous?.source === url && previous.scope === token ? null : previous));
       })
       .catch(() => {
-        if (!controller.signal.aborted) setFailedUrl(url);
+        if (active) setFailedImage({ source: url, scope: token });
       });
     return () => {
-      controller.abort();
+      active = false;
       if (blobUrl) URL.revokeObjectURL(blobUrl);
     };
-  }, [url, revealed, apiFetch, token, retry]);
-  const displayUrl = url && isStoredImageUrl(url) ? (localImage?.source === url ? localImage.blob : null) : url;
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  }, [url, apiFetch, token, retry]);
+  const displayUrl =
+    url && isStoredImageUrl(url)
+      ? localImage?.source === url && localImage.scope === token
+        ? localImage.blob
+        : null
+      : url;
   const [expandedUrl, setExpandedUrl] = useState<string | null>(null);
   const closePreview = useCallback(() => setExpandedUrl(null), []);
   if (!revealed || !url) return null;
-  if (failedUrl === url)
+  if (failedImage?.source === url && failedImage.scope === token)
     return (
       <div className="space-y-1 text-xs text-muted-foreground" role="status">
         <p>Image unavailable. You can replace its link in Description.</p>
         <button
           type="button"
           onClick={() => {
-            setFailedUrl(null);
+            phraseImageCache.invalidate(token, url);
+            setFailedImage(null);
             setRetry((value) => value + 1);
           }}
           className="underline underline-offset-2 hover:text-foreground"
@@ -92,7 +98,7 @@ export default function PhraseImage({
               ? `min(var(--phrase-image-viewport-limit, 100000px), ${maxHeight}px)`
               : `${maxHeight}px`,
           }}
-          onError={() => setFailedUrl(url)}
+          onError={() => setFailedImage({ source: url, scope: token })}
         />
       </button>
       {expandedUrl === url && <ImagePreview url={displayUrl} onClose={closePreview} />}
