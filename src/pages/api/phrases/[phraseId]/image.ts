@@ -13,11 +13,14 @@ export const POST: APIRoute = withErrorHandling(async (context) => {
   const db = getSupabaseClient(context);
   const { data: phrase, error } = await db
     .from("phrases")
-    .select("id, image_url, notebooks!inner(user_id)")
+    .select("id, image_url, updated_at, notebooks!inner(user_id)")
     .eq("id", phraseId)
     .eq("notebooks.user_id", userId)
     .single();
   if (error || !phrase) throw ApiErrors.notFound("Phrase not found");
+  const expectedVersion = context.request.headers.get("X-Phrase-Version");
+  if (expectedVersion && expectedVersion !== phrase.updated_at)
+    throw ApiErrors.conflict("Phrase changed since preview. Please select the ZIP again.");
   const imageUrl = await savePhraseImage(userId, phraseId, await readUpload(context.request));
   // Compare-and-swap prevents simultaneous uploads from leaving unused files.
   let query = db
@@ -25,6 +28,7 @@ export const POST: APIRoute = withErrorHandling(async (context) => {
     .update({ image_url: imageUrl, updated_at: new Date().toISOString() })
     .eq("id", phraseId);
   query = phrase.image_url === null ? query.is("image_url", null) : query.eq("image_url", phrase.image_url);
+  if (expectedVersion) query = query.eq("updated_at", expectedVersion);
   const { data: updated, error: updateError } = await query.select("image_url, learning_hint_markdown").single();
   if (updateError || !updated) {
     await removePhraseImage(userId, imageUrl);

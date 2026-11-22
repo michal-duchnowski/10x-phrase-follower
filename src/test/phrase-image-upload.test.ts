@@ -24,6 +24,29 @@ afterEach(async () => {
 });
 
 describe("private image storage", () => {
+  it("rejects a stale wizard preview before reading or saving the image", async () => {
+    const update = vi.fn();
+    const query = {
+      select: () => query,
+      eq: () => query,
+      update,
+      single: async () => ({ data: { id: phrase, image_url: null, updated_at: "new-version" }, error: null }),
+    };
+    vi.mocked(getSupabaseClient).mockReturnValue({ from: () => query } as unknown as ReturnType<
+      typeof getSupabaseClient
+    >);
+    const response = await POST({
+      locals: { userId: user },
+      params: { phraseId: phrase },
+      request: new Request("http://localhost", {
+        method: "POST",
+        headers: { "X-Phrase-Version": "old-version" },
+        body: "not an image",
+      }),
+    } as unknown as APIContext);
+    expect(response.status).toBe(409);
+    expect(update).not.toHaveBeenCalled();
+  });
   it("converts real PNG bytes to a resized WebP and isolates users", async () => {
     const png = await sharp({ create: { width: 2000, height: 1000, channels: 3, background: "red" } })
       .png()

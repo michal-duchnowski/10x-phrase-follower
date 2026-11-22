@@ -4,6 +4,20 @@ Zdjęcia wklejane ze schowka lub wybierane z pliku są przechowywane na dysku Dr
 
 ## Dodawanie zdjęć
 
+### Seryjne ilustracje z ZIP
+
+W notatniku zaznacz fiszki i wybierz **Add illustrations**. Ten sam wizard jest dostępny w listach Hard i w sekcji Difficult cards (również Again + Hard). W Difficult cards startuje z aktualnie wyświetlanym zestawem; w pierwszym kroku możesz usunąć niechciane pozycje. Oba kierunki tej samej frazy są łączone. Limit to 200 unikalnych fraz.
+
+1. Wybierz styl i skopiuj prompt zawierający EN, PL oraz stałe ID. Markdown i wielowierszowy tekst są kodowane jako JSON.
+2. Wklej prompt do ChatGPT, wygeneruj osobne ilustracje i ZIP z `mapping.md` w głównym katalogu. Wymagany jest dokładnie jeden blok JSON: `{"version":1,"images":[{"id":"UUID","file":"images/rysunek.png"}]}`. Nazwy plików wybiera generator. Zestaw i styl są zapisywane lokalnie dla konta; **Resume illustrations** pozwala wrócić po zamknięciu okna lub odświeżeniu. Przeglądarka musi pozwalać na localStorage. Plików ZIP i obrazów nie zapisujemy w localStorage.
+3. Wybierz ZIP i sprawdź podgląd. Domyślnie istniejące obrazy oraz frazy ze zmienioną treścią są pomijane. Można jawnie włączyć ich import. Brakujące lub usunięte frazy są oznaczone. Kliknij **Import**.
+
+ZIP do **100 MiB**, więc paczka 50 MB mieści się w limicie. Archiwum jest rozpakowywane w przeglądarce i **nie jest wysyłane na serwer**. Limity rozpakowania: 30 MiB na obraz, 256 KiB na manifest, 250 MiB łącznie i 1000 wpisów archiwum. Obsługiwane są PNG, JPEG i WebP. Obrazy są kolejno zmniejszane do maksymalnie 1600 × 1600 bez powiększania i kompresowane do WebP z jakością 82. Przeglądarki bez kodera WebP mogą zwrócić PNG; backend ponownie sprawdza obraz i zapisuje WebP. Każdy wysyłany obraz musi zmieścić się w 5 MiB; backend ponownie ogranicza obraz do 25 megapikseli i stosuje dotychczasowe przetwarzanie.
+
+Uploady są sekwencyjne, a wynik każdej fiszki jest widoczny osobno. Import może zakończyć się częściowym sukcesem; zapisane obrazy pozostają. Po błędzie wybierz ZIP ponownie, aby odświeżyć podgląd i ponowić import. Aktualizacja frazy po otwarciu podglądu powoduje konflikt zamiast nadpisania nowej zmiany. ID spoza eksportowanego zestawu, powtórzone przypisania i niebezpieczne ścieżki są odrzucane.
+
+**Nginx:** wystarcza `client_max_body_size 6m;`, jak dla pojedynczych uploadów. Nie trzeba zwiększać go do 50 ani 100 MB, ponieważ ZIP pozostaje lokalny. Jeśli serwer nadal ma domyślny limit 1 MiB, zastosuj opisaną niżej zmianę i przeładuj Nginx. Import nie zmienia konfiguracji serwera automatycznie.
+
 W oknie Learning hint wybierz Edit image. Wybierz plik lub wklej obraz przez Ctrl+V, sprawdź podgląd i kliknij Save. Zamknięcie okna przed zapisem nie wysyła pliku. Remove image przygotowuje usunięcie, które trzeba zatwierdzić przyciskiem Save.
 
 Obsługiwane formaty wejściowe to JPEG, PNG i WebP, maksymalnie 5 MiB i 25 milionów pikseli. Backend sprawdza rzeczywistą zawartość pliku, koryguje orientację, zmniejsza do maksymalnie 1600 × 1600 px bez powiększania i zapisuje WebP z jakością 82. Metadane oryginału nie są zachowywane. Rozmiar wynikowy zależy od obrazu.

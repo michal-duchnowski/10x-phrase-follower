@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import IllustrationWizard from "./IllustrationWizard";
 import {
   ArchiveX,
   Flag,
@@ -941,6 +942,14 @@ function FlashcardsContent({ notebookTraining }: FlashcardsViewProps) {
               <option value="frequent_lapses">Frequently incorrect</option>
             </select>
             <div className="flex flex-wrap gap-2 sm:justify-end">
+              <IllustrationWizard
+                phrases={difficultCards.map((card) => ({ ...card, id: card.phrase_id }))}
+                onImported={(id, imageUrl) =>
+                  setDifficultCards((previous) =>
+                    previous.map((card) => (card.phrase_id === id ? { ...card, image_url: imageUrl } : card))
+                  )
+                }
+              />
               {difficultCards.length > 0 && (
                 <>
                   <Button

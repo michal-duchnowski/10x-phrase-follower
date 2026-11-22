@@ -7,6 +7,7 @@ import ExportZipButton from "./ExportZipButton";
 import MobileActionMenu from "./MobileActionMenu";
 import PhraseLearningHintModal from "./PhraseLearningHintModal";
 import StoryModal from "./StoryModal";
+import IllustrationWizard from "./IllustrationWizard";
 import { Info, Trash2, Minimize2, Plus, Layers, Sparkles, Download } from "lucide-react";
 import DifficultyBadge from "./DifficultyBadge";
 import { MAX_NOTEBOOK_PHRASES } from "../lib/notebook-limits";
@@ -1135,6 +1136,19 @@ function NotebookViewContent({ notebookId }: NotebookViewProps) {
               </div>
             )}
 
+            <div className="my-3 flex flex-wrap gap-2">
+              <IllustrationWizard
+                phrases={state.phrases.filter((phrase) => selectedPhraseIds.has(phrase.id))}
+                onImported={(id, imageUrl) =>
+                  setState((previous) => ({
+                    ...previous,
+                    phrases: previous.phrases.map((phrase) =>
+                      phrase.id === id ? { ...phrase, image_url: imageUrl } : phrase
+                    ),
+                  }))
+                }
+              />
+            </div>
             {/* Quick selection helpers - for both regular and virtual notebooks */}
             {selectedPhraseIds.size === 0 && state.phrases.length > 0 && (
               <div className="flex items-center gap-2 text-sm">
